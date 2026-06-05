@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
+import 'features/ingresos/presentation/screens/movimientos_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,11 +20,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Cooperadora App',
       theme: AppTheme.lightTheme(),
-      home: const Scaffold(
-        body: Center(
-          child: Text('Cooperadora App — Firebase conectado ✓'),
-        ),
-      ),
+      home: const MovimientosScreen(),
     );
   }
 }
