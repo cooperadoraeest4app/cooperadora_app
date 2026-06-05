@@ -3,6 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/theme/app_theme.dart';
 
+const _miembrosPrueba = [
+  'Ana García',
+  'Carlos López',
+  'María Martínez',
+  'Juan Rodríguez',
+  'Laura Sánchez',
+  'Pedro Fernández',
+];
+
 const _metodosPago = [
   'Efectivo',
   'Transferencia',
@@ -12,21 +21,22 @@ const _metodosPago = [
 ];
 
 const _categoriasIngreso = [
-  'Cuota',
-  'Donación',
-  'Evento',
-  'Rifas',
-  'Subsidio',
-  'Otros',
+  CategoriaItem('Cuota Social', Icons.people, Color(0xFF2E6DA4)),
+  CategoriaItem('Donación', Icons.favorite, Color(0xFF2E9E7A)),
+  CategoriaItem('Subsidio', Icons.account_balance, Color(0xFF1A3A5C)),
+  CategoriaItem('Evento', Icons.celebration, Color(0xFF9B59B6)),
+  CategoriaItem('Venta', Icons.sell, Color(0xFFF39C12)),
+  CategoriaItem('Otros ingresos', Icons.add_circle, Color(0xFF6B7A99)),
 ];
 
 const _categoriasGasto = [
-  'Útiles',
-  'Mantenimiento',
-  'Servicios',
-  'Personal',
-  'Eventos',
-  'Otros',
+  CategoriaItem('Servicios', Icons.bolt, Color(0xFFE67E22)),
+  CategoriaItem('Materiales escolares', Icons.menu_book, Color(0xFF2E6DA4)),
+  CategoriaItem('Equipamiento', Icons.warehouse, Color(0xFF1A3A5C)),
+  CategoriaItem('Mantenimiento', Icons.build, Color(0xFF7F8C8D)),
+  CategoriaItem('Honorarios', Icons.point_of_sale, Color(0xFF8E44AD)),
+  CategoriaItem('Eventos', Icons.celebration, Color(0xFF9B59B6)),
+  CategoriaItem('Otros gastos', Icons.remove_circle, Color(0xFF6B7A99)),
 ];
 
 class AgregarMovimientoScreen extends StatefulWidget {
@@ -43,9 +53,11 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   String _tipo = 'ingreso';
   DateTime _fecha = DateTime.now();
   String? _metodoPago;
-  String? _categoria;
+  CategoriaItem? _categoria;
   bool _esMiembro = false;
-  String? _socioSeleccionado;
+  bool _esYoDonante = false;
+  String? _donanteMiembroSeleccionado;
+  TextEditingController? _miembroFieldController;
   String? _nombreComprobante;
 
   final _montoController = TextEditingController();
@@ -77,7 +89,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   Color get _colorActivo =>
       _esIngreso ? AppTheme.verdeIngreso : AppTheme.rojoGasto;
 
-  List<String> get _categorias =>
+  List<CategoriaItem> get _categorias =>
       _esIngreso ? _categoriasIngreso : _categoriasGasto;
 
   String _formatFecha(DateTime d) =>
@@ -252,13 +264,18 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                   v == null ? 'Seleccioná un método de pago' : null,
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
+            DropdownButtonFormField<CategoriaItem>(
               key: ValueKey(_tipo),
               initialValue: _categoria,
               decoration: const InputDecoration(labelText: 'Categoría'),
               items: _categorias
-                  .map((c) =>
-                      DropdownMenuItem(value: c, child: Text(c)))
+                  .map((c) => DropdownMenuItem(
+                        value: c,
+                        child: _CategoriaItemRow(item: c),
+                      ))
+                  .toList(),
+              selectedItemBuilder: (context) => _categorias
+                  .map((c) => _CategoriaItemRow(item: c))
                   .toList(),
               onChanged: (v) => setState(() => _categoria = v),
               validator: (v) =>
@@ -377,14 +394,15 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
       const SizedBox(height: 8),
       CheckboxListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text(
-            '¿El donante es miembro de la Cooperadora?'),
+        title: const Text('¿El donante es miembro de la Cooperadora?'),
         value: _esMiembro,
         activeColor: AppTheme.verdeIngreso,
         controlAffinity: ListTileControlAffinity.leading,
         onChanged: (v) => setState(() {
           _esMiembro = v ?? false;
-          _socioSeleccionado = null;
+          _esYoDonante = false;
+          _donanteMiembroSeleccionado = null;
+          _miembroFieldController?.clear();
           _donanteController.clear();
           _emailController.clear();
           _telefonoController.clear();
@@ -392,29 +410,117 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
       ),
       if (_esMiembro) ...[
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          initialValue: _socioSeleccionado,
-          decoration: const InputDecoration(labelText: 'Miembro'),
-          items: const [
-            DropdownMenuItem(value: 'yo', child: Text('Soy yo')),
-            DropdownMenuItem(
-                value: 'otro', child: Text('Otro miembro')),
-          ],
-          onChanged: (v) => setState(() => _socioSeleccionado = v),
+        GestureDetector(
+          onTap: () => setState(() {
+            _esYoDonante = !_esYoDonante;
+            if (_esYoDonante) {
+              _donanteMiembroSeleccionado = null;
+              _miembroFieldController?.clear();
+            }
+          }),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color:
+                  _esYoDonante ? AppTheme.verdeIngreso : AppTheme.blanco,
+              borderRadius: const BorderRadius.all(Radius.circular(12)),
+              border: Border.all(color: AppTheme.verdeIngreso, width: 2),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.person,
+                  color: _esYoDonante
+                      ? AppTheme.blanco
+                      : AppTheme.verdeIngreso,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Soy yo',
+                  style: TextStyle(
+                    color: _esYoDonante
+                        ? AppTheme.blanco
+                        : AppTheme.verdeIngreso,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Opacity(
+          opacity: _esYoDonante ? 0.4 : 1.0,
+          child: IgnorePointer(
+            ignoring: _esYoDonante,
+            child: Autocomplete<String>(
+              optionsBuilder: (textEditingValue) {
+                if (textEditingValue.text.isEmpty) return const [];
+                final query = textEditingValue.text.toLowerCase();
+                return _miembrosPrueba
+                    .where((m) => m.toLowerCase().contains(query));
+              },
+              fieldViewBuilder: (ctx, controller, focusNode, onSubmitted) {
+                _miembroFieldController = controller;
+                return TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: const InputDecoration(
+                    labelText: 'Buscar otro miembro',
+                    suffixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (text) {
+                    if (text.isNotEmpty && _esYoDonante) {
+                      setState(() => _esYoDonante = false);
+                    }
+                  },
+                );
+              },
+              onSelected: (value) => setState(() {
+                _donanteMiembroSeleccionado = value;
+                _esYoDonante = false;
+              }),
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius:
+                        const BorderRadius.all(Radius.circular(8)),
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      itemBuilder: (context, index) {
+                        final option = options.elementAt(index);
+                        return ListTile(
+                          leading: const Icon(Icons.person_outline),
+                          title: Text(option),
+                          onTap: () => onSelected(option),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ),
       ] else ...[
         const SizedBox(height: 16),
         TextFormField(
           controller: _donanteController,
-          decoration:
-              const InputDecoration(labelText: 'Nombre donante'),
+          decoration: const InputDecoration(labelText: 'Nombre donante'),
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
-          decoration:
-              const InputDecoration(labelText: 'Email donante'),
+          decoration: const InputDecoration(labelText: 'Email donante'),
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -425,6 +531,39 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         ),
       ],
     ];
+  }
+}
+
+class CategoriaItem {
+  final String nombre;
+  final IconData icono;
+  final Color color;
+
+  const CategoriaItem(this.nombre, this.icono, this.color);
+}
+
+class _CategoriaItemRow extends StatelessWidget {
+  const _CategoriaItemRow({required this.item});
+
+  final CategoriaItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: item.color.withAlpha(38),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(item.icono, color: item.color, size: 16),
+        ),
+        const SizedBox(width: 10),
+        Text(item.nombre),
+      ],
+    );
   }
 }
 
