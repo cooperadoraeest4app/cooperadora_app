@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "963645798761",
+    "project_id": "cooperadora-app",
+    "storage_bucket": "cooperadora-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:963645798761:android:615eae72a30ba7653e25f8",
+        "android_client_info": {
+          "package_name": "com.example.cooperadora_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFKUJQmEDRwhV1vUVCeA4PmyWMrdKxSAk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
