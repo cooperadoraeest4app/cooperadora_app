@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
+import 'agregar_movimiento_screen.dart';
 
 String _formatMonto(double monto) {
   final format = monto == monto.truncateToDouble()
@@ -91,9 +92,10 @@ class MovimientosScreen extends StatelessWidget {
           backgroundColor: AppTheme.verdeTeal,
           foregroundColor: AppTheme.blanco,
           onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Próximamente: agregar movimiento'),
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const AgregarMovimientoScreen(),
               ),
             );
           },
