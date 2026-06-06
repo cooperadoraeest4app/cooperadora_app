@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/data/categorias_data.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
 import '../providers/movimientos_provider.dart';
@@ -24,24 +25,6 @@ const _metodosPago = [
   'Cheque',
 ];
 
-const _categoriasIngreso = [
-  CategoriaItem('Cuota Social', Icons.people, Color(0xFF2E6DA4)),
-  CategoriaItem('Donación', Icons.favorite, Color(0xFF2E9E7A)),
-  CategoriaItem('Subsidio', Icons.account_balance, Color(0xFF1A3A5C)),
-  CategoriaItem('Evento', Icons.celebration, Color(0xFF9B59B6)),
-  CategoriaItem('Venta', Icons.sell, Color(0xFFF39C12)),
-  CategoriaItem('Otros ingresos', Icons.add_circle, Color(0xFF6B7A99)),
-];
-
-const _categoriasGasto = [
-  CategoriaItem('Servicios', Icons.bolt, Color(0xFFE67E22)),
-  CategoriaItem('Materiales escolares', Icons.menu_book, Color(0xFF2E6DA4)),
-  CategoriaItem('Equipamiento', Icons.warehouse, Color(0xFF1A3A5C)),
-  CategoriaItem('Mantenimiento', Icons.build, Color(0xFF7F8C8D)),
-  CategoriaItem('Honorarios', Icons.point_of_sale, Color(0xFF8E44AD)),
-  CategoriaItem('Eventos', Icons.celebration, Color(0xFF9B59B6)),
-  CategoriaItem('Otros gastos', Icons.remove_circle, Color(0xFF6B7A99)),
-];
 
 class AgregarMovimientoScreen extends StatefulWidget {
   const AgregarMovimientoScreen({super.key});
@@ -94,7 +77,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
       _esIngreso ? AppTheme.verdeIngreso : AppTheme.rojoGasto;
 
   List<CategoriaItem> get _categorias =>
-      _esIngreso ? _categoriasIngreso : _categoriasGasto;
+      _esIngreso ? categoriasIngreso : categoriasGasto;
 
   String _formatFecha(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/'
@@ -612,14 +595,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
       ],
     ];
   }
-}
-
-class CategoriaItem {
-  final String nombre;
-  final IconData icono;
-  final Color color;
-
-  const CategoriaItem(this.nombre, this.icono, this.color);
 }
 
 class _CategoriaItemRow extends StatelessWidget {

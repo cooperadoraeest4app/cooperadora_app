@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/data/categorias_data.dart';
+import '../../../gastos/domain/models/gasto.dart';
+import '../../../ingresos/domain/models/ingreso.dart';
+import '../providers/movimientos_provider.dart';
 import 'agregar_movimiento_screen.dart';
 
 String _formatMonto(double monto) {
@@ -10,80 +15,106 @@ String _formatMonto(double monto) {
   return '\$${format.format(monto)}';
 }
 
-const _movimientosPrueba = [
-  {
-    'tipo': 'ingreso',
-    'descripcion': 'Cuota mensual marzo',
-    'monto': 15000.0,
-    'fecha': '2025-03-10',
-  },
-  {
-    'tipo': 'gasto',
-    'descripcion': 'Compra de útiles',
-    'monto': 8500.0,
-    'fecha': '2025-03-08',
-  },
-  {
-    'tipo': 'ingreso',
-    'descripcion': 'Donación evento',
-    'monto': 20000.0,
-    'fecha': '2025-03-05',
-  },
-  {
-    'tipo': 'gasto',
-    'descripcion': 'Servicio de limpieza',
-    'monto': 5000.0,
-    'fecha': '2025-03-03',
-  },
-  {
-    'tipo': 'ingreso',
-    'descripcion': 'Cuota mensual febrero',
-    'monto': 15000.0,
-    'fecha': '2025-02-28',
-  },
-  {
-    'tipo': 'gasto',
-    'descripcion': 'Reparación sanitaria',
-    'monto': 12000.0,
-    'fecha': '2025-02-20',
-  },
-];
+String _formatFecha(DateTime fecha) =>
+    '${fecha.day.toString().padLeft(2, '0')}/'
+    '${fecha.month.toString().padLeft(2, '0')}/'
+    '${fecha.year}';
+
+class _MovimientoUnificado {
+  final bool esIngreso;
+  final double monto;
+  final DateTime fecha;
+  final String? descripcion;
+  final String categoriaId;
+
+  const _MovimientoUnificado({
+    required this.esIngreso,
+    required this.monto,
+    required this.fecha,
+    this.descripcion,
+    required this.categoriaId,
+  });
+
+  factory _MovimientoUnificado.fromIngreso(Ingreso i) =>
+      _MovimientoUnificado(
+        esIngreso: true,
+        monto: i.monto,
+        fecha: i.fecha,
+        descripcion: i.descripcion,
+        categoriaId: i.categoriaId,
+      );
+
+  factory _MovimientoUnificado.fromGasto(Gasto g) =>
+      _MovimientoUnificado(
+        esIngreso: false,
+        monto: g.monto,
+        fecha: g.fecha,
+        descripcion: g.descripcion,
+        categoriaId: g.categoriaId,
+      );
+}
 
 class MovimientosScreen extends StatelessWidget {
   const MovimientosScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final totalIngresos = _movimientosPrueba
-        .where((m) => m['tipo'] == 'ingreso')
-        .fold(0.0, (sum, m) => sum + (m['monto'] as double));
-
-    final totalGastos = _movimientosPrueba
-        .where((m) => m['tipo'] == 'gasto')
-        .fold(0.0, (sum, m) => sum + (m['monto'] as double));
+    final provider = context.watch<MovimientosProvider>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Movimientos'),
-      ),
-      body: Column(
-        children: [
-          _ResumenRow(totalIngresos: totalIngresos, totalGastos: totalGastos),
-          Card(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: ListView.separated(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _movimientosPrueba.length,
-              separatorBuilder: (_, _) =>
-                  const Divider(height: 1, indent: 72),
-              itemBuilder: (context, index) {
-                final movimiento = _movimientosPrueba[index];
-                return _MovimientoItem(movimiento: movimiento);
-              },
-            ),
-          ),
-        ],
+      appBar: AppBar(title: const Text('Movimientos')),
+      body: StreamBuilder<List<Ingreso>>(
+        stream: provider.ingresos,
+        builder: (context, ingresoSnap) {
+          return StreamBuilder<List<Gasto>>(
+            stream: provider.gastos,
+            builder: (context, gastoSnap) {
+              final loading =
+                  ingresoSnap.connectionState == ConnectionState.waiting ||
+                      gastoSnap.connectionState == ConnectionState.waiting;
+
+              final ingresos = ingresoSnap.data ?? [];
+              final gastos = gastoSnap.data ?? [];
+
+              final totalIngresos =
+                  ingresos.fold(0.0, (sum, i) => sum + i.monto);
+              final totalGastos =
+                  gastos.fold(0.0, (sum, g) => sum + g.monto);
+
+              final movimientos = [
+                ...ingresos.map(_MovimientoUnificado.fromIngreso),
+                ...gastos.map(_MovimientoUnificado.fromGasto),
+              ]..sort((a, b) => b.fecha.compareTo(a.fecha));
+
+              return Column(
+                children: [
+                  _ResumenRow(
+                    totalIngresos: totalIngresos,
+                    totalGastos: totalGastos,
+                  ),
+                  Expanded(
+                    child: loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : movimientos.isEmpty
+                            ? const _EmptyState()
+                            : Card(
+                                margin: const EdgeInsets.fromLTRB(
+                                    16, 0, 16, 16),
+                                child: ListView.separated(
+                                  itemCount: movimientos.length,
+                                  separatorBuilder: (_, _) =>
+                                      const Divider(height: 1, indent: 72),
+                                  itemBuilder: (context, index) =>
+                                      _MovimientoTile(
+                                          item: movimientos[index]),
+                                ),
+                              ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
@@ -91,14 +122,11 @@ class MovimientosScreen extends StatelessWidget {
         child: FloatingActionButton(
           backgroundColor: AppTheme.verdeTeal,
           foregroundColor: AppTheme.blanco,
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const AgregarMovimientoScreen(),
-              ),
-            );
-          },
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => const AgregarMovimientoScreen()),
+          ),
           child: const Icon(Icons.add),
         ),
       ),
@@ -193,38 +221,40 @@ class _TarjetaResumen extends StatelessWidget {
   }
 }
 
-class _MovimientoItem extends StatelessWidget {
-  const _MovimientoItem({required this.movimiento});
+class _MovimientoTile extends StatelessWidget {
+  const _MovimientoTile({required this.item});
 
-  final Map<String, Object> movimiento;
+  final _MovimientoUnificado item;
 
   @override
   Widget build(BuildContext context) {
-    final esIngreso = movimiento['tipo'] == 'ingreso';
-    final color = esIngreso ? AppTheme.verdeIngreso : AppTheme.rojoGasto;
-    final monto = movimiento['monto'] as double;
-    final descripcion = movimiento['descripcion'] as String;
-    final fecha = _formatearFecha(movimiento['fecha'] as String);
+    final categoria = findCategoria(
+      item.categoriaId,
+      esIngreso: item.esIngreso,
+    );
+    final color = item.esIngreso ? AppTheme.verdeIngreso : AppTheme.rojoGasto;
+    final iconoColor = categoria?.color ?? color;
+    final icono = categoria?.icono ??
+        (item.esIngreso ? Icons.arrow_upward : Icons.arrow_downward);
+    final titulo = item.descripcion?.isNotEmpty == true
+        ? item.descripcion!
+        : item.categoriaId;
 
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: color.withAlpha(30),
-        child: Icon(
-          esIngreso ? Icons.arrow_upward : Icons.arrow_downward,
-          color: color,
-          size: 20,
-        ),
+        backgroundColor: iconoColor.withAlpha(38),
+        child: Icon(icono, color: iconoColor, size: 20),
       ),
       title: Text(
-        descripcion,
+        titulo,
         style: Theme.of(context).textTheme.bodyLarge,
       ),
       subtitle: Text(
-        fecha,
+        _formatFecha(item.fecha),
         style: Theme.of(context).textTheme.bodySmall,
       ),
       trailing: Text(
-        '${esIngreso ? '+' : '-'}${_formatMonto(monto)}',
+        '${item.esIngreso ? '+' : '-'}${_formatMonto(item.monto)}',
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
               color: color,
               fontWeight: FontWeight.w600,
@@ -232,9 +262,31 @@ class _MovimientoItem extends StatelessWidget {
       ),
     );
   }
+}
 
-  String _formatearFecha(String isoFecha) {
-    final partes = isoFecha.split('-');
-    return '${partes[2]}/${partes[1]}/${partes[0]}';
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.inbox,
+            size: 64,
+            color: AppTheme.textoSecundario.withAlpha(100),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Sin movimientos registrados',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: AppTheme.textoSecundario,
+                ),
+          ),
+        ],
+      ),
+    );
   }
 }
