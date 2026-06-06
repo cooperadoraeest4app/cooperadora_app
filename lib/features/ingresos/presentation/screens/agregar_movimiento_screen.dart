@@ -1,7 +1,11 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../gastos/domain/models/gasto.dart';
+import '../../../ingresos/domain/models/ingreso.dart';
+import '../providers/movimientos_provider.dart';
 
 const _miembrosPrueba = [
   'Ana García',
@@ -120,19 +124,82 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     }
   }
 
-  void _guardar() {
+  Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-            'Movimiento guardado (próximamente conectado a Firestore)'),
-      ),
-    );
-    Navigator.pop(context);
+
+    final provider = context.read<MovimientosProvider>();
+    final now = DateTime.now();
+
+    if (_esIngreso) {
+      final ingreso = Ingreso(
+        id: '',
+        monto: double.parse(_montoController.text),
+        fecha: _fecha,
+        descripcion: _descripcionController.text.trim().isEmpty
+            ? null
+            : _descripcionController.text.trim(),
+        metodoPagoId: _metodoPago!,
+        categoriaId: _categoria!.nombre,
+        usuarioId: 'usuario_prueba',
+        fechaCreacion: now,
+        comprobante: _nombreComprobante,
+        donante: !_esMiembro && _donanteController.text.trim().isNotEmpty
+            ? _donanteController.text.trim()
+            : null,
+        donanteEmail: !_esMiembro && _emailController.text.trim().isNotEmpty
+            ? _emailController.text.trim()
+            : null,
+        donanteTelefono:
+            !_esMiembro && _telefonoController.text.trim().isNotEmpty
+                ? _telefonoController.text.trim()
+                : null,
+        donanteUsuarioId:
+            _esYoDonante ? 'usuario_prueba' : _donanteMiembroSeleccionado,
+      );
+      await provider.agregarIngreso(ingreso);
+    } else {
+      final gasto = Gasto(
+        id: '',
+        monto: double.parse(_montoController.text),
+        fecha: _fecha,
+        descripcion: _descripcionController.text.trim().isEmpty
+            ? null
+            : _descripcionController.text.trim(),
+        metodoPagoId: _metodoPago!,
+        categoriaId: _categoria!.nombre,
+        usuarioId: 'usuario_prueba',
+        fechaCreacion: now,
+        comprobante: _nombreComprobante,
+      );
+      await provider.agregarGasto(gasto);
+    }
+
+    if (!mounted) return;
+
+    if (provider.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.error!),
+          backgroundColor: AppTheme.rojoGasto,
+        ),
+      );
+      provider.limpiarError();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Movimiento guardado correctamente'),
+          backgroundColor: AppTheme.verdeIngreso,
+        ),
+      );
+      Navigator.pop(context);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLoading =
+        context.watch<MovimientosProvider>().isLoading;
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: _colorActivo,
@@ -145,37 +212,50 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         ),
         title: Text(_esIngreso ? 'Nuevo Ingreso' : 'Nuevo Gasto'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildSelectorTipo(),
-              const SizedBox(height: 16),
-              _buildFormCard(),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _colorActivo,
-                  foregroundColor: AppTheme.blanco,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(8)),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildSelectorTipo(),
+                  const SizedBox(height: 16),
+                  _buildFormCard(),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _colorActivo,
+                      foregroundColor: AppTheme.blanco,
+                      padding:
+                          const EdgeInsets.symmetric(vertical: 16),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.all(Radius.circular(8)),
+                      ),
+                    ),
+                    onPressed: isLoading ? null : _guardar,
+                    child: Text(
+                      _esIngreso ? 'Guardar Ingreso' : 'Guardar Gasto',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
                   ),
-                ),
-                onPressed: _guardar,
-                child: Text(
-                  _esIngreso ? 'Guardar Ingreso' : 'Guardar Gasto',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600),
-                ),
+                  const SizedBox(height: 32),
+                ],
               ),
-              const SizedBox(height: 32),
-            ],
+            ),
           ),
-        ),
+          if (isLoading)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black26,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ),
+        ],
       ),
     );
   }

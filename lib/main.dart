@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
+import 'features/ingresos/presentation/providers/movimientos_provider.dart';
 import 'features/ingresos/presentation/screens/movimientos_screen.dart';
 
 void main() async {
@@ -17,10 +19,15 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Cooperadora App',
-      theme: AppTheme.lightTheme(),
-      home: const MovimientosScreen(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => MovimientosProvider()),
+      ],
+      child: MaterialApp(
+        title: 'Cooperadora App',
+        theme: AppTheme.lightTheme(),
+        home: const MovimientosScreen(),
+      ),
     );
   }
 }

@@ -28,8 +28,9 @@ class IngresoRepository {
             .toList());
   }
 
-  Future<void> agregar(Ingreso ingreso) {
-    return _collection.add(ingreso.toMap());
+  Future<String> agregar(Ingreso ingreso) async {
+    final ref = await _collection.add(ingreso.toMap());
+    return ref.id;
   }
 
   Future<void> actualizar(Ingreso ingreso) {

@@ -28,8 +28,9 @@ class GastoRepository {
             .toList());
   }
 
-  Future<void> agregar(Gasto gasto) {
-    return _collection.add(gasto.toMap());
+  Future<String> agregar(Gasto gasto) async {
+    final ref = await _collection.add(gasto.toMap());
+    return ref.id;
   }
 
   Future<void> actualizar(Gasto gasto) {
