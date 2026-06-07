@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'features/admin/presentation/providers/configuracion_provider.dart';
+import 'features/admin/presentation/providers/usuarios_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/ingresos/presentation/providers/movimientos_provider.dart';
 import 'features/ingresos/presentation/screens/movimientos_screen.dart';
@@ -26,6 +27,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => MovimientosProvider()),
         ChangeNotifierProvider(create: (_) => ConfiguracionProvider()),
+        ChangeNotifierProvider(create: (_) => UsuariosProvider()),
       ],
       child: MaterialApp(
         title: 'Cooperadora App',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import 'configuracion_screen.dart';
+import 'usuarios_screen.dart';
 
 class AdminPanelScreen extends StatelessWidget {
   const AdminPanelScreen({super.key});
@@ -16,6 +17,7 @@ class AdminPanelScreen extends StatelessWidget {
       icono: Icons.people,
       titulo: 'Usuarios',
       subtitulo: 'Gestionar usuarios y roles',
+      esUsuarios: true,
     ),
     _OpcionPanel(
       icono: Icons.mail,
@@ -88,6 +90,13 @@ class AdminPanelScreen extends StatelessWidget {
                       builder: (_) => const ConfiguracionScreen(),
                     ),
                   );
+                } else if (opcion.esUsuarios) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const UsuariosScreen(),
+                    ),
+                  );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Próximamente')),
@@ -107,11 +116,13 @@ class _OpcionPanel {
   final String titulo;
   final String subtitulo;
   final bool esConfiguracion;
+  final bool esUsuarios;
 
   const _OpcionPanel({
     required this.icono,
     required this.titulo,
     required this.subtitulo,
     this.esConfiguracion = false,
+    this.esUsuarios = false,
   });
 }
