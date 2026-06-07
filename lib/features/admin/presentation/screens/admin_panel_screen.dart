@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import 'configuracion_screen.dart';
+import 'invitaciones_screen.dart';
 import 'usuarios_screen.dart';
 
 class AdminPanelScreen extends StatelessWidget {
@@ -23,6 +24,7 @@ class AdminPanelScreen extends StatelessWidget {
       icono: Icons.mail,
       titulo: 'Invitaciones',
       subtitulo: 'Crear y gestionar invitaciones',
+      esInvitaciones: true,
     ),
     _OpcionPanel(
       icono: Icons.label,
@@ -97,6 +99,13 @@ class AdminPanelScreen extends StatelessWidget {
                       builder: (_) => const UsuariosScreen(),
                     ),
                   );
+                } else if (opcion.esInvitaciones) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const InvitacionesScreen(),
+                    ),
+                  );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Próximamente')),
@@ -117,6 +126,7 @@ class _OpcionPanel {
   final String subtitulo;
   final bool esConfiguracion;
   final bool esUsuarios;
+  final bool esInvitaciones;
 
   const _OpcionPanel({
     required this.icono,
@@ -124,5 +134,6 @@ class _OpcionPanel {
     required this.subtitulo,
     this.esConfiguracion = false,
     this.esUsuarios = false,
+    this.esInvitaciones = false,
   });
 }
