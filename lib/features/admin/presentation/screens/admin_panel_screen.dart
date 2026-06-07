@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import 'configuracion_screen.dart';
 import 'invitaciones_screen.dart';
 import 'usuarios_screen.dart';
 
-class AdminPanelScreen extends StatelessWidget {
+class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({super.key});
 
+  @override
+  State<AdminPanelScreen> createState() => _AdminPanelScreenState();
+}
+
+class _AdminPanelScreenState extends State<AdminPanelScreen> {
   static const _opciones = [
     _OpcionPanel(
       icono: Icons.settings,
@@ -37,6 +44,24 @@ class AdminPanelScreen extends StatelessWidget {
       subtitulo: 'Formas de pago disponibles',
     ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (!auth.esAdmin) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No tenés permisos para acceder a esta sección'),
+            backgroundColor: AppTheme.rojoGasto,
+          ),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

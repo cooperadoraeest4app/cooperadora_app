@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/usuarios_provider.dart';
 
 class UsuariosScreen extends StatelessWidget {
@@ -9,6 +10,8 @@ class UsuariosScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<UsuariosProvider>();
+    final auth = context.watch<AuthProvider>();
+    final miId = auth.datosUsuario?['id'] as String? ?? auth.currentUser?.uid;
 
     return Scaffold(
       appBar: AppBar(
@@ -39,6 +42,7 @@ class UsuariosScreen extends StatelessWidget {
             itemBuilder: (context, index) => _UsuarioCard(
               usuario: usuarios[index],
               provider: provider,
+              miId: miId,
             ),
           );
         },
@@ -48,10 +52,15 @@ class UsuariosScreen extends StatelessWidget {
 }
 
 class _UsuarioCard extends StatelessWidget {
-  const _UsuarioCard({required this.usuario, required this.provider});
+  const _UsuarioCard({
+    required this.usuario,
+    required this.provider,
+    required this.miId,
+  });
 
   final Map<String, dynamic> usuario;
   final UsuariosProvider provider;
+  final String? miId;
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +69,8 @@ class _UsuarioCard extends StatelessWidget {
     final rol = usuario['rol'] as String? ?? 'sin_rol';
     final activo = usuario['activo'] as bool? ?? false;
     final inicial = email.isNotEmpty ? email[0].toUpperCase() : '?';
+    final esMiCuenta = miId != null && id == miId;
+    final esAdminUser = rol == 'admin';
 
     return Card(
       child: Padding(
@@ -81,13 +92,27 @@ class _UsuarioCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    email,
-                    style: const TextStyle(
-                      color: AppTheme.textoPrincipal,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          email,
+                          style: const TextStyle(
+                            color: AppTheme.textoPrincipal,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (esAdminUser) ...[
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.shield,
+                          size: 14,
+                          color: AppTheme.azulMedio,
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 6),
                   _RolChip(rol: rol),
@@ -101,9 +126,17 @@ class _UsuarioCard extends StatelessWidget {
               onChanged: (v) => provider.activarDesactivar(id, v),
             ),
             IconButton(
-              icon: const Icon(Icons.edit, color: AppTheme.azulMedio),
-              tooltip: 'Cambiar rol',
-              onPressed: () => _mostrarSelectorRol(context, id, rol),
+              icon: Icon(
+                Icons.edit,
+                color: esMiCuenta
+                    ? AppTheme.textoSecundario.withAlpha(80)
+                    : AppTheme.azulMedio,
+              ),
+              tooltip: esMiCuenta
+                  ? 'No podés cambiar tu propio rol'
+                  : 'Cambiar rol',
+              onPressed:
+                  esMiCuenta ? null : () => _mostrarSelectorRol(context, id, rol),
             ),
           ],
         ),
@@ -137,7 +170,7 @@ class _RolChip extends StatelessWidget {
         'admin' => (AppTheme.azulOscuro, AppTheme.blanco),
         'editor' => (AppTheme.verdeTeal, AppTheme.blanco),
         'solo_lectura' => (const Color(0xFFE0E0E0), AppTheme.textoSecundario),
-        'consultante' => (Color(0xFFFFE0B2), Color(0xFFE65100)),
+        'consultante' => (const Color(0xFFFFE0B2), const Color(0xFFE65100)),
         _ => (const Color(0xFFE0E0E0), AppTheme.textoSecundario),
       };
 

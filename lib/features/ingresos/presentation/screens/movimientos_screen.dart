@@ -351,19 +351,20 @@ class _AccionAuth extends StatelessWidget {
             ),
           ),
         ),
-        const PopupMenuDivider(),
-        // TODO(roles): mostrar solo si el usuario tiene rol 'admin'
-        const PopupMenuItem(
-          value: 'admin',
-          child: Row(
-            children: [
-              Icon(Icons.admin_panel_settings,
-                  size: 18, color: AppTheme.azulMedio),
-              SizedBox(width: 8),
-              Text('Panel de administración'),
-            ],
+        if (auth.esAdmin) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            value: 'admin',
+            child: Row(
+              children: [
+                Icon(Icons.admin_panel_settings,
+                    size: 18, color: AppTheme.azulMedio),
+                SizedBox(width: 8),
+                Text('Panel de administración'),
+              ],
+            ),
           ),
-        ),
+        ],
         const PopupMenuDivider(),
         const PopupMenuItem(
           value: 'logout',

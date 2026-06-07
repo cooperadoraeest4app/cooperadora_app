@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart' as ap;
+import 'registro_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -160,6 +161,34 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: const Text(
                   '¿Olvidaste tu contraseña?',
                   style: TextStyle(color: AppTheme.azulMedio),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Divider(),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const RegistroScreen()),
+                ),
+                child: const Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '¿Tenés un código de invitación? ',
+                        style:
+                            TextStyle(color: AppTheme.textoSecundario),
+                      ),
+                      TextSpan(
+                        text: 'Registrate',
+                        style: TextStyle(
+                          color: AppTheme.verdeTeal,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

@@ -11,6 +11,10 @@ class UsuarioRepository {
         );
   }
 
+  Future<void> crear(String authUid, Map<String, dynamic> datos) {
+    return _collection.doc(authUid).set({...datos, 'authUid': authUid});
+  }
+
   Future<void> actualizarRol(String id, String nuevoRol) {
     return _collection.doc(id).update({'rol': nuevoRol});
   }
