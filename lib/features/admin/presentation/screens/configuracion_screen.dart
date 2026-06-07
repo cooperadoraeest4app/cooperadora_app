@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../providers/configuracion_provider.dart';
 
 class ConfiguracionScreen extends StatefulWidget {
   const ConfiguracionScreen({super.key});
@@ -12,20 +14,32 @@ class ConfiguracionScreen extends StatefulWidget {
 class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final _nombreCoopController = TextEditingController(text: '');
-  final _nombreEscuelaController = TextEditingController(text: '');
-  final _emailController = TextEditingController(text: '');
-  final _telefonoController = TextEditingController(text: '');
-  final _anioController =
-      TextEditingController(text: DateTime.now().year.toString());
-  final _quorumController = TextEditingController(text: '30');
-  final _aprobacionController = TextEditingController(text: '50');
+  final _nombreCoopController = TextEditingController();
+  final _nombreEscuelaController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _telefonoController = TextEditingController();
+  final _anioController = TextEditingController();
+  final _quorumController = TextEditingController();
+  final _aprobacionController = TextEditingController();
 
-  bool _mostrarIngresosGastos = true;
-  bool _mostrarProyectos = true;
-  bool _mostrarCuentaBancaria = true;
-  bool _mostrarResumenesBancarios = true;
-  bool _mostrarSocios = false;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _cargarDatos());
+  }
+
+  Future<void> _cargarDatos() async {
+    final provider = context.read<ConfiguracionProvider>();
+    await provider.cargar();
+    if (!mounted) return;
+    _nombreCoopController.text = provider.nombreCooperadora;
+    _nombreEscuelaController.text = provider.nombreEscuela;
+    _emailController.text = provider.emailContacto;
+    _telefonoController.text = provider.telefonoContacto;
+    _anioController.text = provider.anioLectivo.toString();
+    _quorumController.text = provider.quorumMinimo.toString();
+    _aprobacionController.text = provider.porcentajeAprobacion.toString();
+  }
 
   @override
   void dispose() {
@@ -39,18 +53,40 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     super.dispose();
   }
 
-  void _guardar() {
+  Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-            'Configuración guardada (próximamente conectado a Firestore)'),
-      ),
+    final provider = context.read<ConfiguracionProvider>();
+    await provider.guardar(
+      nombreCooperadora: _nombreCoopController.text.trim(),
+      nombreEscuela: _nombreEscuelaController.text.trim(),
+      emailContacto: _emailController.text.trim(),
+      telefonoContacto: _telefonoController.text.trim(),
+      anioLectivo: int.parse(_anioController.text),
+      quorumMinimo: int.parse(_quorumController.text),
+      porcentajeAprobacion: int.parse(_aprobacionController.text),
     );
+    if (!mounted) return;
+    if (provider.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.error!),
+          backgroundColor: AppTheme.rojoGasto,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Configuración guardada correctamente'),
+          backgroundColor: AppTheme.verdeIngreso,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<ConfiguracionProvider>();
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
@@ -63,37 +99,49 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         ),
         title: const Text('Configuración'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildCardDatos(),
-              const SizedBox(height: 16),
-              _buildCardSecciones(),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.verdeTeal,
-                  foregroundColor: AppTheme.blanco,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(8)),
-                  ),
-                ),
-                onPressed: _guardar,
-                child: const Text(
-                  'Guardar configuración',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      body: provider.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildCardDatos(),
+                    const SizedBox(height: 16),
+                    _buildCardSecciones(provider),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.verdeTeal,
+                        foregroundColor: AppTheme.blanco,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(8)),
+                        ),
+                      ),
+                      onPressed: provider.isSaving ? null : _guardar,
+                      child: provider.isSaving
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppTheme.blanco,
+                              ),
+                            )
+                          : const Text(
+                              'Guardar configuración',
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                    ),
+                    const SizedBox(height: 32),
+                  ],
                 ),
               ),
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 
@@ -107,8 +155,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             TextFormField(
               controller: _nombreCoopController,
               decoration: const InputDecoration(
-                labelText: 'Nombre de la Cooperadora',
-              ),
+                  labelText: 'Nombre de la Cooperadora'),
               validator: (v) => (v == null || v.trim().isEmpty)
                   ? 'Campo obligatorio'
                   : null,
@@ -116,9 +163,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _nombreEscuelaController,
-              decoration: const InputDecoration(
-                labelText: 'Nombre de la Escuela',
-              ),
+              decoration:
+                  const InputDecoration(labelText: 'Nombre de la Escuela'),
               validator: (v) => (v == null || v.trim().isEmpty)
                   ? 'Campo obligatorio'
                   : null,
@@ -127,17 +173,15 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             TextFormField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Email de contacto',
-              ),
+              decoration:
+                  const InputDecoration(labelText: 'Email de contacto'),
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _telefonoController,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Teléfono de contacto',
-              ),
+              decoration:
+                  const InputDecoration(labelText: 'Teléfono de contacto'),
             ),
             const SizedBox(height: 16),
             Row(
@@ -147,9 +191,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     controller: _anioController,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(
-                      labelText: 'Año lectivo activo',
-                    ),
+                    decoration:
+                        const InputDecoration(labelText: 'Año lectivo activo'),
                     validator: (v) => (v == null || v.isEmpty)
                         ? 'Campo obligatorio'
                         : null,
@@ -161,15 +204,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     controller: _quorumController,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(
-                      labelText: 'Quórum mínimo (%)',
-                    ),
+                    decoration:
+                        const InputDecoration(labelText: 'Quórum mínimo (%)'),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Obligatorio';
                       final n = int.tryParse(v);
-                      if (n == null || n < 0 || n > 100) {
-                        return '0–100';
-                      }
+                      if (n == null || n < 0 || n > 100) return '0–100';
                       return null;
                     },
                   ),
@@ -180,15 +220,12 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                     controller: _aprobacionController,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(
-                      labelText: 'Aprobación (%)',
-                    ),
+                    decoration:
+                        const InputDecoration(labelText: 'Aprobación (%)'),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Obligatorio';
                       final n = int.tryParse(v);
-                      if (n == null || n < 0 || n > 100) {
-                        return '0–100';
-                      }
+                      if (n == null || n < 0 || n > 100) return '0–100';
                       return null;
                     },
                   ),
@@ -201,7 +238,8 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     );
   }
 
-  Widget _buildCardSecciones() {
+  Widget _buildCardSecciones(ConfiguracionProvider provider) {
+    final s = provider.seccionesPublicas;
     return Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -219,28 +257,28 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           ),
           _buildSwitch(
             'Ingresos y gastos',
-            _mostrarIngresosGastos,
-            (v) => setState(() => _mostrarIngresosGastos = v),
+            s['ingresos'] ?? true,
+            (v) => provider.actualizarSeccion('ingresos', v),
           ),
           _buildSwitch(
             'Proyectos',
-            _mostrarProyectos,
-            (v) => setState(() => _mostrarProyectos = v),
+            s['proyectos'] ?? true,
+            (v) => provider.actualizarSeccion('proyectos', v),
           ),
           _buildSwitch(
             'Cuenta bancaria',
-            _mostrarCuentaBancaria,
-            (v) => setState(() => _mostrarCuentaBancaria = v),
+            s['cuentaBancaria'] ?? true,
+            (v) => provider.actualizarSeccion('cuentaBancaria', v),
           ),
           _buildSwitch(
             'Resúmenes bancarios',
-            _mostrarResumenesBancarios,
-            (v) => setState(() => _mostrarResumenesBancarios = v),
+            s['resumenesBancarios'] ?? true,
+            (v) => provider.actualizarSeccion('resumenesBancarios', v),
           ),
           _buildSwitch(
             'Socios',
-            _mostrarSocios,
-            (v) => setState(() => _mostrarSocios = v),
+            s['socios'] ?? false,
+            (v) => provider.actualizarSeccion('socios', v),
           ),
         ],
       ),
