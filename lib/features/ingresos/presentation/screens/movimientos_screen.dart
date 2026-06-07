@@ -5,6 +5,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/data/categorias_data.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
+import '../../../admin/presentation/screens/admin_panel_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
 import '../providers/movimientos_provider.dart';
@@ -351,6 +352,19 @@ class _AccionAuth extends StatelessWidget {
           ),
         ),
         const PopupMenuDivider(),
+        // TODO(roles): mostrar solo si el usuario tiene rol 'admin'
+        const PopupMenuItem(
+          value: 'admin',
+          child: Row(
+            children: [
+              Icon(Icons.admin_panel_settings,
+                  size: 18, color: AppTheme.azulMedio),
+              SizedBox(width: 8),
+              Text('Panel de administración'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
         const PopupMenuItem(
           value: 'logout',
           child: Row(
@@ -363,7 +377,12 @@ class _AccionAuth extends StatelessWidget {
         ),
       ],
       onSelected: (value) {
-        if (value == 'logout') {
+        if (value == 'admin') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AdminPanelScreen()),
+          );
+        } else if (value == 'logout') {
           context.read<AuthProvider>().logout();
         }
       },

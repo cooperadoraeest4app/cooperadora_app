@@ -443,3 +443,65 @@ Se agrega `resumenBancario: true` al map `seccionesPublicas`. Por defecto públi
 ---
 
 *Última actualización: CuentaBancaria y MovimientoBancario definidos. Módulo de Ingresos y Gastos conectado a Firestore y funcionando.*
+
+---
+
+### 5.3 Invitacion *(definida)*
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | string | |
+| `codigo` | string | Código único alfanumérico generado automáticamente |
+| `tipo` | string | `individual` / `generica` |
+| `rolAsignado` | string | Rol fijo. El usuario NO puede cambiarlo al registrarse |
+| `nombreDestino` | string | Opcional. Precargado por el Admin |
+| `apellidoDestino` | string | Opcional |
+| `telefonoDestino` | string | Opcional |
+| `emailDestino` | string | Solo para invitación individual |
+| `usada` | boolean | Para invitaciones individuales |
+| `usos` | number | Para invitaciones genéricas, cuenta registros |
+| `limiteUsos` | number | Opcional. Límite de usos para invitación genérica |
+| `fechaVencimiento` | timestamp | Opcional |
+| `creadaPor` | string | usuarioId del Admin |
+| `fechaCreacion` | timestamp | |
+
+**Flujo invitación individual:**
+1. Admin crea invitación con datos del destinatario y rol asignado
+2. Sistema genera link único con código
+3. Admin envía link por WhatsApp o email
+4. Usuario abre link, ve datos precargados, solo ingresa contraseña
+5. Se crea Usuario con rol fijo de la invitación
+
+**Flujo invitación genérica (cartelera):**
+1. Admin genera link genérico para consultantes
+2. Se publica en cartelera de la escuela
+3. Alumno/docente abre link, completa nombre, apellido, email y contraseña
+4. Queda registrado automáticamente como `consultante`
+
+---
+
+## 10. Pendientes de Implementación
+
+### Alta prioridad
+- [ ] Pantalla de registro de usuario con sistema de invitaciones
+- [ ] Panel de administración (gestión de usuarios, roles, invitaciones)
+- [ ] Control de visibilidad por rol en toda la app (actualmente solo por login)
+- [ ] Módulo Cuenta Bancaria (saldo, resúmenes mensuales PDF)
+
+### Media prioridad
+- [ ] Login por biometría (huella dactilar) en Android
+- [ ] Login por teléfono con SMS
+- [ ] Firebase Dynamic Links para links de invitación
+- [ ] Módulo Socios y Cuotas
+- [ ] Módulo Proyectos
+- [ ] Gráficos y reportes
+
+### Baja prioridad / A futuro
+- [ ] Sistema de Votaciones
+- [ ] Módulo de habilidades (directorio de oficios)
+- [ ] Notificaciones push para gastos recurrentes
+- [ ] Inventario básico
+
+---
+
+*Última actualización: Autenticación Firebase Auth implementada. Sistema de invitaciones definido. FAB visible solo con login.*
