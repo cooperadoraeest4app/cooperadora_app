@@ -395,4 +395,51 @@ Máximo 3 por ítem. Solo uno puede estar aprobado.
 
 ---
 
+## 9. Pendientes Técnicos
+
+- **Firebase Storage pendiente de configurar:** requiere plan Blaze con cuenta de facturación. Postponido hasta el módulo de comprobantes. Configurar en console.firebase.google.com → Storage → southamerica-east1.
+
+---
+
 *v2.0 — Base de datos completa. Próximo paso: configurar Firebase.*
+
+### 5.1 CuentaBancaria *(definida)*
+
+Documento único en Firestore con id fijo `"cuenta_principal"`. A futuro escalable a múltiples cuentas agregando ids dinámicos y `cuentaId` en MovimientoBancario.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | string | Fijo: `"cuenta_principal"` |
+| `banco` | string | Ej: "Banco Nación" |
+| `tipoCuenta` | string | "Caja de ahorro" / "Cuenta corriente" |
+| `cbu` | string | |
+| `alias` | string | Opcional |
+| `saldoActual` | number | Se actualiza con cada MovimientoBancario |
+| `moneda` | string | Por defecto ARS |
+| `activa` | boolean | |
+| `fechaActualizacion` | timestamp | |
+
+### 5.2 MovimientoBancario *(definido)*
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | string | |
+| `tipo` | string | `actualizacion_saldo` / `resumen_mensual` |
+| `saldoAnterior` | number | |
+| `saldoNuevo` | number | Solo para `actualizacion_saldo` |
+| `periodo` | string | MM/YYYY. Solo para `resumen_mensual` |
+| `archivo` | string | URL Firebase Storage. PDF del resumen |
+| `observaciones` | string | Opcional |
+| `usuarioId` | string | Quién cargó el movimiento |
+| `fechaCreacion` | timestamp | |
+
+**Permisos:**
+- Ver saldo y descargar resúmenes: público (sujeto a `seccionesPublicas.resumenBancario`)
+- Actualizar saldo y subir resúmenes: solo Admin
+
+### Actualización: Configuración
+Se agrega `resumenBancario: true` al map `seccionesPublicas`. Por defecto público, configurable por Admin.
+
+---
+
+*Última actualización: CuentaBancaria y MovimientoBancario definidos. Módulo de Ingresos y Gastos conectado a Firestore y funcionando.*

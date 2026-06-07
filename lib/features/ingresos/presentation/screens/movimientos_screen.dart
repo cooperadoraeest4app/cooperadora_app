@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/data/categorias_data.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
 import '../providers/movimientos_provider.dart';
@@ -60,9 +62,15 @@ class MovimientosScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MovimientosProvider>();
+    final auth = context.watch<AuthProvider>();
+    // TODO(roles): verificar también rol 'editor' o 'admin' además del login
+    final puedeAgregar = auth.isLoggedIn;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Movimientos')),
+      appBar: AppBar(
+        title: const Text('Movimientos'),
+        actions: [_AccionAuth()],
+      ),
       body: StreamBuilder<List<Ingreso>>(
         stream: provider.ingresos,
         builder: (context, ingresoSnap) {
@@ -117,19 +125,21 @@ class MovimientosScreen extends StatelessWidget {
         },
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 16, right: 16),
-        child: FloatingActionButton(
-          backgroundColor: AppTheme.verdeTeal,
-          foregroundColor: AppTheme.blanco,
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => const AgregarMovimientoScreen()),
-          ),
-          child: const Icon(Icons.add),
-        ),
-      ),
+      floatingActionButton: puedeAgregar
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 16, right: 16),
+              child: FloatingActionButton(
+                backgroundColor: AppTheme.verdeTeal,
+                foregroundColor: AppTheme.blanco,
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const AgregarMovimientoScreen()),
+                ),
+                child: const Icon(Icons.add),
+              ),
+            )
+          : null,
     );
   }
 }
@@ -287,6 +297,76 @@ class _EmptyState extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AccionAuth extends StatelessWidget {
+  const _AccionAuth();
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+
+    if (!auth.isLoggedIn) {
+      return IconButton(
+        icon: const Icon(Icons.login),
+        tooltip: 'Ingresar',
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        ),
+      );
+    }
+
+    final email = auth.currentUser?.email ?? '';
+    final inicial = email.isNotEmpty ? email[0].toUpperCase() : '?';
+
+    return PopupMenuButton<String>(
+      offset: const Offset(0, 48),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: CircleAvatar(
+          backgroundColor: AppTheme.celesteAccento,
+          radius: 17,
+          child: Text(
+            inicial,
+            style: const TextStyle(
+              color: AppTheme.azulOscuro,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          enabled: false,
+          child: Text(
+            email,
+            style: const TextStyle(
+              color: AppTheme.textoSecundario,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'logout',
+          child: Row(
+            children: [
+              Icon(Icons.logout, size: 18, color: AppTheme.rojoGasto),
+              SizedBox(width: 8),
+              Text('Cerrar sesión'),
+            ],
+          ),
+        ),
+      ],
+      onSelected: (value) {
+        if (value == 'logout') {
+          context.read<AuthProvider>().logout();
+        }
+      },
     );
   }
 }
