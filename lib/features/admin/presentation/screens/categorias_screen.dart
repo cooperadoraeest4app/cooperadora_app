@@ -103,13 +103,13 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
             ],
           ),
         ),
-        body: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: context.watch<CategoriaProvider>().categorias,
-          builder: (ctx, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
+        body: Builder(
+          builder: (ctx) {
+            final provider = context.watch<CategoriaProvider>();
+            if (provider.isLoading) {
               return const Center(child: CircularProgressIndicator());
             }
-            final todas = snap.data ?? [];
+            final todas = provider.categorias;
             return TabBarView(
               children: [
                 _ListaCategorias(

@@ -46,13 +46,13 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
         ),
         title: const Text('Métodos de pago'),
       ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: context.watch<MetodoPagoProvider>().metodosPago,
-        builder: (ctx, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
+      body: Builder(
+        builder: (ctx) {
+          final provider = context.watch<MetodoPagoProvider>();
+          if (provider.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-          final metodos = snap.data ?? [];
+          final metodos = provider.metodosPago;
           if (metodos.isEmpty) {
             return Center(
               child: Column(

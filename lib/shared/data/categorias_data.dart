@@ -35,3 +35,29 @@ CategoriaItem? findCategoria(String nombre, {required bool esIngreso}) {
     return null;
   }
 }
+
+// Helpers para mostrar categorías de Firestore
+Color colorFromHex(String hex) {
+  final h = hex.replaceAll('#', '');
+  return Color(int.parse('FF$h', radix: 16));
+}
+
+IconData iconFromNombre(String nombre) => _kIconoMap[nombre] ?? Icons.label;
+
+const _kIconoMap = <String, IconData>{
+  'people': Icons.people,
+  'favorite': Icons.favorite,
+  'account_balance': Icons.account_balance,
+  'celebration': Icons.celebration,
+  'sell': Icons.sell,
+  'add_circle': Icons.add_circle,
+  'bolt': Icons.bolt,
+  'menu_book': Icons.menu_book,
+  'warehouse': Icons.warehouse,
+  'build': Icons.build,
+  'point_of_sale': Icons.point_of_sale,
+  'remove_circle': Icons.remove_circle,
+  'home_repair_service': Icons.home_repair_service,
+  'water_drop': Icons.water_drop,
+  'local_gas_station': Icons.local_gas_station,
+};

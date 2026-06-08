@@ -1,14 +1,44 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../data/repositories/categoria_repository.dart';
 
 class CategoriaProvider extends ChangeNotifier {
   final _repo = CategoriaRepository();
+  StreamSubscription<List<Map<String, dynamic>>>? _sub;
 
-  bool isLoading = false;
+  List<Map<String, dynamic>> _categorias = [];
+  bool isLoading = true;
   bool isSaving = false;
   String? error;
 
-  Stream<List<Map<String, dynamic>>> get categorias => _repo.obtenerTodas();
+  CategoriaProvider() {
+    _sub = _repo.obtenerTodas().listen(
+      (lista) {
+        _categorias = lista;
+        isLoading = false;
+        notifyListeners();
+      },
+      onError: (e) {
+        error = e.toString();
+        isLoading = false;
+        notifyListeners();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get categorias => _categorias;
+
+  List<Map<String, dynamic>> obtenerActivas(String tipo) {
+    return _categorias
+        .where((c) => c['tipo'] == tipo && (c['activa'] as bool? ?? false))
+        .toList();
+  }
 
   Future<void> crear(Map<String, dynamic> datos) async {
     isSaving = true;
@@ -49,14 +79,10 @@ class CategoriaProvider extends ChangeNotifier {
 
   Future<void> inicializarDatosDefault() async {
     if (!(await _repo.estaVacia())) return;
-    isLoading = true;
-    notifyListeners();
     try {
       await _repo.crearLote(_kDefaultCategorias);
     } catch (e) {
       error = e.toString();
-    } finally {
-      isLoading = false;
       notifyListeners();
     }
   }

@@ -1,14 +1,42 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../data/repositories/metodo_pago_repository.dart';
 
 class MetodoPagoProvider extends ChangeNotifier {
   final _repo = MetodoPagoRepository();
+  StreamSubscription<List<Map<String, dynamic>>>? _sub;
 
-  bool isLoading = false;
+  List<Map<String, dynamic>> _metodos = [];
+  bool isLoading = true;
   bool isSaving = false;
   String? error;
 
-  Stream<List<Map<String, dynamic>>> get metodosPago => _repo.obtenerTodos();
+  MetodoPagoProvider() {
+    _sub = _repo.obtenerTodos().listen(
+      (lista) {
+        _metodos = lista;
+        isLoading = false;
+        notifyListeners();
+      },
+      onError: (e) {
+        error = e.toString();
+        isLoading = false;
+        notifyListeners();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get metodosPago => _metodos;
+
+  List<Map<String, dynamic>> obtenerActivos() {
+    return _metodos.where((m) => m['activo'] as bool? ?? false).toList();
+  }
 
   Future<void> crear(Map<String, dynamic> datos) async {
     isSaving = true;
@@ -49,14 +77,10 @@ class MetodoPagoProvider extends ChangeNotifier {
 
   Future<void> inicializarDatosDefault() async {
     if (!(await _repo.estaVacia())) return;
-    isLoading = true;
-    notifyListeners();
     try {
       await _repo.crearLote(_kDefaultMetodos);
     } catch (e) {
       error = e.toString();
-    } finally {
-      isLoading = false;
       notifyListeners();
     }
   }
