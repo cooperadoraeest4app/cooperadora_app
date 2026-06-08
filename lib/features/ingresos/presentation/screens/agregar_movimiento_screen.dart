@@ -27,7 +27,9 @@ const _metodosPago = [
 
 
 class AgregarMovimientoScreen extends StatefulWidget {
-  const AgregarMovimientoScreen({super.key});
+  const AgregarMovimientoScreen({super.key, this.tipoInicial = 'ingreso'});
+
+  final String tipoInicial;
 
   @override
   State<AgregarMovimientoScreen> createState() =>
@@ -37,7 +39,7 @@ class AgregarMovimientoScreen extends StatefulWidget {
 class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  String _tipo = 'ingreso';
+  late String _tipo;
   DateTime _fecha = DateTime.now();
   String? _metodoPago;
   CategoriaItem? _categoria;
@@ -57,6 +59,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   @override
   void initState() {
     super.initState();
+    _tipo = widget.tipoInicial;
     _fechaController.text = _formatFecha(DateTime.now());
   }
 

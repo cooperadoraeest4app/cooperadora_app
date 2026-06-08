@@ -10,7 +10,7 @@ import 'features/admin/presentation/providers/metodo_pago_provider.dart';
 import 'features/admin/presentation/providers/usuarios_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/ingresos/presentation/providers/movimientos_provider.dart';
-import 'features/ingresos/presentation/screens/movimientos_screen.dart';
+import 'features/home/presentation/screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,7 +38,7 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Cooperadora App',
         theme: AppTheme.lightTheme(),
-        home: const MovimientosScreen(),
+        home: const HomeScreen(),
       ),
     );
   }
