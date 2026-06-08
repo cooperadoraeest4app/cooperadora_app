@@ -3,8 +3,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
+import 'features/admin/presentation/providers/categoria_provider.dart';
 import 'features/admin/presentation/providers/configuracion_provider.dart';
 import 'features/admin/presentation/providers/invitacion_provider.dart';
+import 'features/admin/presentation/providers/metodo_pago_provider.dart';
 import 'features/admin/presentation/providers/usuarios_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/ingresos/presentation/providers/movimientos_provider.dart';
@@ -30,6 +32,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ConfiguracionProvider()),
         ChangeNotifierProvider(create: (_) => InvitacionProvider()),
         ChangeNotifierProvider(create: (_) => UsuariosProvider()),
+        ChangeNotifierProvider(create: (_) => CategoriaProvider()),
+        ChangeNotifierProvider(create: (_) => MetodoPagoProvider()),
       ],
       child: MaterialApp(
         title: 'Cooperadora App',

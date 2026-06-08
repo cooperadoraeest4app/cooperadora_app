@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import 'categorias_screen.dart';
 import 'configuracion_screen.dart';
 import 'invitaciones_screen.dart';
+import 'metodos_pago_screen.dart';
 import 'usuarios_screen.dart';
 
 class AdminPanelScreen extends StatefulWidget {
@@ -37,11 +39,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       icono: Icons.label,
       titulo: 'Categorías',
       subtitulo: 'Categorías de ingresos y gastos',
+      esCategorias: true,
     ),
     _OpcionPanel(
       icono: Icons.credit_card,
       titulo: 'Métodos de pago',
       subtitulo: 'Formas de pago disponibles',
+      esMetodosPago: true,
     ),
   ];
 
@@ -92,7 +96,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                   color: AppTheme.celesteFondo,
                   borderRadius: const BorderRadius.all(Radius.circular(8)),
                 ),
-                child: Icon(opcion.icono, color: AppTheme.azulOscuro, size: 22),
+                child:
+                    Icon(opcion.icono, color: AppTheme.azulOscuro, size: 22),
               ),
               title: Text(
                 opcion.titulo,
@@ -114,22 +119,30 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const ConfiguracionScreen(),
-                    ),
+                        builder: (_) => const ConfiguracionScreen()),
                   );
                 } else if (opcion.esUsuarios) {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const UsuariosScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const UsuariosScreen()),
                   );
                 } else if (opcion.esInvitaciones) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const InvitacionesScreen(),
-                    ),
+                        builder: (_) => const InvitacionesScreen()),
+                  );
+                } else if (opcion.esCategorias) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const CategoriasScreen()),
+                  );
+                } else if (opcion.esMetodosPago) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const MetodosPagoScreen()),
                   );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -152,6 +165,8 @@ class _OpcionPanel {
   final bool esConfiguracion;
   final bool esUsuarios;
   final bool esInvitaciones;
+  final bool esCategorias;
+  final bool esMetodosPago;
 
   const _OpcionPanel({
     required this.icono,
@@ -160,5 +175,7 @@ class _OpcionPanel {
     this.esConfiguracion = false,
     this.esUsuarios = false,
     this.esInvitaciones = false,
+    this.esCategorias = false,
+    this.esMetodosPago = false,
   });
 }

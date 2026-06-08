@@ -505,3 +505,45 @@ Se agrega `resumenBancario: true` al map `seccionesPublicas`. Por defecto públi
 ---
 
 *Última actualización: Autenticación Firebase Auth implementada. Sistema de invitaciones definido. FAB visible solo con login.*
+
+---
+
+## 11. Estado de Implementación
+
+### Completado ✅
+- Entorno de desarrollo: Flutter 3.44.0, Android Studio, VS Code, Claude Code
+- Firebase: Firestore, Authentication (email/contraseña), Storage (pendiente de uso)
+- Arquitectura feature-first con Provider para estado
+- Tema visual: paleta celeste/azul oscuro/verde teal
+- Módulo Ingresos y Gastos: modelos, repositorios, formulario, listado conectado a Firestore
+- Autenticación: login, logout, registro con código de invitación
+- Control de roles: `esAdmin`, `esEditor`, `esSoloLectura`, `esConsultante` en AuthProvider
+- Panel de administración: Configuración, Usuarios, Invitaciones
+- FAB visible solo con login y permisos
+
+### Detalles técnicos importantes
+- Campo `authUid` en documentos de `usuarios` vincula Firebase Auth UID con Firestore
+- Al registrarse se crean 3 documentos: Auth user + Persona + Usuario en Firestore
+- El Admin en Firestore debe tener `authUid` igual al UID de Firebase Auth
+- Categorías hardcodeadas en `lib/shared/data/categorias_data.dart` — pendiente migrar a Firestore
+- Métodos de pago hardcodeados en formulario — pendiente migrar a Firestore
+
+### Pendiente inmediato
+- [ ] Categorías y Métodos de pago gestionables desde panel admin
+- [ ] Migrar categorías hardcodeadas a Firestore
+- [ ] Módulo Cuenta Bancaria
+- [ ] Pantalla pública sin login con secciones configurables
+
+### Estructura de colecciones Firestore
+- `ingresos` — movimientos de ingreso
+- `gastos` — movimientos de gasto
+- `usuarios` — usuarios con rol y authUid
+- `personas` — datos personales
+- `configuracion` — documento único id: "config"
+- `invitaciones` — invitaciones de registro
+- `categorias` — pendiente de poblar
+- `metodos_pago` — pendiente de poblar
+
+---
+
+*Última actualización: Control de roles implementado. Panel admin con Configuración, Usuarios e Invitaciones funcionando.*
