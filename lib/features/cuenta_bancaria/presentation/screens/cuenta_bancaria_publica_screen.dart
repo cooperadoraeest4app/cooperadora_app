@@ -1,13 +1,18 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/cuenta_bancaria.dart';
 import '../../domain/models/movimiento_bancario.dart';
 import '../providers/cuenta_bancaria_provider.dart';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const _mesesEs = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
 
 String _doubleToArgentino(double v) {
   final format = v == v.truncateToDouble()
@@ -16,222 +21,49 @@ String _doubleToArgentino(double v) {
   return format.format(v);
 }
 
-class _PeriodoFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.length <= 2) {
-      return newValue.copyWith(
-        text: digits,
-        selection: TextSelection.collapsed(offset: digits.length),
-      );
-    }
-    final result =
-        '${digits.substring(0, 2)}/${digits.substring(2, digits.length.clamp(2, 6))}';
-    return TextEditingValue(
-      text: result,
-      selection: TextSelection.collapsed(offset: result.length),
-    );
+Widget _buildSaldoWidget(double saldo) {
+  const mainStyle = TextStyle(
+    color: AppTheme.textoPrincipal,
+    fontSize: 44,
+    fontWeight: FontWeight.bold,
+    height: 1,
+  );
+
+  final cents = (saldo.abs() * 100).round() % 100;
+  final intFormatted =
+      '\$${NumberFormat('#,##0', 'es_AR').format(saldo.truncate())}';
+
+  if (cents == 0) {
+    return Text(intFormatted, style: mainStyle);
   }
+
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(intFormatted, style: mainStyle),
+      Text(
+        cents.toString().padLeft(2, '0'),
+        style: const TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+          color: AppTheme.textoPrincipal,
+        ),
+      ),
+    ],
+  );
 }
 
-class _MontoArgentinoFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final text = newValue.text;
-    if (text.isEmpty) return newValue;
+// ── Screen ────────────────────────────────────────────────────────────────────
 
-    // Strip thousands dots (we inserted them, user didn't type them)
-    final stripped = text.replaceAll('.', '');
-
-    // Only digits and comma
-    if (!RegExp(r'^[\d,]*$').hasMatch(stripped)) return oldValue;
-
-    // Only one comma
-    if (','.allMatches(stripped).length > 1) return oldValue;
-
-    final parts = stripped.split(',');
-    final intPart = parts[0];
-    final decPart = parts.length > 1 ? parts[1] : null;
-
-    // Max 2 decimal digits
-    if (decPart != null && decPart.length > 2) return oldValue;
-
-    // Format integer part with thousand-dot separators
-    String formattedInt = '';
-    if (intPart.isNotEmpty) {
-      final n = int.tryParse(intPart);
-      formattedInt = n != null
-          ? NumberFormat('#,##0', 'es_AR').format(n)
-          : intPart;
-    }
-
-    final result = decPart != null ? '$formattedInt,$decPart' : formattedInt;
-
-    return TextEditingValue(
-      text: result,
-      selection: TextSelection.collapsed(offset: result.length),
-    );
-  }
-}
-
-class CuentaBancariaScreen extends StatefulWidget {
-  const CuentaBancariaScreen({super.key});
-
-  @override
-  State<CuentaBancariaScreen> createState() => _CuentaBancariaScreenState();
-}
-
-class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
-  // Formulario de configuración
-  final _setupFormKey = GlobalKey<FormState>();
-  final _bancoCtrl = TextEditingController();
-  String? _tipoCuenta;
-  final _cbuCtrl = TextEditingController();
-  final _aliasCtrl = TextEditingController();
-
-  // Formulario de actualizar saldo
-  final _saldoFormKey = GlobalKey<FormState>();
-  final _saldoCtrl = TextEditingController();
-  final _obsCtrl = TextEditingController();
-  final _periodoResumenCtrl = TextEditingController();
-  bool _saldoInicializado = false;
-  String? _archivoNombre;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_saldoInicializado) {
-      final cuenta = context.read<CuentaBancariaProvider>().cuenta;
-      if (cuenta != null) {
-        _saldoCtrl.text = _doubleToArgentino(cuenta.saldoActual);
-        _saldoInicializado = true;
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _bancoCtrl.dispose();
-    _cbuCtrl.dispose();
-    _aliasCtrl.dispose();
-    _saldoCtrl.dispose();
-    _obsCtrl.dispose();
-    _periodoResumenCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _configurarCuenta() async {
-    if (!_setupFormKey.currentState!.validate()) return;
-    final provider = context.read<CuentaBancariaProvider>();
-    final cuenta = CuentaBancaria(
-      id: 'cuenta_principal',
-      banco: _bancoCtrl.text.trim(),
-      tipoCuenta: _tipoCuenta!,
-      cbu: _cbuCtrl.text.trim(),
-      alias: _aliasCtrl.text.trim().isEmpty ? null : _aliasCtrl.text.trim(),
-      saldoActual: 0,
-      activa: true,
-      fechaActualizacion: DateTime.now(),
-    );
-    await provider.crearCuenta(cuenta);
-    if (!mounted) return;
-    if (provider.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(provider.error!),
-        backgroundColor: AppTheme.rojoGasto,
-      ));
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Cuenta configurada correctamente'),
-        backgroundColor: AppTheme.verdeIngreso,
-      ));
-      setState(() => _saldoInicializado = false);
-    }
-  }
-
-  Future<void> _actualizarSaldo() async {
-    if (!_saldoFormKey.currentState!.validate()) return;
-    final provider = context.read<CuentaBancariaProvider>();
-    final auth = context.read<AuthProvider>();
-    final nuevoSaldo = double.tryParse(
-      _saldoCtrl.text.trim().replaceAll('.', '').replaceAll(',', '.'),
-    );
-    if (nuevoSaldo == null) return;
-    final obs = _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text.trim();
-    final uid = auth.currentUser?.uid ?? '';
-
-    if (_archivoNombre != null) {
-      final periodo = _periodoResumenCtrl.text.trim();
-      if (!RegExp(r'^\d{2}/\d{4}$').hasMatch(periodo)) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Ingresá un período válido (MM/AAAA)'),
-          backgroundColor: AppTheme.rojoGasto,
-        ));
-        return;
-      }
-      await provider.actualizarSaldoConResumen(
-        nuevoSaldo, uid, periodo, _archivoNombre!, observaciones: obs);
-    } else {
-      await provider.actualizarSaldo(nuevoSaldo, uid, observaciones: obs);
-    }
-
-    if (!mounted) return;
-    if (provider.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(provider.error!),
-        backgroundColor: AppTheme.rojoGasto,
-      ));
-    } else {
-      _obsCtrl.clear();
-      _clearFile();
-      setState(() => _saldoInicializado = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Saldo actualizado correctamente'),
-        backgroundColor: AppTheme.verdeIngreso,
-      ));
-    }
-  }
-
-  Future<void> _pickFile() async {
-    final result = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf'],
-    );
-    if (result == null || result.files.isEmpty) return;
-    setState(() {
-      _archivoNombre = result.files.first.name;
-      if (_periodoResumenCtrl.text.isEmpty) {
-        final now = DateTime.now();
-        _periodoResumenCtrl.text =
-            '${now.month.toString().padLeft(2, '0')}/${now.year}';
-      }
-    });
-  }
-
-  void _clearFile() => setState(() {
-        _archivoNombre = null;
-        _periodoResumenCtrl.clear();
-      });
+class CuentaBancariaPublicaScreen extends StatelessWidget {
+  const CuentaBancariaPublicaScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CuentaBancariaProvider>();
-    final auth = context.watch<AuthProvider>();
-    final esAdmin = auth.esAdmin;
     final cuenta = provider.cuenta;
-
-    // Pre-fill saldo when cuenta loads for the first time
-    if (!_saldoInicializado && cuenta != null) {
-      _saldoCtrl.text = _doubleToArgentino(cuenta.saldoActual);
-      _saldoInicializado = true;
-    }
 
     return Scaffold(
       appBar: AppBar(
@@ -248,216 +80,72 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
       body: provider.isLoading
           ? const Center(child: CircularProgressIndicator())
           : cuenta == null
-              ? _buildSinCuenta(esAdmin, provider.isSaving)
-              : _buildConCuenta(cuenta, esAdmin, provider),
-    );
-  }
-
-  // ── Sin cuenta configurada ────────────────────────────────────────────────
-
-  Widget _buildSinCuenta(bool esAdmin, bool isSaving) {
-    if (!esAdmin) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.account_balance_outlined,
-                  size: 64, color: AppTheme.textoSecundario),
-              SizedBox(height: 16),
-              Text(
-                'La cuenta bancaria aún no ha sido configurada.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppTheme.textoSecundario),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Form(
-        key: _setupFormKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Configurar cuenta bancaria',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textoPrincipal,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Ingresá los datos de la cuenta de la Cooperadora.',
-              style: TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
-            ),
-            const SizedBox(height: 24),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextFormField(
-                      controller: _bancoCtrl,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(labelText: 'Banco *'),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Ingresá el nombre del banco'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: _tipoCuenta,
-                      decoration:
-                          const InputDecoration(labelText: 'Tipo de cuenta *'),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Caja de ahorro',
-                          child: Text('Caja de ahorro'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Cuenta corriente',
-                          child: Text('Cuenta corriente'),
-                        ),
-                      ],
-                      onChanged: (v) => setState(() => _tipoCuenta = v),
-                      validator: (v) =>
-                          v == null ? 'Seleccioná el tipo de cuenta' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _cbuCtrl,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(22),
-                      ],
-                      decoration: const InputDecoration(
-                        labelText: 'CBU *',
-                        hintText: '22 dígitos',
-                      ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Ingresá el CBU';
-                        if (v.length != 22) return 'El CBU debe tener 22 dígitos';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _aliasCtrl,
-                      decoration: const InputDecoration(
-                          labelText: 'Alias (opcional)'),
-                    ),
-                  ],
+              ? const _SinCuenta()
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _SaldoCard(cuenta: cuenta),
+                      const SizedBox(height: 16),
+                      _InfoCard(cuenta: cuenta),
+                      const SizedBox(height: 16),
+                      _HistorialCard(movimientos: provider.movimientos),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: isSaving ? null : _configurarCuenta,
-              child: isSaving
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppTheme.blanco),
-                    )
-                  : const Text('Configurar cuenta'),
+    );
+  }
+}
+
+// ── Sin cuenta ────────────────────────────────────────────────────────────────
+
+class _SinCuenta extends StatelessWidget {
+  const _SinCuenta();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.account_balance_outlined,
+                size: 64, color: AppTheme.textoSecundario),
+            SizedBox(height: 16),
+            Text(
+              'La cuenta bancaria aún no ha sido configurada.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppTheme.textoSecundario),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ── Con cuenta configurada ────────────────────────────────────────────────
-
-  Widget _buildConCuenta(
-    CuentaBancaria cuenta,
-    bool esAdmin,
-    CuentaBancariaProvider provider,
-  ) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _InfoCuentaCard(cuenta: cuenta),
-          const SizedBox(height: 16),
-          if (esAdmin) ...[
-            _ActualizarSaldoCard(
-              formKey: _saldoFormKey,
-              saldoCtrl: _saldoCtrl,
-              obsCtrl: _obsCtrl,
-              periodoResumenCtrl: _periodoResumenCtrl,
-              archivoNombre: _archivoNombre,
-              isSaving: provider.isSaving,
-              onActualizar: _actualizarSaldo,
-              onPickFile: _pickFile,
-              onClearFile: _clearFile,
-            ),
-            const SizedBox(height: 16),
-          ],
-          _HistorialCard(movimientos: provider.movimientos),
-          const SizedBox(height: 32),
-        ],
       ),
     );
   }
 }
 
-// ── Tarjeta info de cuenta ────────────────────────────────────────────────────
+// ── Saldo ─────────────────────────────────────────────────────────────────────
 
-class _InfoCuentaCard extends StatelessWidget {
-  const _InfoCuentaCard({required this.cuenta});
+class _SaldoCard extends StatelessWidget {
+  const _SaldoCard({required this.cuenta});
 
   final CuentaBancaria cuenta;
 
+  String _fmtFecha(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/'
+      '${d.year}';
+
   @override
   Widget build(BuildContext context) {
-    final saldo = cuenta.saldoActual;
-    final saldoFormat = saldo == saldo.truncateToDouble()
-        ? NumberFormat('#,##0', 'es_AR')
-        : NumberFormat('#,##0.##', 'es_AR');
-
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
         child: Column(
           children: [
-            const Icon(Icons.account_balance,
-                size: 36, color: AppTheme.azulMedio),
-            const SizedBox(height: 12),
-            Text(
-              cuenta.banco,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textoPrincipal,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              cuenta.tipoCuenta,
-              style: const TextStyle(
-                  color: AppTheme.textoSecundario, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            const Divider(),
-            const SizedBox(height: 12),
-            _InfoRow(label: 'CBU', valor: cuenta.cbu),
-            if (cuenta.alias != null && cuenta.alias!.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              _AliasRow(alias: cuenta.alias!),
-            ],
-            const SizedBox(height: 20),
             const Text(
               'Saldo actual',
               style: TextStyle(
@@ -466,15 +154,8 @@ class _InfoCuentaCard extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '\$${saldoFormat.format(saldo)}',
-              style: TextStyle(
-                fontSize: 38,
-                fontWeight: FontWeight.w700,
-                color: saldo >= 0 ? AppTheme.verdeIngreso : AppTheme.rojoGasto,
-              ),
-            ),
+            const SizedBox(height: 6),
+            _buildSaldoWidget(cuenta.saldoActual),
             const SizedBox(height: 4),
             Text(
               'Actualizado: ${_fmtFecha(cuenta.fechaActualizacion)}',
@@ -486,11 +167,50 @@ class _InfoCuentaCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  String _fmtFecha(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/'
-      '${d.month.toString().padLeft(2, '0')}/'
-      '${d.year}';
+// ── Info ──────────────────────────────────────────────────────────────────────
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.cuenta});
+
+  final CuentaBancaria cuenta;
+
+  @override
+  Widget build(BuildContext context) {
+    final cbu = cuenta.cbu;
+    final cbuMask =
+        'CBU ····${cbu.length >= 4 ? cbu.substring(cbu.length - 4) : cbu}';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Datos de la cuenta',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textoPrincipal,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _InfoRow(label: 'Banco', valor: cuenta.banco),
+            const SizedBox(height: 6),
+            _InfoRow(label: 'Tipo', valor: cuenta.tipoCuenta),
+            const SizedBox(height: 6),
+            _InfoRow(label: 'CBU', valor: cbuMask),
+            if (cuenta.alias != null && cuenta.alias!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _AliasRow(alias: cuenta.alias!),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _InfoRow extends StatelessWidget {
@@ -582,165 +302,9 @@ class _AliasRow extends StatelessWidget {
   }
 }
 
-// ── Actualizar saldo ──────────────────────────────────────────────────────────
-
-class _ActualizarSaldoCard extends StatelessWidget {
-  const _ActualizarSaldoCard({
-    required this.formKey,
-    required this.saldoCtrl,
-    required this.obsCtrl,
-    required this.periodoResumenCtrl,
-    required this.archivoNombre,
-    required this.isSaving,
-    required this.onActualizar,
-    required this.onPickFile,
-    required this.onClearFile,
-  });
-
-  final GlobalKey<FormState> formKey;
-  final TextEditingController saldoCtrl;
-  final TextEditingController obsCtrl;
-  final TextEditingController periodoResumenCtrl;
-  final String? archivoNombre;
-  final bool isSaving;
-  final VoidCallback onActualizar;
-  final VoidCallback onPickFile;
-  final VoidCallback onClearFile;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Actualizar saldo',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textoPrincipal,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: saldoCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [_MontoArgentinoFormatter()],
-                decoration: const InputDecoration(
-                  labelText: 'Nuevo saldo *',
-                  prefixText: '\$ ',
-                ),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return 'Ingresá el saldo';
-                  final parsed = double.tryParse(
-                    v.replaceAll('.', '').replaceAll(',', '.'),
-                  );
-                  if (parsed == null) return 'Ingresá un valor válido';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: obsCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Observaciones (opcional)',
-                ),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 16),
-              if (archivoNombre == null)
-                OutlinedButton.icon(
-                  onPressed: onPickFile,
-                  icon: const Icon(Icons.upload_file, size: 18),
-                  label: const Text('Adjuntar resumen PDF'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.azulMedio,
-                    side: const BorderSide(color: AppTheme.azulMedio),
-                  ),
-                )
-              else ...[
-                Row(
-                  children: [
-                    const Icon(Icons.description_outlined,
-                        size: 18, color: AppTheme.azulMedio),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        archivoNombre!,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppTheme.textoPrincipal,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: onClearFile,
-                      tooltip: 'Quitar archivo',
-                      color: AppTheme.rojoGasto,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: periodoResumenCtrl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    _PeriodoFormatter(),
-                    LengthLimitingTextInputFormatter(7),
-                  ],
-                  decoration: const InputDecoration(
-                    labelText: 'Período del resumen *',
-                    hintText: 'MM/AAAA',
-                  ),
-                  validator: (v) {
-                    if (archivoNombre == null) return null;
-                    if (v == null || v.isEmpty) return 'Ingresá el período';
-                    if (!RegExp(r'^\d{2}/\d{4}$').hasMatch(v)) {
-                      return 'Formato inválido (MM/AAAA)';
-                    }
-                    return null;
-                  },
-                ),
-              ],
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: isSaving ? null : onActualizar,
-                child: isSaving
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppTheme.blanco),
-                      )
-                    : Text(archivoNombre != null
-                        ? 'Actualizar saldo y subir resumen'
-                        : 'Actualizar saldo'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ── Historial ─────────────────────────────────────────────────────────────────
 
 enum _ModoHistorial { defecto, resumenes, fecha }
-
-const _mesesEs = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-];
 
 class _HistorialCard extends StatefulWidget {
   const _HistorialCard({required this.movimientos});
@@ -758,7 +322,7 @@ class _HistorialCardState extends State<_HistorialCard> {
   DateTime? _desde;
   DateTime? _hasta;
   int _pagina = 0;
-  static const _porPagina = 10;
+  static const _porPagina = 12;
 
   List<MovimientoBancario> get _ordenados {
     final lista = [...widget.movimientos];
@@ -907,8 +471,8 @@ class _HistorialCardState extends State<_HistorialCard> {
               _modo = _ModoHistorial.fecha;
               _pagina = 0;
             }),
-            child: Text(
-                'Ver todo el historial (${widget.movimientos.length})'),
+            child:
+                Text('Ver todo el historial (${widget.movimientos.length})'),
           ),
         ],
       ],
@@ -938,7 +502,6 @@ class _HistorialCardState extends State<_HistorialCard> {
     final ahora = DateTime.now();
     final mesLimite =
         _anioSeleccionado == ahora.year ? ahora.month : 12;
-
     final meses = _ascendente
         ? List.generate(mesLimite, (i) => i + 1)
         : List.generate(mesLimite, (i) => mesLimite - i);
@@ -1012,7 +575,8 @@ class _HistorialCardState extends State<_HistorialCard> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppTheme.textoSecundario.withValues(alpha: 0.1),
+                        color: AppTheme.textoSecundario
+                            .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
@@ -1072,8 +636,11 @@ class _HistorialCardState extends State<_HistorialCard> {
             if (_desde != null || _hasta != null)
               IconButton(
                 icon: const Icon(Icons.clear, size: 18),
-                onPressed: () =>
-                    setState(() { _desde = null; _hasta = null; _pagina = 0; }),
+                onPressed: () => setState(() {
+                  _desde = null;
+                  _hasta = null;
+                  _pagina = 0;
+                }),
                 tooltip: 'Limpiar filtros',
               ),
           ],
@@ -1146,44 +713,9 @@ class _HistorialCardState extends State<_HistorialCard> {
       ],
     );
   }
-
 }
 
-class _DatePickerButton extends StatelessWidget {
-  const _DatePickerButton({
-    required this.label,
-    required this.fecha,
-    required this.onTap,
-  });
-
-  final String label;
-  final DateTime? fecha;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final texto = fecha != null
-        ? '${fecha!.day.toString().padLeft(2, '0')}/'
-            '${fecha!.month.toString().padLeft(2, '0')}/'
-            '${fecha!.year}'
-        : label;
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: const Icon(Icons.calendar_today, size: 14),
-      label: Text(texto, style: const TextStyle(fontSize: 12)),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        foregroundColor:
-            fecha != null ? AppTheme.azulMedio : AppTheme.textoSecundario,
-        side: BorderSide(
-          color: fecha != null
-              ? AppTheme.azulMedio
-              : AppTheme.textoSecundario.withValues(alpha: 0.5),
-        ),
-      ),
-    );
-  }
-}
+// ── Item del historial ────────────────────────────────────────────────────────
 
 class _MovimientoTile extends StatefulWidget {
   const _MovimientoTile({required this.movimiento});
@@ -1339,3 +871,40 @@ class _MovimientoTileState extends State<_MovimientoTile> {
   }
 }
 
+// ── Date picker button ────────────────────────────────────────────────────────
+
+class _DatePickerButton extends StatelessWidget {
+  const _DatePickerButton({
+    required this.label,
+    required this.fecha,
+    required this.onTap,
+  });
+
+  final String label;
+  final DateTime? fecha;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final texto = fecha != null
+        ? '${fecha!.day.toString().padLeft(2, '0')}/'
+            '${fecha!.month.toString().padLeft(2, '0')}/'
+            '${fecha!.year}'
+        : label;
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: const Icon(Icons.calendar_today, size: 14),
+      label: Text(texto, style: const TextStyle(fontSize: 12)),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        foregroundColor:
+            fecha != null ? AppTheme.azulMedio : AppTheme.textoSecundario,
+        side: BorderSide(
+          color: fecha != null
+              ? AppTheme.azulMedio
+              : AppTheme.textoSecundario.withValues(alpha: 0.5),
+        ),
+      ),
+    );
+  }
+}

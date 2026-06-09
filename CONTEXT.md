@@ -547,3 +547,68 @@ Se agrega `resumenBancario: true` al map `seccionesPublicas`. Por defecto públi
 ---
 
 *Última actualización: Control de roles implementado. Panel admin con Configuración, Usuarios e Invitaciones funcionando.*
+
+### Donación en Especie *(idea futura)*
+
+Entidad para registrar donaciones no monetarias (bienes, materiales, equipamiento).
+
+**DonacionEspecie**
+- `id` string
+- `descripcion` string — Ej: "Parrilla", "Materiales escolares"
+- `valorEstimado` number — Opcional
+- `donante` string — Opcional. Nombre si es externo
+- `donanteUsuarioId` string — Opcional. Si es miembro
+- `fecha` timestamp
+- `estado` string — `recibido` / `en_uso` / `dado_de_baja`
+- `foto` string — URL Firebase Storage. Opcional
+- `observaciones` string — Opcional
+- `fechaCreacion` timestamp
+
+> Conecta a futuro con el módulo de inventario y el directorio de habilidades.
+
+---
+
+### Historial Cuenta Bancaria — Especificación UI
+
+**Vista por defecto:**
+- Últimas 6 entradas mezcladas (actualizaciones de saldo + resúmenes mensuales)
+- Ordenadas descendente por fecha
+- Botón de ordenamiento asc/desc
+
+**Filtro "Solo resúmenes mensuales":**
+- Toggle que activa el modo resúmenes
+- Dropdown de año disponible
+- Muestra los 12 meses del año seleccionado
+- Meses con resumen: muestran ícono de descarga del PDF
+- Meses sin resumen: chip "Pendiente"
+- Mutuamente excluyente con filtro por fecha
+
+**Filtro por fecha:**
+- Selector "Desde" y "Hasta"
+- Lista de máximo 12 entradas por página con paginado
+- Botón ordenamiento ascendente/descendente
+- Mutuamente excluyente con filtro de resúmenes
+
+**Extras:**
+- Botón "Limpiar filtros" vuelve a vista por defecto
+- Versión pública de solo lectura accesible desde pantalla principal
+- En versión pública: saldo actual + historial + resúmenes descargables
+- Sin opciones de edición para usuarios sin rol Admin
+
+*Confirmado para implementar junto con el módulo bancario completo.*
+
+---
+
+### Actualización: Módulo Cuenta Bancaria — Flujo unificado
+
+**Actualizar saldo + Resumen mensual en un solo paso:**
+
+Al actualizar el saldo el Admin puede opcionalmente adjuntar el resumen bancario PDF en el mismo formulario.
+
+- Si adjunta PDF → se guarda `MovimientoBancario` con `tipo: 'resumen_mensual'`, `periodo: MM/YYYY` y `archivo: URL`
+- Si no adjunta → se guarda `tipo: 'actualizacion_saldo'` normal
+
+En el historial los registros con resumen adjunto muestran ícono de PDF descargable. Los sin resumen muestran solo la actualización de saldo.
+
+El botón "Subir resumen mensual" separado se elimina, queda todo unificado en "Actualizar saldo".
+

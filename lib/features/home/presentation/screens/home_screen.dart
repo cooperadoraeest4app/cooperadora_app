@@ -7,6 +7,7 @@ import '../../../admin/presentation/providers/configuracion_provider.dart';
 import '../../../cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
 import '../../../admin/presentation/screens/admin_panel_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_publica_screen.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
@@ -368,6 +369,25 @@ class _SaldoCard extends StatelessWidget {
                 'Cuenta bancaria pendiente de configuración',
                 style: TextStyle(color: AppTheme.textoSecundario, fontSize: 11),
               ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const CuentaBancariaPublicaScreen()),
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.azulMedio,
+                backgroundColor:
+                    AppTheme.celesteAccento.withValues(alpha: 0.25),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(8)),
+                ),
+              ),
+              child: const Text('Ver detalle'),
+            ),
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 12),

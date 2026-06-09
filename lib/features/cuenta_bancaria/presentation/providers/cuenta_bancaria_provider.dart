@@ -75,4 +75,58 @@ class CuentaBancariaProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<void> actualizarSaldoConResumen(
+    double nuevoSaldo,
+    String usuarioId,
+    String periodo,
+    String archivoPlaceholder, {
+    String? observaciones,
+  }) async {
+    isSaving = true;
+    error = null;
+    notifyListeners();
+    try {
+      await _repo.actualizarSaldoConResumen(
+        nuevoSaldo,
+        usuarioId,
+        periodo,
+        archivoPlaceholder,
+        observaciones: observaciones,
+      );
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> agregarMovimiento(MovimientoBancario movimiento) async {
+    isSaving = true;
+    error = null;
+    notifyListeners();
+    try {
+      await _repo.agregarMovimiento(movimiento);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> eliminarMovimiento(String id) async {
+    isSaving = true;
+    error = null;
+    notifyListeners();
+    try {
+      await _repo.eliminarMovimiento(id);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      isSaving = false;
+      notifyListeners();
+    }
+  }
 }

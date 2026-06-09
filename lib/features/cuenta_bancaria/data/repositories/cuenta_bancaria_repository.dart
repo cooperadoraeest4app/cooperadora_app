@@ -48,6 +48,38 @@ class CuentaBancariaRepository {
     await batch.commit();
   }
 
+  Future<void> actualizarSaldoConResumen(
+    double nuevoSaldo,
+    String usuarioId,
+    String periodo,
+    String archivoPlaceholder, {
+    String? observaciones,
+  }) async {
+    final snap = await _col.doc(_docId).get();
+    final saldoAnterior =
+        (snap.data()?['saldoActual'] as num? ?? 0).toDouble();
+
+    final batch = FirebaseFirestore.instance.batch();
+
+    batch.update(_col.doc(_docId), {
+      'saldoActual': nuevoSaldo,
+      'fechaActualizacion': FieldValue.serverTimestamp(),
+    });
+
+    batch.set(_movCol.doc(), {
+      'tipo': 'resumen_mensual',
+      'saldoAnterior': saldoAnterior,
+      'saldoNuevo': nuevoSaldo,
+      'periodo': periodo,
+      'archivo': archivoPlaceholder,
+      'observaciones': observaciones,
+      'usuarioId': usuarioId,
+      'fechaCreacion': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+  }
+
   Stream<List<MovimientoBancario>> obtenerMovimientos() {
     return _movCol
         .orderBy('fechaCreacion', descending: true)
@@ -59,4 +91,6 @@ class CuentaBancariaRepository {
 
   Future<void> agregarMovimiento(MovimientoBancario movimiento) =>
       _movCol.add(movimiento.toMap());
+
+  Future<void> eliminarMovimiento(String id) => _movCol.doc(id).delete();
 }
