@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/data/categorias_data.dart';
 import '../../../admin/presentation/providers/configuracion_provider.dart';
+import '../../../cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
 import '../../../admin/presentation/screens/admin_panel_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
@@ -20,6 +21,47 @@ String _formatMonto(double monto) {
       ? NumberFormat('#,##0', 'es_AR')
       : NumberFormat('#,##0.##', 'es_AR');
   return '\$${format.format(monto)}';
+}
+
+Widget _buildSaldoWidget(double? saldo) {
+  const mainStyle = TextStyle(
+    color: AppTheme.textoPrincipal,
+    fontSize: 44,
+    fontWeight: FontWeight.bold,
+    height: 1,
+  );
+
+  if (saldo == null) {
+    return const Text('\$0', style: mainStyle);
+  }
+
+  final cents = (saldo.abs() * 100).round() % 100;
+  final intFormatted =
+      '\$${NumberFormat('#,##0', 'es_AR').format(saldo.truncate())}';
+
+  if (cents == 0) {
+    return Text(intFormatted, style: mainStyle);
+  }
+
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(intFormatted, style: mainStyle),
+      Padding(
+        padding: EdgeInsets.zero,
+        child: Text(
+          cents.toString().padLeft(2, '0'),
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textoPrincipal,
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 String _formatFecha(DateTime fecha) =>
@@ -302,6 +344,8 @@ class _SaldoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final puedeAgregar = auth.esEditor || auth.esAdmin;
+    final cuentaProvider = context.watch<CuentaBancariaProvider>();
+    final cuenta = cuentaProvider.cuenta;
 
     return Card(
       child: Padding(
@@ -317,19 +361,13 @@ class _SaldoCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
-              '\$0',
-              style: TextStyle(
-                color: AppTheme.textoPrincipal,
-                fontSize: 38,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            _buildSaldoWidget(cuenta?.saldoActual),
             const SizedBox(height: 2),
-            const Text(
-              'Cuenta bancaria pendiente de configuración',
-              style: TextStyle(color: AppTheme.textoSecundario, fontSize: 11),
-            ),
+            if (cuenta == null)
+              const Text(
+                'Cuenta bancaria pendiente de configuración',
+                style: TextStyle(color: AppTheme.textoSecundario, fontSize: 11),
+              ),
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 12),

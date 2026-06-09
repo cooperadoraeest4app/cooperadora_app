@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'features/admin/presentation/providers/categoria_provider.dart';
+import 'features/cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
 import 'features/admin/presentation/providers/configuracion_provider.dart';
 import 'features/admin/presentation/providers/invitacion_provider.dart';
 import 'features/admin/presentation/providers/metodo_pago_provider.dart';
@@ -34,6 +35,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => UsuariosProvider()),
         ChangeNotifierProvider(create: (_) => CategoriaProvider()),
         ChangeNotifierProvider(create: (_) => MetodoPagoProvider()),
+        ChangeNotifierProvider(create: (_) => CuentaBancariaProvider()),
       ],
       child: MaterialApp(
         title: 'Cooperadora App',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dart';
 import 'categorias_screen.dart';
 import 'configuracion_screen.dart';
 import 'invitaciones_screen.dart';
@@ -46,6 +47,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       titulo: 'Métodos de pago',
       subtitulo: 'Formas de pago disponibles',
       esMetodosPago: true,
+    ),
+    _OpcionPanel(
+      icono: Icons.account_balance,
+      titulo: 'Cuenta Bancaria',
+      subtitulo: 'Saldo y resúmenes bancarios',
+      esCuentaBancaria: true,
     ),
   ];
 
@@ -144,6 +151,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     MaterialPageRoute(
                         builder: (_) => const MetodosPagoScreen()),
                   );
+                } else if (opcion.esCuentaBancaria) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const CuentaBancariaScreen()),
+                  );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Próximamente')),
@@ -167,6 +180,7 @@ class _OpcionPanel {
   final bool esInvitaciones;
   final bool esCategorias;
   final bool esMetodosPago;
+  final bool esCuentaBancaria;
 
   const _OpcionPanel({
     required this.icono,
@@ -177,5 +191,6 @@ class _OpcionPanel {
     this.esInvitaciones = false,
     this.esCategorias = false,
     this.esMetodosPago = false,
+    this.esCuentaBancaria = false,
   });
 }
