@@ -14,6 +14,9 @@ import '../../../ingresos/domain/models/ingreso.dart';
 import '../../../ingresos/presentation/providers/movimientos_provider.dart';
 import '../../../ingresos/presentation/screens/agregar_movimiento_screen.dart';
 import '../../../ingresos/presentation/screens/movimientos_screen.dart';
+import '../../../proyectos/domain/models/proyecto.dart';
+import '../../../proyectos/presentation/providers/proyecto_provider.dart';
+import '../../../proyectos/presentation/screens/proyectos_screen.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,95 +104,6 @@ class _Movimiento {
       descripcion: g.descripcion,
       categoriaId: g.categoriaId);
 }
-
-// ── Proyectos de prueba ───────────────────────────────────────────────────────
-
-class _Proyecto {
-  final String nombre;
-  final String tipo;
-  final double presupuesto;
-  final double gastado;
-  final String estado;
-  final int votos;
-  final DateTime? fechaCierre;
-
-  _Proyecto({
-    required this.nombre,
-    required this.tipo,
-    required this.presupuesto,
-    required this.gastado,
-    required this.estado,
-    this.votos = 0,
-    this.fechaCierre,
-  });
-}
-
-final _kProyectos = [
-  _Proyecto(
-    nombre: 'Pintura de aulas',
-    tipo: 'Infraestructura',
-    presupuesto: 150000,
-    gastado: 90000,
-    estado: 'en_curso',
-    votos: 45,
-  ),
-  _Proyecto(
-    nombre: 'Kiosco saludable',
-    tipo: 'Comercio',
-    presupuesto: 120000,
-    gastado: 60000,
-    estado: 'en_curso',
-    votos: 30,
-  ),
-  _Proyecto(
-    nombre: 'Sala de computación',
-    tipo: 'Tecnología',
-    presupuesto: 400000,
-    gastado: 180000,
-    estado: 'en_curso',
-    votos: 58,
-  ),
-  _Proyecto(
-    nombre: 'Biblioteca nueva',
-    tipo: 'Equipamiento',
-    presupuesto: 200000,
-    gastado: 0,
-    estado: 'planificado',
-    votos: 78,
-  ),
-  _Proyecto(
-    nombre: 'Patio cubierto',
-    tipo: 'Infraestructura',
-    presupuesto: 500000,
-    gastado: 0,
-    estado: 'planificado',
-    votos: 62,
-  ),
-  _Proyecto(
-    nombre: 'Murales artísticos',
-    tipo: 'Arte y cultura',
-    presupuesto: 60000,
-    gastado: 0,
-    estado: 'planificado',
-    votos: 41,
-  ),
-  _Proyecto(
-    nombre: 'Acto aniversario',
-    tipo: 'Evento',
-    presupuesto: 80000,
-    gastado: 80000,
-    estado: 'finalizado',
-    fechaCierre: DateTime(2024, 9, 5),
-  ),
-  _Proyecto(
-    nombre: 'Jornada deportiva',
-    tipo: 'Evento',
-    presupuesto: 50000,
-    gastado: 47000,
-    estado: 'finalizado',
-    fechaCierre: DateTime(2024, 10, 18),
-  ),
-];
 
 // ── HomeScreen ────────────────────────────────────────────────────────────────
 
@@ -482,46 +396,68 @@ class _ChipBalance extends StatelessWidget {
 
 // ── Proyectos ─────────────────────────────────────────────────────────────────
 
-enum _EstadoProyecto { enCurso, planificado, finalizado }
-
 class _SeccionProyectos extends StatelessWidget {
   const _SeccionProyectos();
 
   @override
   Widget build(BuildContext context) {
-    final enCurso =
-        _kProyectos.where((p) => p.estado == 'en_curso').take(3).toList();
-
-    final planificados = _kProyectos
-        .where((p) => p.estado == 'planificado')
-        .toList()
-      ..sort((a, b) => b.votos.compareTo(a.votos));
-
-    final finalizados = _kProyectos
-        .where((p) => p.estado == 'finalizado')
-        .toList()
-      ..sort((a, b) =>
-          (b.fechaCierre ?? DateTime(0)).compareTo(a.fechaCierre ?? DateTime(0)));
+    final provider = context.watch<ProyectoProvider>();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              const Text(
+                'Proyectos',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textoPrincipal,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.azulMedio,
+                  backgroundColor:
+                      AppTheme.celesteAccento.withValues(alpha: 0.25),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                  ),
+                ),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ProyectosScreen(),
+                  ),
+                ),
+                child: const Text('Ver todos'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
         _SubseccionProyectos(
           titulo: 'En curso',
-          estado: _EstadoProyecto.enCurso,
-          proyectos: enCurso,
+          tabIndex: 0,
+          proyectos: provider.enCurso.take(3).toList(),
         ),
         const SizedBox(height: 20),
         _SubseccionProyectos(
           titulo: 'Planificados',
-          estado: _EstadoProyecto.planificado,
-          proyectos: planificados.take(3).toList(),
+          tabIndex: 1,
+          proyectos: provider.planificados.take(3).toList(),
         ),
         const SizedBox(height: 20),
         _SubseccionProyectos(
           titulo: 'Finalizados',
-          estado: _EstadoProyecto.finalizado,
-          proyectos: finalizados.take(2).toList(),
+          tabIndex: 2,
+          proyectos: provider.finalizados.take(2).toList(),
         ),
       ],
     );
@@ -531,13 +467,13 @@ class _SeccionProyectos extends StatelessWidget {
 class _SubseccionProyectos extends StatelessWidget {
   const _SubseccionProyectos({
     required this.titulo,
-    required this.estado,
+    required this.tabIndex,
     required this.proyectos,
   });
 
   final String titulo;
-  final _EstadoProyecto estado;
-  final List<_Proyecto> proyectos;
+  final int tabIndex;
+  final List<Proyecto> proyectos;
 
   @override
   Widget build(BuildContext context) {
@@ -568,7 +504,12 @@ class _SubseccionProyectos extends StatelessWidget {
                     borderRadius: BorderRadius.all(Radius.circular(8)),
                   ),
                 ),
-                onPressed: () {},
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProyectosScreen(initialTab: tabIndex),
+                  ),
+                ),
                 child: const Text('Ver todos'),
               ),
             ],
@@ -576,22 +517,20 @@ class _SubseccionProyectos extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 158,
+          height: 148,
           child: proyectos.isEmpty
-              ? Center(
+              ? const Center(
                   child: Text(
                     'Sin proyectos',
-                    style: const TextStyle(color: AppTheme.textoSecundario),
+                    style: TextStyle(color: AppTheme.textoSecundario),
                   ),
                 )
               : ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: proyectos.length,
-                  itemBuilder: (ctx, i) => _ProyectoCard(
-                    proyecto: proyectos[i],
-                    estado: estado,
-                  ),
+                  itemBuilder: (ctx, i) =>
+                      _ProyectoCard(proyecto: proyectos[i]),
                 ),
         ),
       ],
@@ -600,26 +539,20 @@ class _SubseccionProyectos extends StatelessWidget {
 }
 
 class _ProyectoCard extends StatelessWidget {
-  const _ProyectoCard({required this.proyecto, required this.estado});
+  const _ProyectoCard({required this.proyecto});
 
-  final _Proyecto proyecto;
-  final _EstadoProyecto estado;
+  final Proyecto proyecto;
 
   @override
   Widget build(BuildContext context) {
-    final chipLabel = switch (estado) {
-      _EstadoProyecto.enCurso => 'En curso',
-      _EstadoProyecto.planificado => 'Planificado',
-      _EstadoProyecto.finalizado => 'Finalizado',
+    final tipoNombre =
+        context.read<ProyectoProvider>().nombreTipo(proyecto.tipoProyectoId);
+
+    final (chipColor, chipLabel) = switch (proyecto.estado) {
+      'en_curso' => (AppTheme.verdeIngreso, 'En curso'),
+      'planificado' => (AppTheme.amarilloAlerta, 'Planificado'),
+      _ => (AppTheme.textoSecundario, 'Finalizado'),
     };
-    final chipColor = switch (estado) {
-      _EstadoProyecto.enCurso => AppTheme.verdeIngreso,
-      _EstadoProyecto.planificado => AppTheme.amarilloAlerta,
-      _EstadoProyecto.finalizado => AppTheme.textoSecundario,
-    };
-    final progreso = proyecto.presupuesto > 0
-        ? (proyecto.gastado / proyecto.presupuesto).clamp(0.0, 1.0)
-        : 0.0;
 
     return SizedBox(
       width: 210,
@@ -659,53 +592,22 @@ class _ProyectoCard extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                proyecto.tipo,
+                tipoNombre,
                 style: const TextStyle(
                   color: AppTheme.textoSecundario,
                   fontSize: 11,
                 ),
               ),
               const Spacer(),
-              if (estado == _EstadoProyecto.planificado)
-                Row(
-                  children: [
-                    const Icon(Icons.thumb_up_outlined,
-                        size: 12, color: AppTheme.textoSecundario),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${proyecto.votos} votos',
-                      style: const TextStyle(
-                          fontSize: 11, color: AppTheme.textoSecundario),
-                    ),
-                  ],
-                )
-              else ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _formatMonto(proyecto.gastado),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textoPrincipal,
-                      ),
-                    ),
-                    Text(
-                      _formatMonto(proyecto.presupuesto),
-                      style: const TextStyle(
-                          fontSize: 11, color: AppTheme.textoSecundario),
-                    ),
-                  ],
+              if (proyecto.presupuestoActual > 0)
+                Text(
+                  _formatMonto(proyecto.presupuestoActual),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textoPrincipal,
+                  ),
                 ),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: progreso,
-                  backgroundColor: AppTheme.celesteBorde,
-                  valueColor: AlwaysStoppedAnimation<Color>(chipColor),
-                  borderRadius: const BorderRadius.all(Radius.circular(4)),
-                ),
-              ],
             ],
           ),
         ),
