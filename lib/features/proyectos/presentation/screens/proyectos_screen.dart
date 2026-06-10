@@ -6,6 +6,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/proyecto.dart';
 import '../providers/proyecto_provider.dart';
+import 'proyecto_detalle_screen.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ IconData _iconForTipo(String nombre) => switch (nombre) {
       _ => Icons.category,
     };
 
-void _mostrarModal(BuildContext context, [Proyecto? proyecto]) {
+void mostrarModalProyecto(BuildContext context, [Proyecto? proyecto]) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -164,7 +165,7 @@ class _ProyectosScreenState extends State<ProyectosScreen>
           ? FloatingActionButton.extended(
               backgroundColor: AppTheme.verdeTeal,
               foregroundColor: AppTheme.blanco,
-              onPressed: () => _mostrarModal(context),
+              onPressed: () => mostrarModalProyecto(context),
               icon: const Icon(Icons.add),
               label: const Text('Nuevo proyecto'),
             )
@@ -233,12 +234,21 @@ class _ProyectoCard extends StatelessWidget {
     final (chipColor, chipLabel) = switch (proyecto.estado) {
       'en_curso' => (AppTheme.verdeIngreso, 'En curso'),
       'planificado' => (AppTheme.amarilloAlerta, 'Planificado'),
+      'cancelado' => (AppTheme.textoSecundario, 'Cancelado'),
       _ => (AppTheme.textoSecundario, 'Finalizado'),
     };
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
+          ),
+        ),
+        child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -261,7 +271,7 @@ class _ProyectoCard extends StatelessWidget {
                       visualDensity: VisualDensity.compact,
                       icon: const Icon(Icons.edit_outlined, size: 18),
                       color: AppTheme.azulMedio,
-                      onPressed: () => _mostrarModal(context, proyecto),
+                      onPressed: () => mostrarModalProyecto(context, proyecto),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -334,7 +344,8 @@ class _ProyectoCard extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   void _confirmarEliminar(BuildContext context) {
@@ -598,6 +609,8 @@ class _ModalProyectoState extends State<_ModalProyecto> {
                       value: 'en_curso', child: Text('En curso')),
                   DropdownMenuItem(
                       value: 'finalizado', child: Text('Finalizado')),
+                  DropdownMenuItem(
+                      value: 'cancelado', child: Text('Cancelado')),
                 ],
                 onChanged: (v) => setState(() => _estado = v!),
               ),

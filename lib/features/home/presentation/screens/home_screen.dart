@@ -17,6 +17,7 @@ import '../../../ingresos/presentation/screens/movimientos_screen.dart';
 import '../../../proyectos/domain/models/proyecto.dart';
 import '../../../proyectos/presentation/providers/proyecto_provider.dart';
 import '../../../proyectos/presentation/screens/proyectos_screen.dart';
+import '../../../proyectos/presentation/screens/proyecto_detalle_screen.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -551,6 +552,7 @@ class _ProyectoCard extends StatelessWidget {
     final (chipColor, chipLabel) = switch (proyecto.estado) {
       'en_curso' => (AppTheme.verdeIngreso, 'En curso'),
       'planificado' => (AppTheme.amarilloAlerta, 'Planificado'),
+      'cancelado' => (AppTheme.textoSecundario, 'Cancelado'),
       _ => (AppTheme.textoSecundario, 'Finalizado'),
     };
 
@@ -558,7 +560,15 @@ class _ProyectoCard extends StatelessWidget {
       width: 210,
       child: Card(
         margin: const EdgeInsets.only(right: 12, bottom: 4),
-        child: Padding(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
+            ),
+          ),
+          child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -612,6 +622,7 @@ class _ProyectoCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

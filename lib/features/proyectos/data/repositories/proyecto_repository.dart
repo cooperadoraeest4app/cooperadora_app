@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../domain/models/item_proyecto.dart';
 import '../../domain/models/proyecto.dart';
 import '../../domain/models/tipo_proyecto.dart';
 
@@ -34,6 +35,32 @@ class ProyectoRepository {
             .where((t) => t.activo)
             .toList());
   }
+
+  // ── Items ─────────────────────────────────────────────────────────────────
+
+  final _itemsCol = FirebaseFirestore.instance.collection('items_proyecto');
+
+  Stream<List<ItemProyecto>> obtenerItems(String proyectoId) {
+    return _itemsCol
+        .where('proyectoId', isEqualTo: proyectoId)
+        .snapshots()
+        .map((s) {
+          final list = s.docs
+              .map((d) => ItemProyecto.fromMap(d.data(), d.id))
+              .toList()
+            ..sort((a, b) => a.fechaCreacion.compareTo(b.fechaCreacion));
+          return list;
+        });
+  }
+
+  Future<void> agregarItem(ItemProyecto item) => _itemsCol.add(item.toMap());
+
+  Future<void> actualizarItem(ItemProyecto item) =>
+      _itemsCol.doc(item.id).update(item.toMap());
+
+  Future<void> eliminarItem(String id) => _itemsCol.doc(id).delete();
+
+  // ── Tipos default ──────────────────────────────────────────────────────────
 
   Future<void> inicializarTiposDefault() async {
     final snap = await _tiposCol.limit(1).get();
