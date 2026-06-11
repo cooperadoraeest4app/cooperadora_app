@@ -25,6 +25,25 @@ const _metodosPago = [
   'Cheque',
 ];
 
+IconData _iconoMetodoPago(String nombre) {
+  switch (nombre.toLowerCase()) {
+    case 'efectivo':
+      return Icons.payments;
+    case 'transferencia':
+    case 'transferencia bancaria':
+      return Icons.swap_horiz;
+    case 'débito':
+    case 'debito':
+      return Icons.credit_card;
+    case 'crédito':
+    case 'credito':
+      return Icons.credit_score;
+    case 'cheque':
+      return Icons.description;
+    default:
+      return Icons.payment;
+  }
+}
 
 class AgregarMovimientoScreen extends StatefulWidget {
   const AgregarMovimientoScreen({super.key, this.tipoInicial = 'ingreso'});
@@ -322,9 +341,19 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
               decoration:
                   const InputDecoration(labelText: 'Método de pago'),
               items: _metodosPago
-                  .map((m) =>
-                      DropdownMenuItem(value: m, child: Text(m)))
+                  .map((m) => DropdownMenuItem(
+                        value: m,
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(_iconoMetodoPago(m),
+                              size: 20, color: AppTheme.azulMedio),
+                          title: Text(m),
+                        ),
+                      ))
                   .toList(),
+              selectedItemBuilder: (context) =>
+                  _metodosPago.map((m) => Text(m)).toList(),
               onChanged: (v) => setState(() => _metodoPago = v),
               validator: (v) =>
                   v == null ? 'Seleccioná un método de pago' : null,

@@ -1,7 +1,12 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../../shared/services/storage_service.dart';
+import '../../../../shared/utils/metodo_pago_icon.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../admin/presentation/providers/metodo_pago_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -882,6 +887,21 @@ class _CuotaTile extends StatelessWidget {
               ],
             ),
           ),
+          if (cuota.comprobante != null)
+            IconButton(
+              icon: const Icon(Icons.receipt, size: 20),
+              color: AppTheme.azulMedio,
+              tooltip: 'Ver comprobante',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () async {
+                final uri = Uri.parse(cuota.comprobante!);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri,
+                      mode: LaunchMode.externalApplication);
+                }
+              },
+            ),
         ],
       ),
     );
@@ -1035,13 +1055,15 @@ class _ModalPagoState extends State<_ModalPago> {
   final _montoCtrl = TextEditingController();
   final _periodoCtrl = TextEditingController();
   final _observacionesCtrl = TextEditingController();
-  final _comprobanteCtrl = TextEditingController();
 
   String? _tipoCuotaId;
   String? _metodoPagoId;
   DateTime _fechaPago = DateTime.now();
   bool _saving = false;
   bool _cargandoTarifa = false;
+  bool _subiendo = false;
+  String? _nombreComprobante;
+  Uint8List? _comprobanteBytes;
 
   @override
   void initState() {
@@ -1056,8 +1078,21 @@ class _ModalPagoState extends State<_ModalPago> {
     _montoCtrl.dispose();
     _periodoCtrl.dispose();
     _observacionesCtrl.dispose();
-    _comprobanteCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _adjuntarComprobante() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+      withData: true,
+    );
+    if (result != null && result.files.isNotEmpty) {
+      setState(() {
+        _nombreComprobante = result.files.first.name;
+        _comprobanteBytes = result.files.first.bytes;
+      });
+    }
   }
 
   Future<void> _onTipoCuotaChanged(String? tipoCuotaId) async {
@@ -1086,16 +1121,37 @@ class _ModalPagoState extends State<_ModalPago> {
     if (!_form.currentState!.validate()) return;
     final monto = double.tryParse(
         _montoCtrl.text.replaceAll('.', '').replaceAll(',', '.'));
+    // Capturar uid y messenger antes de cualquier gap asíncrono
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
     if (monto == null || monto <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ingresá un monto válido')),
       );
       return;
     }
+    // Subir comprobante si hay archivo seleccionado
+    String? comprobanteUrl;
+    if (_comprobanteBytes != null && _nombreComprobante != null) {
+      final messenger = ScaffoldMessenger.of(context);
+      setState(() => _subiendo = true);
+      try {
+        final now2 = DateTime.now();
+        final path =
+            'cuotas/${now2.year}/${now2.month.toString().padLeft(2, '0')}';
+        comprobanteUrl = await StorageService().subirComprobante(
+            path, _comprobanteBytes!, _nombreComprobante!);
+      } catch (e) {
+        messenger.showSnackBar(SnackBar(
+          content: Text('No se pudo subir el comprobante: $e'),
+          backgroundColor: AppTheme.rojoGasto,
+        ));
+      } finally {
+        if (mounted) setState(() => _subiendo = false);
+      }
+    }
+
     setState(() => _saving = true);
     try {
-      final uid =
-          context.read<AuthProvider>().currentUser?.uid ?? '';
       final cuota = Cuota(
         id: '',
         socioId: widget.socioId,
@@ -1108,9 +1164,7 @@ class _ModalPagoState extends State<_ModalPago> {
             _observacionesCtrl.text.trim().isEmpty
                 ? null
                 : _observacionesCtrl.text.trim(),
-        comprobante: _comprobanteCtrl.text.trim().isEmpty
-            ? null
-            : _comprobanteCtrl.text.trim(),
+        comprobante: comprobanteUrl,
         monto: monto,
         fechaPago: _fechaPago,
         fechaCreacion: DateTime.now(),
@@ -1212,8 +1266,13 @@ class _ModalPagoState extends State<_ModalPago> {
                 items: metodos
                     .map((m) => DropdownMenuItem(
                           value: m['id'] as String,
-                          child: Text(m['nombre'] as String),
+                          child: MetodoPagoRow(
+                              nombre: m['nombre'] as String),
                         ))
+                    .toList(),
+                selectedItemBuilder: (context) => metodos
+                    .map((m) =>
+                        MetodoPagoRow(nombre: m['nombre'] as String))
                     .toList(),
                 onChanged: (v) => setState(() => _metodoPagoId = v),
                 validator: (v) => v == null ? 'Requerido' : null,
@@ -1251,19 +1310,48 @@ class _ModalPagoState extends State<_ModalPago> {
                 textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _comprobanteCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Comprobante',
-                  helperText: 'Número o nombre del comprobante',
+              if (_nombreComprobante == null)
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.attach_file, size: 18),
+                  label: const Text('Adjuntar comprobante'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.azulMedio,
+                    side: const BorderSide(color: AppTheme.azulMedio),
+                  ),
+                  onPressed: _adjuntarComprobante,
+                )
+              else
+                Row(
+                  children: [
+                    const Icon(Icons.insert_drive_file_outlined,
+                        size: 18, color: AppTheme.azulMedio),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _nombreComprobante!,
+                        style: const TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.textoPrincipal),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      color: AppTheme.rojoGasto,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => setState(() {
+                        _nombreComprobante = null;
+                        _comprobanteBytes = null;
+                      }),
+                    ),
+                  ],
                 ),
-                textCapitalization: TextCapitalization.sentences,
-              ),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _saving ? null : _guardar,
+                  onPressed: _saving || _subiendo ? null : _guardar,
                   child: _saving
                       ? const SizedBox(
                           height: 20,

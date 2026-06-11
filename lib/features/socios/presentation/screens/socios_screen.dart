@@ -14,6 +14,7 @@ import '../providers/cuota_provider.dart';
 import '../providers/socio_provider.dart';
 import 'socio_detalle_screen.dart';
 import 'tarifas_screen.dart';
+import '../../../../shared/utils/metodo_pago_icon.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -924,8 +925,13 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
                 items: metodos
                     .map((m) => DropdownMenuItem(
                           value: m['id'] as String,
-                          child: Text(m['nombre'] as String),
+                          child: MetodoPagoRow(
+                              nombre: m['nombre'] as String),
                         ))
+                    .toList(),
+                selectedItemBuilder: (context) => metodos
+                    .map((m) =>
+                        MetodoPagoRow(nombre: m['nombre'] as String))
                     .toList(),
                 onChanged: (v) => setState(() => _metodoPagoId = v),
                 validator: (v) => v == null ? 'Requerido' : null,
