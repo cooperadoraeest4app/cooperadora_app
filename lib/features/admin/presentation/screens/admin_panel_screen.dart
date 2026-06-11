@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dart';
+import '../../../socios/presentation/screens/socios_screen.dart';
 import 'categorias_screen.dart';
 import 'configuracion_screen.dart';
 import 'invitaciones_screen.dart';
@@ -53,6 +54,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       titulo: 'Cuenta Bancaria',
       subtitulo: 'Saldo y resúmenes bancarios',
       esCuentaBancaria: true,
+    ),
+    _OpcionPanel(
+      icono: Icons.family_restroom,
+      titulo: 'Socios',
+      subtitulo: 'Padrón, integrantes y cuotas',
+      esSocios: true,
     ),
   ];
 
@@ -157,6 +164,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     MaterialPageRoute(
                         builder: (_) => const CuentaBancariaScreen()),
                   );
+                } else if (opcion.esSocios) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const SociosScreen()),
+                  );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Próximamente')),
@@ -181,6 +194,7 @@ class _OpcionPanel {
   final bool esCategorias;
   final bool esMetodosPago;
   final bool esCuentaBancaria;
+  final bool esSocios;
 
   const _OpcionPanel({
     required this.icono,
@@ -192,5 +206,6 @@ class _OpcionPanel {
     this.esCategorias = false,
     this.esMetodosPago = false,
     this.esCuentaBancaria = false,
+    this.esSocios = false,
   });
 }

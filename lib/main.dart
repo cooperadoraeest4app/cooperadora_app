@@ -12,6 +12,8 @@ import 'features/admin/presentation/providers/usuarios_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/ingresos/presentation/providers/movimientos_provider.dart';
 import 'features/proyectos/presentation/providers/proyecto_provider.dart';
+import 'features/socios/presentation/providers/cuota_provider.dart';
+import 'features/socios/presentation/providers/socio_provider.dart';
 import 'features/home/presentation/screens/home_screen.dart';
 
 void main() async {
@@ -38,6 +40,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MetodoPagoProvider()),
         ChangeNotifierProvider(create: (_) => CuentaBancariaProvider()),
         ChangeNotifierProvider(create: (_) => ProyectoProvider()),
+        ChangeNotifierProvider(create: (_) => SocioProvider()),
+        ChangeNotifierProvider(create: (_) => CuotaProvider()),
       ],
       child: MaterialApp(
         title: 'Cooperadora App',
