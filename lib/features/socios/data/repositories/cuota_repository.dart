@@ -23,6 +23,14 @@ class CuotaRepository {
     });
   }
 
+  Stream<List<Cuota>> obtenerPorPeriodo(String periodo) {
+    return _cuotasCol
+        .where('periodo', isEqualTo: periodo)
+        .snapshots()
+        .map((s) =>
+            s.docs.map((d) => Cuota.fromMap(d.data(), d.id)).toList());
+  }
+
   Stream<List<TarifaCuota>> obtenerTarifas() {
     return _tarifasCol.snapshots().map((s) {
       final list = s.docs

@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../admin/presentation/providers/metodo_pago_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/repositories/cuota_repository.dart';
 import '../../domain/models/cuota.dart';
 import '../../domain/models/socio.dart';
@@ -12,6 +13,7 @@ import '../../domain/models/subtipo_socio.dart';
 import '../providers/cuota_provider.dart';
 import '../providers/socio_provider.dart';
 import 'socio_detalle_screen.dart';
+import 'tarifas_screen.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -39,7 +41,121 @@ class SociosScreen extends StatefulWidget {
   State<SociosScreen> createState() => _SociosScreenState();
 }
 
-class _SociosScreenState extends State<SociosScreen> {
+class _SociosScreenState extends State<SociosScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  void _abrirModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => const _ModalSocio(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final puedeGestionar = auth.esAdmin || auth.esEditor;
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: AppTheme.azulOscuro,
+        foregroundColor: Colors.white,
+        title: const Text('Socios'),
+        bottom: TabBar(
+          controller: _tabCtrl,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          tabs: const [
+            Tab(text: 'Socios'),
+            Tab(text: 'Cuotas'),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          if (auth.esAdmin) ...[
+            const Divider(height: 1),
+            InkWell(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TarifasScreen()),
+              ),
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.price_change,
+                        color: AppTheme.verdeTeal, size: 20),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Tarifas de cuota',
+                      style: TextStyle(
+                        color: AppTheme.textoPrincipal,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Icon(Icons.chevron_right,
+                        color: AppTheme.textoSecundario),
+                  ],
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+          Expanded(
+            child: TabBarView(
+              controller: _tabCtrl,
+              children: [
+                _SociosTab(puedeGestionar: puedeGestionar),
+                const _CuotasTab(),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: _tabCtrl.index == 0 && puedeGestionar
+          ? FloatingActionButton(
+              onPressed: _abrirModal,
+              backgroundColor: AppTheme.verdeTeal,
+              foregroundColor: Colors.white,
+              child: const Icon(Icons.add),
+            )
+          : null,
+    );
+  }
+}
+
+// ── _SociosTab ────────────────────────────────────────────────────────────────
+
+class _SociosTab extends StatefulWidget {
+  const _SociosTab({required this.puedeGestionar});
+  final bool puedeGestionar;
+
+  @override
+  State<_SociosTab> createState() => _SociosTabState();
+}
+
+class _SociosTabState extends State<_SociosTab> {
   final _searchCtrl = TextEditingController();
   String _query = '';
 
@@ -56,97 +172,70 @@ class _SociosScreenState extends State<SociosScreen> {
     super.dispose();
   }
 
-  void _abrirModal([Socio? socio]) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _ModalSocio(socio: socio),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<SocioProvider>();
-    final auth = context.watch<AuthProvider>();
-    final puedeGestionar = auth.esAdmin || auth.esEditor;
-
     final socios = _query.isEmpty
         ? provider.todos
         : provider.todos
-            .where((s) =>
-                s.nombreDisplay.toLowerCase().contains(_query))
+            .where((s) => s.nombreDisplay.toLowerCase().contains(_query))
             .toList();
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: AppTheme.azulOscuro,
-        foregroundColor: Colors.white,
-        title: const Text('Socios'),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Buscar por apellido o razón social…',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _query.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => _searchCtrl.clear(),
-                      )
-                    : null,
-                isDense: true,
-                filled: true,
-                fillColor: Colors.white,
-                border: const OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(10)),
-                  borderSide: BorderSide.none,
-                ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            controller: _searchCtrl,
+            decoration: InputDecoration(
+              hintText: 'Buscar por apellido o razón social…',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _query.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => _searchCtrl.clear(),
+                    )
+                  : null,
+              isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              border: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(10)),
+                borderSide: BorderSide.none,
               ),
             ),
           ),
-          Expanded(
-            child: provider.isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : socios.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Text(
-                            _query.isNotEmpty
-                                ? 'Sin resultados para "$_query"'
-                                : 'No hay socios registrados.\nPresioná + para agregar el primero.',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                color: AppTheme.textoSecundario),
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
-                        itemCount: socios.length,
-                        itemBuilder: (_, i) => _SocioCard(
-                          socio: socios[i],
-                          tipoNombre: provider.nombreTipo(
-                              socios[i].tipoSocioId),
-                          puedeGestionar: puedeGestionar,
+        ),
+        Expanded(
+          child: provider.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : socios.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          _query.isNotEmpty
+                              ? 'Sin resultados para "$_query"'
+                              : 'No hay socios registrados.\nPresioná + para agregar el primero.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: AppTheme.textoSecundario),
                         ),
                       ),
-          ),
-        ],
-      ),
-      floatingActionButton: puedeGestionar
-          ? FloatingActionButton(
-              onPressed: () => _abrirModal(),
-              backgroundColor: AppTheme.verdeTeal,
-              foregroundColor: Colors.white,
-              child: const Icon(Icons.add),
-            )
-          : null,
+                    )
+                  : ListView.builder(
+                      padding:
+                          const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                      itemCount: socios.length,
+                      itemBuilder: (_, i) => _SocioCard(
+                        socio: socios[i],
+                        tipoNombre: provider
+                            .nombreTipo(socios[i].tipoSocioId),
+                        puedeGestionar: widget.puedeGestionar,
+                      ),
+                    ),
+        ),
+      ],
     );
   }
 }
@@ -297,6 +386,328 @@ class _SocioCardState extends State<_SocioCard> {
     );
   }
 }
+
+// ── _CuotasTab ────────────────────────────────────────────────────────────────
+
+class _CuotasTab extends StatefulWidget {
+  const _CuotasTab();
+
+  @override
+  State<_CuotasTab> createState() => _CuotasTabState();
+}
+
+class _CuotasTabState extends State<_CuotasTab> {
+  final _repo = CuotaRepository();
+  late DateTime _mes;
+  String? _tipoCuotaId;
+  late Stream<List<Cuota>> _stream;
+
+  static const _meses = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  ];
+
+  String get _periodo =>
+      '${_mes.month.toString().padLeft(2, '0')}/${_mes.year}';
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _mes = DateTime(now.year, now.month);
+    _stream = _repo.obtenerPorPeriodo(_periodo);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_tipoCuotaId == null) {
+      final tipos = context.read<CuotaProvider>().tiposCuota;
+      if (tipos.isNotEmpty) {
+        setState(() => _tipoCuotaId = tipos.first.id);
+      }
+    }
+  }
+
+  void _prevMes() => setState(() {
+        _mes = DateTime(_mes.year, _mes.month - 1);
+        _stream = _repo.obtenerPorPeriodo(_periodo);
+      });
+
+  void _nextMes() => setState(() {
+        _mes = DateTime(_mes.year, _mes.month + 1);
+        _stream = _repo.obtenerPorPeriodo(_periodo);
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    final cuotaProv = context.watch<CuotaProvider>();
+    final socioProv = context.watch<SocioProvider>();
+    final auth = context.watch<AuthProvider>();
+    final puedeGestionar = auth.esAdmin || auth.esEditor;
+
+    // Lazy-init default tipoCuotaId once tipos load
+    if (_tipoCuotaId == null && cuotaProv.tiposCuota.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _tipoCuotaId == null) {
+          setState(() => _tipoCuotaId = cuotaProv.tiposCuota.first.id);
+        }
+      });
+    }
+
+    final sociosConCuota = socioProv.todos.where((s) {
+      final tipo = socioProv.tipoById(s.tipoSocioId);
+      return s.activo && tipo?.requiereCuota == true;
+    }).toList()
+      ..sort((a, b) => a.nombreDisplay.compareTo(b.nombreDisplay));
+
+    return Column(
+      children: [
+        // ── Filtros ──────────────────────────────────────────────────
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                color: AppTheme.azulOscuro,
+                onPressed: _prevMes,
+              ),
+              Expanded(
+                child: Text(
+                  '${_meses[_mes.month - 1]} ${_mes.year}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    color: AppTheme.textoPrincipal,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                color: AppTheme.azulOscuro,
+                onPressed: _nextMes,
+              ),
+              const SizedBox(width: 4),
+              if (cuotaProv.tiposCuota.isNotEmpty)
+                DropdownButton<String>(
+                  value: _tipoCuotaId,
+                  isDense: true,
+                  underline: const SizedBox.shrink(),
+                  style: const TextStyle(
+                    color: AppTheme.textoPrincipal,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  items: cuotaProv.tiposCuota
+                      .map((t) => DropdownMenuItem(
+                          value: t.id, child: Text(t.nombre)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _tipoCuotaId = v),
+                ),
+              const SizedBox(width: 8),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // ── Contenido ────────────────────────────────────────────────
+        Expanded(
+          child: StreamBuilder<List<Cuota>>(
+            stream: _stream,
+            builder: (_, snap) {
+              final cuotas = snap.data ?? [];
+              final cuotasTipo = _tipoCuotaId == null
+                  ? cuotas
+                  : cuotas
+                      .where((c) => c.tipoCuotaId == _tipoCuotaId)
+                      .toList();
+              final deudaIds = sociosConCuota
+                  .where((s) =>
+                      !cuotasTipo.any((c) => c.socioId == s.id))
+                  .map((s) => s.id)
+                  .toSet();
+              final alDiaCount =
+                  sociosConCuota.length - deudaIds.length;
+              final totalRecaudado = cuotasTipo.fold(
+                  0.0, (acc, c) => acc + c.monto);
+
+              return ListView(
+                padding:
+                    const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                children: [
+                  _ResumenCard(
+                    alDia: alDiaCount,
+                    total: sociosConCuota.length,
+                    recaudado: totalRecaudado,
+                  ),
+                  const SizedBox(height: 8),
+                  if (snap.connectionState == ConnectionState.waiting)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (sociosConCuota.isEmpty)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Text(
+                          'No hay socios activos que requieran cuota.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: AppTheme.textoSecundario),
+                        ),
+                      ),
+                    )
+                  else
+                    ...sociosConCuota.map((s) => _SocioCuotaTile(
+                          socio: s,
+                          alDia: !deudaIds.contains(s.id),
+                          puedeGestionar: puedeGestionar,
+                          tipoCuotaId: _tipoCuotaId,
+                        )),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── _ResumenCard ──────────────────────────────────────────────────────────────
+
+class _ResumenCard extends StatelessWidget {
+  const _ResumenCard({
+    required this.alDia,
+    required this.total,
+    required this.recaudado,
+  });
+  final int alDia;
+  final int total;
+  final double recaudado;
+
+  @override
+  Widget build(BuildContext context) {
+    final progreso = total == 0 ? 0.0 : alDia / total;
+    final montoFmt = NumberFormat.currency(
+            locale: 'es_AR', symbol: '\$', decimalDigits: 2)
+        .format(recaudado);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '$alDia de $total socios al día',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
+                ),
+                Text(
+                  montoFmt,
+                  style: const TextStyle(
+                    color: AppTheme.verdeIngreso,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: const BorderRadius.all(Radius.circular(4)),
+              child: LinearProgressIndicator(
+                value: progreso,
+                minHeight: 8,
+                backgroundColor: AppTheme.celesteFondo,
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                    AppTheme.verdeIngreso),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── _SocioCuotaTile ───────────────────────────────────────────────────────────
+
+class _SocioCuotaTile extends StatelessWidget {
+  const _SocioCuotaTile({
+    required this.socio,
+    required this.alDia,
+    required this.puedeGestionar,
+    this.tipoCuotaId,
+  });
+  final Socio socio;
+  final bool alDia;
+  final bool puedeGestionar;
+  final String? tipoCuotaId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                socio.nombreDisplay,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+            ),
+            _Chip(
+              label: alDia ? 'Al día' : 'En deuda',
+              color: alDia
+                  ? AppTheme.verdeIngreso
+                  : AppTheme.amarilloAlerta,
+            ),
+            const SizedBox(width: 8),
+            if (alDia)
+              const Icon(Icons.check_circle,
+                  color: AppTheme.verdeIngreso, size: 22)
+            else if (puedeGestionar)
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.payment, size: 22),
+                  color: AppTheme.verdeTeal,
+                  tooltip: 'Registrar pago',
+                  onPressed: () => showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    useSafeArea: true,
+                    builder: (_) => _ModalPagoRapido(socio: socio),
+                  ),
+                ),
+              )
+            else
+              const SizedBox(width: 32),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── _Chip ─────────────────────────────────────────────────────────────────────
 
 class _Chip extends StatelessWidget {
   const _Chip({required this.label, required this.color});
@@ -451,8 +862,8 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 initialValue: _tipoCuotaId,
-                decoration:
-                    const InputDecoration(labelText: 'Tipo de cuota *'),
+                decoration: const InputDecoration(
+                    labelText: 'Tipo de cuota *'),
                 items: tiposCuota
                     .map((t) => DropdownMenuItem(
                         value: t.id, child: Text(t.nombre)))
@@ -557,8 +968,7 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
 // ── _ModalSocio ───────────────────────────────────────────────────────────────
 
 class _ModalSocio extends StatefulWidget {
-  const _ModalSocio({this.socio});
-  final Socio? socio;
+  const _ModalSocio();
 
   @override
   State<_ModalSocio> createState() => _ModalSocioState();
@@ -584,17 +994,6 @@ class _ModalSocioState extends State<_ModalSocio> {
   @override
   void initState() {
     super.initState();
-    final s = widget.socio;
-    if (s != null) {
-      _tipoId = s.tipoSocioId;
-      _subtipoId = s.subtipoSocioId.isNotEmpty ? s.subtipoSocioId : null;
-      _apellidoCtrl.text = s.apellidoFamilia ?? '';
-      _razonSocialCtrl.text = s.razonSocial ?? '';
-      _cuitCtrl.text = s.cuit ?? '';
-      _observacionesCtrl.text = s.observaciones ?? '';
-      _fechaIngreso = s.fechaIngreso;
-      if (_tipoId != null) _cargarSubtipos(_tipoId!);
-    }
   }
 
   void _cargarSubtipos(String tipoId) {
@@ -628,7 +1027,7 @@ class _ModalSocioState extends State<_ModalSocio> {
     try {
       final provider = context.read<SocioProvider>();
       final socio = Socio(
-        id: widget.socio?.id ?? '',
+        id: '',
         tipoSocioId: _tipoId!,
         subtipoSocioId: _subtipoId ?? '',
         apellidoFamilia: _esHonorario
@@ -639,19 +1038,14 @@ class _ModalSocioState extends State<_ModalSocio> {
         cuit: _esHonorario && _cuitCtrl.text.trim().isNotEmpty
             ? _cuitCtrl.text.trim()
             : null,
-        activo: widget.socio?.activo ?? true,
+        activo: true,
         fechaIngreso: _fechaIngreso,
         observaciones: _observacionesCtrl.text.trim().isEmpty
             ? null
             : _observacionesCtrl.text.trim(),
-        fechaCreacion:
-            widget.socio?.fechaCreacion ?? DateTime.now(),
+        fechaCreacion: DateTime.now(),
       );
-      if (widget.socio == null) {
-        await provider.agregar(socio);
-      } else {
-        await provider.actualizar(socio);
-      }
+      await provider.agregar(socio);
       if (mounted) Navigator.pop(context);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -661,7 +1055,6 @@ class _ModalSocioState extends State<_ModalSocio> {
   @override
   Widget build(BuildContext context) {
     final tipos = context.watch<SocioProvider>().tipos;
-    final esNuevo = widget.socio == null;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -678,7 +1071,7 @@ class _ModalSocioState extends State<_ModalSocio> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                esNuevo ? 'Agregar socio' : 'Editar socio',
+                'Agregar socio',
                 style: const TextStyle(
                     fontSize: 18, fontWeight: FontWeight.w700),
               ),
@@ -782,8 +1175,8 @@ class _ModalSocioState extends State<_ModalSocio> {
                   if (d != null) setState(() => _fechaIngreso = d);
                 },
                 child: InputDecorator(
-                  decoration:
-                      const InputDecoration(labelText: 'Fecha de ingreso'),
+                  decoration: const InputDecoration(
+                      labelText: 'Fecha de ingreso'),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -816,7 +1209,7 @@ class _ModalSocioState extends State<_ModalSocio> {
                           child:
                               CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(esNuevo ? 'Agregar' : 'Guardar'),
+                      : const Text('Agregar'),
                 ),
               ),
             ],
