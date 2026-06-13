@@ -95,7 +95,9 @@ class _MovimientoUnificado {
 }
 
 class MovimientosScreen extends StatelessWidget {
-  const MovimientosScreen({super.key});
+  const MovimientosScreen({super.key, this.proyectoId});
+
+  final String? proyectoId;
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +107,7 @@ class MovimientosScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Movimientos'),
+        title: Text(proyectoId != null ? 'Movimientos del proyecto' : 'Movimientos'),
         actions: [_AccionAuth()],
       ),
       body: StreamBuilder<List<Ingreso>>(
@@ -122,14 +124,21 @@ class MovimientosScreen extends StatelessWidget {
               final gastos = gastoSnap.data ?? [];
 
               final totalIngresos =
-                  ingresos.fold(0.0, (sum, i) => sum + i.monto);
+                  ingresos.fold<double>(0.0, (acc, i) => acc + i.monto);
               final totalGastos =
-                  gastos.fold(0.0, (sum, g) => sum + g.monto);
+                  gastos.fold<double>(0.0, (acc, g) => acc + g.monto);
 
-              final movimientos = [
+              var movimientos = [
                 ...ingresos.map(_MovimientoUnificado.fromIngreso),
                 ...gastos.map(_MovimientoUnificado.fromGasto),
               ]..sort((a, b) => b.fecha.compareTo(a.fecha));
+
+              if (proyectoId != null) {
+                movimientos = movimientos.where((m) =>
+                  m.ingreso?.proyectoId == proyectoId ||
+                  m.gasto?.proyectoId == proyectoId,
+                ).toList();
+              }
 
               return Column(
                 children: [

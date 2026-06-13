@@ -226,6 +226,13 @@ class _ProyectoCard extends StatelessWidget {
   final Proyecto proyecto;
   final bool puedeGestionar;
 
+  void _irADetalle(BuildContext context) => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final tipoNombre =
@@ -242,110 +249,119 @@ class _ProyectoCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
-          ),
-        ),
+        onTap: () => _irADetalle(context),
         child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _EstadoChip(color: chipColor, label: chipLabel),
-                if (!proyecto.publico) ...[
-                  const SizedBox(width: 8),
-                  const Icon(Icons.lock_outline,
-                      size: 14, color: AppTheme.textoSecundario),
-                ],
-                const Spacer(),
-                if (puedeGestionar) ...[
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                      color: AppTheme.azulMedio,
-                      onPressed: () => mostrarModalProyecto(context, proyecto),
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Columna izquierda ───────────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        _EstadoChip(color: chipColor, label: chipLabel),
+                        if (!proyecto.publico) ...[
+                          const SizedBox(width: 6),
+                          const Icon(Icons.lock_outline,
+                              size: 13, color: AppTheme.textoSecundario),
+                        ],
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      color: AppTheme.rojoGasto,
-                      onPressed: () => _confirmarEliminar(context),
+                    const SizedBox(height: 8),
+                    Text(
+                      proyecto.nombre,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: AppTheme.textoPrincipal,
+                      ),
                     ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              proyecto.nombre,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-                color: AppTheme.textoPrincipal,
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(_iconForTipo(tipoNombre),
+                            size: 13, color: AppTheme.textoSecundario),
+                        const SizedBox(width: 4),
+                        Text(
+                          tipoNombre,
+                          style: const TextStyle(
+                              color: AppTheme.textoSecundario, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    if (proyecto.descripcion?.isNotEmpty == true) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        proyecto.descripcion!,
+                        style: const TextStyle(
+                            fontSize: 13, color: AppTheme.textoPrincipal),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              tipoNombre,
-              style: const TextStyle(
-                  color: AppTheme.textoSecundario, fontSize: 12),
-            ),
-            if (proyecto.descripcion?.isNotEmpty == true) ...[
-              const SizedBox(height: 8),
-              Text(
-                proyecto.descripcion!,
-                style: const TextStyle(
-                    fontSize: 13, color: AppTheme.textoPrincipal),
+              const SizedBox(width: 12),
+              // ── Columna derecha ─────────────────────────────────────────
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (puedeGestionar)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            color: AppTheme.azulMedio,
+                            onPressed: () => _irADetalle(context),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            color: AppTheme.rojoGasto,
+                            onPressed: () => _confirmarEliminar(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 6),
+                  if (proyecto.presupuestoActual > 0) ...[
+                    Text(
+                      _fmt(proyecto.presupuestoActual),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 17,
+                        color: AppTheme.textoPrincipal,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                  ],
+                  Text(
+                    _fmtFecha(proyecto.fechaInicio),
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textoSecundario),
+                  ),
+                ],
               ),
             ],
-            const SizedBox(height: 10),
-            const Divider(height: 1),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 16,
-              runSpacing: 4,
-              children: [
-                if (proyecto.presupuestoActual > 0)
-                  _InfoChip(
-                    icon: Icons.account_balance_wallet_outlined,
-                    label: _fmt(proyecto.presupuestoActual),
-                  ),
-                _InfoChip(
-                  icon: Icons.play_arrow_outlined,
-                  label: 'Inicio: ${_fmtFecha(proyecto.fechaInicio)}',
-                ),
-                if (proyecto.fechaFinEstimada != null)
-                  _InfoChip(
-                    icon: Icons.event_outlined,
-                    label: 'Est.: ${_fmtFecha(proyecto.fechaFinEstimada!)}',
-                  ),
-                if (proyecto.fechaFinReal != null)
-                  _InfoChip(
-                    icon: Icons.check_circle_outline,
-                    label: 'Fin: ${_fmtFecha(proyecto.fechaFinReal!)}',
-                    color: AppTheme.verdeIngreso,
-                  ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
-    ),
-  );
+    );
   }
 
   void _confirmarEliminar(BuildContext context) {
@@ -353,7 +369,8 @@ class _ProyectoCard extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Eliminar proyecto'),
-        content: Text('¿Eliminar "${proyecto.nombre}"? Esta acción no se puede deshacer.'),
+        content: Text(
+            '¿Eliminar "${proyecto.nombre}"? Esta acción no se puede deshacer.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -364,8 +381,8 @@ class _ProyectoCard extends StatelessWidget {
               context.read<ProyectoProvider>().eliminar(proyecto.id);
               Navigator.pop(context);
             },
-            child: Text('Eliminar',
-                style: TextStyle(color: AppTheme.rojoGasto)),
+            child:
+                Text('Eliminar', style: TextStyle(color: AppTheme.rojoGasto)),
           ),
         ],
       ),
@@ -396,26 +413,6 @@ class _EstadoChip extends StatelessWidget {
   }
 }
 
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.label, this.color});
-
-  final IconData icon;
-  final String label;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = color ?? AppTheme.textoSecundario;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 13, color: c),
-        const SizedBox(width: 3),
-        Text(label, style: TextStyle(fontSize: 11, color: c)),
-      ],
-    );
-  }
-}
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 

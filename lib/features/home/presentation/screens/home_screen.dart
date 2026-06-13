@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/data/categorias_data.dart';
 import '../../../admin/presentation/providers/configuracion_provider.dart';
@@ -17,7 +18,7 @@ import '../../../ingresos/presentation/screens/movimientos_screen.dart';
 import '../../../proyectos/domain/models/proyecto.dart';
 import '../../../proyectos/presentation/providers/proyecto_provider.dart';
 import '../../../proyectos/presentation/screens/proyectos_screen.dart';
-import '../../../proyectos/presentation/screens/proyecto_detalle_screen.dart';
+import '../../../proyectos/presentation/screens/proyecto_publico_detalle_screen.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ class _Movimiento {
   final DateTime fecha;
   final String? descripcion;
   final String categoriaId;
+  final String? comprobante;
 
   const _Movimiento({
     required this.esIngreso,
@@ -89,6 +91,7 @@ class _Movimiento {
     required this.fecha,
     this.descripcion,
     required this.categoriaId,
+    this.comprobante,
   });
 
   factory _Movimiento.fromIngreso(Ingreso i) => _Movimiento(
@@ -96,14 +99,16 @@ class _Movimiento {
       monto: i.monto,
       fecha: i.fecha,
       descripcion: i.descripcion,
-      categoriaId: i.categoriaId);
+      categoriaId: i.categoriaId,
+      comprobante: i.comprobante);
 
   factory _Movimiento.fromGasto(Gasto g) => _Movimiento(
       esIngreso: false,
       monto: g.monto,
       fecha: g.fecha,
       descripcion: g.descripcion,
-      categoriaId: g.categoriaId);
+      categoriaId: g.categoriaId,
+      comprobante: g.comprobante);
 }
 
 // ── HomeScreen ────────────────────────────────────────────────────────────────
@@ -565,7 +570,7 @@ class _ProyectoCard extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
+              builder: (_) => ProyectoPublicoDetalleScreen(proyecto: proyecto),
             ),
           ),
           child: Padding(
@@ -739,12 +744,24 @@ class _MovimientoTile extends StatelessWidget {
         _formatFecha(item.fecha),
         style: Theme.of(context).textTheme.bodySmall,
       ),
-      trailing: Text(
-        '${item.esIngreso ? '+' : '-'}${_formatMonto(item.monto)}',
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
+      trailing: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            '${item.esIngreso ? '+' : '-'}${_formatMonto(item.monto)}',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          if (item.comprobante?.isNotEmpty == true)
+            GestureDetector(
+              onTap: () => launchUrl(Uri.parse(item.comprobante!)),
+              child: const Icon(Icons.receipt,
+                  size: 16, color: AppTheme.azulMedio),
             ),
+        ],
       ),
     );
   }
