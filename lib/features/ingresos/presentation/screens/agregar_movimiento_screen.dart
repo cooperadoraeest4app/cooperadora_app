@@ -71,9 +71,16 @@ IconData _iconoCategoria(String? nombre) {
 }
 
 class AgregarMovimientoScreen extends StatefulWidget {
-  const AgregarMovimientoScreen({super.key, this.tipoInicial = 'ingreso'});
+  const AgregarMovimientoScreen({
+    super.key,
+    this.tipoInicial = 'ingreso',
+    this.ingresoEditar,
+    this.gastoEditar,
+  });
 
   final String tipoInicial;
+  final Ingreso? ingresoEditar;
+  final Gasto? gastoEditar;
 
   @override
   State<AgregarMovimientoScreen> createState() =>
@@ -93,6 +100,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   TextEditingController? _miembroFieldController;
   String? _nombreComprobante;
   Uint8List? _comprobanteBytes;
+  String? _comprobanteUrl;
   bool _subiendo = false;
 
   final _montoController = TextEditingController();
@@ -102,11 +110,53 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   final _emailController = TextEditingController();
   final _telefonoController = TextEditingController();
 
+  bool get _modoEdicion =>
+      widget.ingresoEditar != null || widget.gastoEditar != null;
+
   @override
   void initState() {
     super.initState();
     _tipo = widget.tipoInicial;
     _fechaController.text = _formatFecha(DateTime.now());
+    if (widget.ingresoEditar != null) {
+      _cargarIngreso(widget.ingresoEditar!);
+    } else if (widget.gastoEditar != null) {
+      _cargarGasto(widget.gastoEditar!);
+    }
+  }
+
+  void _cargarIngreso(Ingreso i) {
+    _tipo = 'ingreso';
+    _montoController.text = i.monto == i.monto.truncateToDouble()
+        ? i.monto.toInt().toString()
+        : i.monto.toString();
+    _fecha = i.fecha;
+    _fechaController.text = _formatFecha(i.fecha);
+    _descripcionController.text = i.descripcion ?? '';
+    _metodoPago = i.metodoPagoId;
+    _categoria = i.categoriaId;
+    _comprobanteUrl = i.comprobante;
+    if (i.donanteUsuarioId != null) {
+      _esMiembro = true;
+      _donanteMiembroSeleccionado = i.donanteUsuarioId;
+    } else {
+      _donanteController.text = i.donante ?? '';
+      _emailController.text = i.donanteEmail ?? '';
+      _telefonoController.text = i.donanteTelefono ?? '';
+    }
+  }
+
+  void _cargarGasto(Gasto g) {
+    _tipo = 'gasto';
+    _montoController.text = g.monto == g.monto.truncateToDouble()
+        ? g.monto.toInt().toString()
+        : g.monto.toString();
+    _fecha = g.fecha;
+    _fechaController.text = _formatFecha(g.fecha);
+    _descripcionController.text = g.descripcion ?? '';
+    _metodoPago = g.metodoPagoId;
+    _categoria = g.categoriaId;
+    _comprobanteUrl = g.comprobante;
   }
 
   @override
@@ -179,48 +229,88 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
       }
     }
 
-    if (_esIngreso) {
-      final ingreso = Ingreso(
-        id: '',
-        monto: double.parse(_montoController.text),
-        fecha: _fecha,
-        descripcion: _descripcionController.text.trim().isEmpty
-            ? null
-            : _descripcionController.text.trim(),
-        metodoPagoId: _metodoPago!,
-        categoriaId: _categoria!,
-        usuarioId: 'usuario_prueba',
-        fechaCreacion: now,
-        comprobante: comprobanteUrl,
-        donante: !_esMiembro && _donanteController.text.trim().isNotEmpty
-            ? _donanteController.text.trim()
-            : null,
-        donanteEmail: !_esMiembro && _emailController.text.trim().isNotEmpty
-            ? _emailController.text.trim()
-            : null,
-        donanteTelefono:
-            !_esMiembro && _telefonoController.text.trim().isNotEmpty
-                ? _telefonoController.text.trim()
-                : null,
-        donanteUsuarioId:
-            _esYoDonante ? 'usuario_prueba' : _donanteMiembroSeleccionado,
-      );
-      await provider.agregarIngreso(ingreso);
+    final comprobanteResultante = comprobanteUrl ?? _comprobanteUrl;
+    final descripcion = _descripcionController.text.trim().isEmpty
+        ? null
+        : _descripcionController.text.trim();
+    final monto = double.parse(_montoController.text);
+
+    if (_modoEdicion) {
+      if (_esIngreso && widget.ingresoEditar != null) {
+        final updated = widget.ingresoEditar!.copyWith(
+          monto: monto,
+          fecha: _fecha,
+          descripcion: descripcion,
+          metodoPagoId: _metodoPago!,
+          categoriaId: _categoria!,
+          comprobante: comprobanteResultante,
+          donante: !_esMiembro && _donanteController.text.trim().isNotEmpty
+              ? _donanteController.text.trim()
+              : null,
+          donanteEmail:
+              !_esMiembro && _emailController.text.trim().isNotEmpty
+                  ? _emailController.text.trim()
+                  : null,
+          donanteTelefono:
+              !_esMiembro && _telefonoController.text.trim().isNotEmpty
+                  ? _telefonoController.text.trim()
+                  : null,
+          donanteUsuarioId:
+              _esYoDonante ? 'usuario_prueba' : _donanteMiembroSeleccionado,
+        );
+        await provider.actualizarIngreso(updated);
+      } else if (!_esIngreso && widget.gastoEditar != null) {
+        final updated = widget.gastoEditar!.copyWith(
+          monto: monto,
+          fecha: _fecha,
+          descripcion: descripcion,
+          metodoPagoId: _metodoPago!,
+          categoriaId: _categoria!,
+          comprobante: comprobanteResultante,
+        );
+        await provider.actualizarGasto(updated);
+      }
     } else {
-      final gasto = Gasto(
-        id: '',
-        monto: double.parse(_montoController.text),
-        fecha: _fecha,
-        descripcion: _descripcionController.text.trim().isEmpty
-            ? null
-            : _descripcionController.text.trim(),
-        metodoPagoId: _metodoPago!,
-        categoriaId: _categoria!,
-        usuarioId: 'usuario_prueba',
-        fechaCreacion: now,
-        comprobante: comprobanteUrl,
-      );
-      await provider.agregarGasto(gasto);
+      if (_esIngreso) {
+        final ingreso = Ingreso(
+          id: '',
+          monto: monto,
+          fecha: _fecha,
+          descripcion: descripcion,
+          metodoPagoId: _metodoPago!,
+          categoriaId: _categoria!,
+          usuarioId: 'usuario_prueba',
+          fechaCreacion: now,
+          comprobante: comprobanteResultante,
+          donante: !_esMiembro && _donanteController.text.trim().isNotEmpty
+              ? _donanteController.text.trim()
+              : null,
+          donanteEmail:
+              !_esMiembro && _emailController.text.trim().isNotEmpty
+                  ? _emailController.text.trim()
+                  : null,
+          donanteTelefono:
+              !_esMiembro && _telefonoController.text.trim().isNotEmpty
+                  ? _telefonoController.text.trim()
+                  : null,
+          donanteUsuarioId:
+              _esYoDonante ? 'usuario_prueba' : _donanteMiembroSeleccionado,
+        );
+        await provider.agregarIngreso(ingreso);
+      } else {
+        final gasto = Gasto(
+          id: '',
+          monto: monto,
+          fecha: _fecha,
+          descripcion: descripcion,
+          metodoPagoId: _metodoPago!,
+          categoriaId: _categoria!,
+          usuarioId: 'usuario_prueba',
+          fechaCreacion: now,
+          comprobante: comprobanteResultante,
+        );
+        await provider.agregarGasto(gasto);
+      }
     }
 
     if (!mounted) return;
@@ -235,8 +325,10 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
       provider.limpiarError();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Movimiento guardado correctamente'),
+        SnackBar(
+          content: Text(_modoEdicion
+              ? 'Movimiento actualizado correctamente'
+              : 'Movimiento guardado correctamente'),
           backgroundColor: AppTheme.verdeIngreso,
         ),
       );
@@ -259,7 +351,9 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           fontSize: 20,
           fontWeight: FontWeight.w600,
         ),
-        title: Text(_esIngreso ? 'Nuevo Ingreso' : 'Nuevo Gasto'),
+        title: Text(_modoEdicion
+            ? (_esIngreso ? 'Editar Ingreso' : 'Editar Gasto')
+            : (_esIngreso ? 'Nuevo Ingreso' : 'Nuevo Gasto')),
       ),
       body: Stack(
         children: [
@@ -287,7 +381,9 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                     ),
                     onPressed: isLoading ? null : _guardar,
                     child: Text(
-                      _esIngreso ? 'Guardar Ingreso' : 'Guardar Gasto',
+                      _modoEdicion
+                          ? 'Guardar cambios'
+                          : (_esIngreso ? 'Guardar Ingreso' : 'Guardar Gasto'),
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.w600),
                     ),
@@ -310,7 +406,11 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   }
 
   Widget _buildSelectorTipo() {
-    return Row(
+    return IgnorePointer(
+      ignoring: _modoEdicion,
+      child: Opacity(
+        opacity: _modoEdicion ? 0.5 : 1.0,
+        child: Row(
       children: [
         Expanded(
           child: _BotonTipo(
@@ -332,6 +432,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           ),
         ),
       ],
+        ),
+      ),
     );
   }
 
@@ -538,6 +640,36 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        if (_comprobanteUrl != null && _nombreComprobante == null) ...[
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: _colorActivo.withAlpha(25),
+              borderRadius: const BorderRadius.all(Radius.circular(8)),
+              border: Border.all(color: _colorActivo.withAlpha(80)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.link, size: 18, color: _colorActivo),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Comprobante existente',
+                    style: TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _comprobanteUrl = null),
+                  child: const Icon(Icons.close,
+                      size: 18, color: AppTheme.textoSecundario),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (_nombreComprobante != null) ...[
           Container(
             padding:

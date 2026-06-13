@@ -36,6 +36,28 @@ class MovimientosProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> actualizarIngreso(Ingreso ingreso) async {
+    _setLoading(true);
+    try {
+      await _ingresoRepo.actualizar(ingreso);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> actualizarGasto(Gasto gasto) async {
+    _setLoading(true);
+    try {
+      await _gastoRepo.actualizar(gasto);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   Future<void> eliminarIngreso(String id) async {
     _setLoading(true);
     try {

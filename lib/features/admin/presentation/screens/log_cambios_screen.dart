@@ -23,27 +23,39 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
   ];
 
   Stream<List<Map<String, dynamic>>> get _stream {
-    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+    return FirebaseFirestore.instance
         .collection('log_cambios')
         .orderBy('fecha', descending: true)
-        .limit(200);
-
-    if (_filtroTipo != 'todos') {
-      query = query.where('entidadTipo', isEqualTo: _filtroTipo);
-    }
-    if (_desde != null) {
-      query = query.where('fecha',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(_desde!));
-    }
-    if (_hasta != null) {
-      query = query.where('fecha',
-          isLessThanOrEqualTo:
-              Timestamp.fromDate(_hasta!.add(const Duration(days: 1))));
-    }
-
-    return query
+        .limit(200)
         .snapshots()
-        .map((s) => s.docs.map((d) => {...d.data(), 'id': d.id}).toList());
+        .map((s) {
+      var docs = s.docs.map((d) => {...d.data(), 'id': d.id}).toList();
+
+      if (_filtroTipo != 'todos') {
+        docs = docs
+            .where((d) => d['entidadTipo'] == _filtroTipo)
+            .toList();
+      }
+      if (_desde != null) {
+        docs = docs.where((d) {
+          final ts = d['fecha'];
+          if (ts == null) return false;
+          final dt = ts is Timestamp ? ts.toDate() : ts as DateTime;
+          return !dt.isBefore(_desde!);
+        }).toList();
+      }
+      if (_hasta != null) {
+        final limite = _hasta!.add(const Duration(days: 1));
+        docs = docs.where((d) {
+          final ts = d['fecha'];
+          if (ts == null) return false;
+          final dt = ts is Timestamp ? ts.toDate() : ts as DateTime;
+          return dt.isBefore(limite);
+        }).toList();
+      }
+
+      return docs;
+    });
   }
 
   Future<void> _seleccionarDesde() async {

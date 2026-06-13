@@ -7,6 +7,7 @@ import '../../../../shared/data/categorias_data.dart';
 import '../../../../shared/utils/metodo_pago_icon.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
+import '../../../admin/presentation/providers/categoria_provider.dart';
 import '../../../admin/presentation/screens/admin_panel_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
@@ -42,6 +43,8 @@ class _MovimientoUnificado {
   final String usuarioId;
   final DateTime fechaCreacion;
   final String? comprobante;
+  final Ingreso? ingreso;
+  final Gasto? gasto;
 
   const _MovimientoUnificado({
     required this.id,
@@ -55,6 +58,8 @@ class _MovimientoUnificado {
     required this.usuarioId,
     required this.fechaCreacion,
     this.comprobante,
+    this.ingreso,
+    this.gasto,
   });
 
   factory _MovimientoUnificado.fromIngreso(Ingreso i) =>
@@ -70,6 +75,7 @@ class _MovimientoUnificado {
         usuarioId: i.usuarioId,
         fechaCreacion: i.fechaCreacion,
         comprobante: i.comprobante,
+        ingreso: i,
       );
 
   factory _MovimientoUnificado.fromGasto(Gasto g) => _MovimientoUnificado(
@@ -84,6 +90,7 @@ class _MovimientoUnificado {
         usuarioId: g.usuarioId,
         fechaCreacion: g.fechaCreacion,
         comprobante: g.comprobante,
+        gasto: g,
       );
 }
 
@@ -276,23 +283,35 @@ class _MovimientoTileState extends State<_MovimientoTile> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final auth = context.watch<AuthProvider>();
-    final categoria =
-        findCategoria(item.categoriaId, esIngreso: item.esIngreso);
+    final catProvider = context.watch<CategoriaProvider>();
+    final categorias =
+        catProvider.obtenerActivas(item.esIngreso ? 'ingreso' : 'gasto');
+    final catMap = categorias.firstWhere(
+      (c) =>
+          c['id'] == item.categoriaId || c['nombre'] == item.categoriaId,
+      orElse: () => {
+        'nombre': item.categoriaId,
+        'icono': 'category',
+        'color': '#6B7A99',
+      },
+    );
     final color = item.esIngreso ? AppTheme.verdeIngreso : AppTheme.rojoGasto;
-    final iconoColor = categoria?.color ?? color;
-    final icono = categoria?.icono ??
-        (item.esIngreso ? Icons.arrow_upward : Icons.arrow_downward);
+    final categoriaColor =
+        colorFromHex(catMap['color'] as String? ?? '#6B7A99');
+    final categoriaIcono =
+        iconFromNombre(catMap['icono'] as String? ?? 'category');
+    final categoriaNombre = catMap['nombre'] as String? ?? item.categoriaId;
     final titulo = item.descripcion?.isNotEmpty == true
         ? item.descripcion!
-        : item.categoriaId;
+        : categoriaNombre;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         ListTile(
           leading: CircleAvatar(
-            backgroundColor: iconoColor.withAlpha(38),
-            child: Icon(icono, color: iconoColor, size: 20),
+            backgroundColor: categoriaColor.withAlpha(38),
+            child: Icon(categoriaIcono, color: categoriaColor, size: 20),
           ),
           title: Text(titulo, style: Theme.of(context).textTheme.bodyLarge),
           subtitle: Text(_formatFecha(item.fecha),
@@ -317,7 +336,10 @@ class _MovimientoTileState extends State<_MovimientoTile> {
           ),
           onTap: () => setState(() => _expanded = !_expanded),
         ),
-        if (_expanded) _buildDetalle(context, item, auth, categoria, color),
+        if (_expanded)
+          _buildDetalle(
+              context, item, auth, categoriaColor, categoriaIcono,
+              categoriaNombre, color),
       ],
     );
   }
@@ -326,7 +348,9 @@ class _MovimientoTileState extends State<_MovimientoTile> {
     BuildContext context,
     _MovimientoUnificado item,
     AuthProvider auth,
-    CategoriaItem? categoria,
+    Color categoriaColor,
+    IconData categoriaIcono,
+    String categoriaNombre,
     Color color,
   ) {
     return Container(
@@ -336,9 +360,9 @@ class _MovimientoTileState extends State<_MovimientoTile> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _DetalleRow(
-            icono: categoria?.icono ?? Icons.label,
-            iconoColor: categoria?.color ?? color,
-            texto: categoria?.nombre ?? item.categoriaId,
+            icono: categoriaIcono,
+            iconoColor: categoriaColor,
+            texto: categoriaNombre,
           ),
           _DetalleRow(
             icono: MetodoPagoIcon.iconOf(item.metodoPagoId),
@@ -392,8 +416,15 @@ class _MovimientoTileState extends State<_MovimientoTile> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Edición próximamente')),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => item.esIngreso
+                            ? AgregarMovimientoScreen(
+                                ingresoEditar: item.ingreso)
+                            : AgregarMovimientoScreen(
+                                gastoEditar: item.gasto),
+                      ),
                     );
                   },
                 ),
