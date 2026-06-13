@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../shared/data/categorias_data.dart';
 import '../../../../shared/services/storage_service.dart';
+import '../../../admin/presentation/providers/categoria_provider.dart';
+import '../../../admin/presentation/providers/metodo_pago_provider.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
 import '../providers/movimientos_provider.dart';
@@ -16,14 +17,6 @@ const _miembrosPrueba = [
   'Juan Rodríguez',
   'Laura Sánchez',
   'Pedro Fernández',
-];
-
-const _metodosPago = [
-  'Efectivo',
-  'Transferencia',
-  'Débito',
-  'Crédito',
-  'Cheque',
 ];
 
 IconData _iconoMetodoPago(String nombre) {
@@ -46,6 +39,37 @@ IconData _iconoMetodoPago(String nombre) {
   }
 }
 
+IconData _iconoCategoria(String? nombre) {
+  switch (nombre) {
+    case 'people':
+      return Icons.people;
+    case 'favorite':
+      return Icons.favorite;
+    case 'account_balance':
+      return Icons.account_balance;
+    case 'celebration':
+      return Icons.celebration;
+    case 'sell':
+      return Icons.sell;
+    case 'add_circle':
+      return Icons.add_circle;
+    case 'bolt':
+      return Icons.bolt;
+    case 'menu_book':
+      return Icons.menu_book;
+    case 'warehouse':
+      return Icons.warehouse;
+    case 'build':
+      return Icons.build;
+    case 'point_of_sale':
+      return Icons.point_of_sale;
+    case 'remove_circle':
+      return Icons.remove_circle;
+    default:
+      return Icons.category;
+  }
+}
+
 class AgregarMovimientoScreen extends StatefulWidget {
   const AgregarMovimientoScreen({super.key, this.tipoInicial = 'ingreso'});
 
@@ -62,7 +86,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   late String _tipo;
   DateTime _fecha = DateTime.now();
   String? _metodoPago;
-  CategoriaItem? _categoria;
+  String? _categoria;
   bool _esMiembro = false;
   bool _esYoDonante = false;
   String? _donanteMiembroSeleccionado;
@@ -100,9 +124,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
 
   Color get _colorActivo =>
       _esIngreso ? AppTheme.verdeIngreso : AppTheme.rojoGasto;
-
-  List<CategoriaItem> get _categorias =>
-      _esIngreso ? categoriasIngreso : categoriasGasto;
 
   String _formatFecha(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/'
@@ -167,7 +188,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
             ? null
             : _descripcionController.text.trim(),
         metodoPagoId: _metodoPago!,
-        categoriaId: _categoria!.nombre,
+        categoriaId: _categoria!,
         usuarioId: 'usuario_prueba',
         fechaCreacion: now,
         comprobante: comprobanteUrl,
@@ -194,7 +215,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
             ? null
             : _descripcionController.text.trim(),
         metodoPagoId: _metodoPago!,
-        categoriaId: _categoria!.nombre,
+        categoriaId: _categoria!,
         usuarioId: 'usuario_prueba',
         fechaCreacion: now,
         comprobante: comprobanteUrl,
@@ -315,6 +336,11 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   }
 
   Widget _buildFormCard() {
+    final catProvider = context.watch<CategoriaProvider>();
+    final metodoProvider = context.watch<MetodoPagoProvider>();
+    final cats = catProvider.obtenerActivas(_tipo);
+    final metodos = metodoProvider.obtenerActivos();
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -363,39 +389,77 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
               initialValue: _metodoPago,
               decoration:
                   const InputDecoration(labelText: 'Método de pago'),
-              items: _metodosPago
-                  .map((m) => DropdownMenuItem(
-                        value: m,
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(_iconoMetodoPago(m),
-                              size: 20, color: AppTheme.azulMedio),
-                          title: Text(m),
-                        ),
-                      ))
-                  .toList(),
-              selectedItemBuilder: (context) =>
-                  _metodosPago.map((m) => Text(m)).toList(),
-              onChanged: (v) => setState(() => _metodoPago = v),
+              items: metodoProvider.isLoading
+                  ? [const DropdownMenuItem<String>(enabled: false, value: '', child: Text('Cargando...'))]
+                  : metodos.isEmpty
+                      ? [const DropdownMenuItem<String>(enabled: false, value: '', child: Text('Sin métodos disponibles'))]
+                      : metodos
+                          .map((m) => DropdownMenuItem<String>(
+                                value: m['nombre'] as String,
+                                child: ListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(
+                                      _iconoMetodoPago(m['nombre'] as String),
+                                      size: 20,
+                                      color: AppTheme.azulMedio),
+                                  title: Text(m['nombre'] as String),
+                                ),
+                              ))
+                          .toList(),
+              selectedItemBuilder: metodoProvider.isLoading || metodos.isEmpty
+                  ? null
+                  : (ctx) => metodos
+                      .map((m) => Text(m['nombre'] as String))
+                      .toList(),
+              onChanged: metodoProvider.isLoading || metodos.isEmpty
+                  ? null
+                  : (v) => setState(() => _metodoPago = v),
               validator: (v) =>
                   v == null ? 'Seleccioná un método de pago' : null,
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<CategoriaItem>(
-              key: ValueKey(_tipo),
+            DropdownButtonFormField<String>(
+              key: ValueKey('$_tipo-${cats.length}'),
               initialValue: _categoria,
               decoration: const InputDecoration(labelText: 'Categoría'),
-              items: _categorias
-                  .map((c) => DropdownMenuItem(
-                        value: c,
-                        child: _CategoriaItemRow(item: c),
-                      ))
-                  .toList(),
-              selectedItemBuilder: (context) => _categorias
-                  .map((c) => _CategoriaItemRow(item: c))
-                  .toList(),
-              onChanged: (v) => setState(() => _categoria = v),
+              items: catProvider.isLoading
+                  ? [const DropdownMenuItem<String>(enabled: false, value: '', child: Text('Cargando...'))]
+                  : cats.isEmpty
+                      ? [const DropdownMenuItem<String>(enabled: false, value: '', child: Text('Sin categorías disponibles'))]
+                      : cats.map((c) {
+                          final color = Color(int.parse(
+                              (c['color'] as String).replaceAll('#', '0xFF')));
+                          return DropdownMenuItem<String>(
+                            value: c['id'] as String,
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  // ignore: deprecated_member_use
+                                  color: color.withOpacity(0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  _iconoCategoria(c['icono'] as String?),
+                                  size: 16,
+                                  color: color,
+                                ),
+                              ),
+                              title: Text(c['nombre'] as String),
+                            ),
+                          );
+                        }).toList(),
+              selectedItemBuilder: catProvider.isLoading || cats.isEmpty
+                  ? null
+                  : (ctx) =>
+                      cats.map((c) => Text(c['nombre'] as String)).toList(),
+              onChanged: catProvider.isLoading || cats.isEmpty
+                  ? null
+                  : (v) => setState(() => _categoria = v),
               validator: (v) =>
                   v == null ? 'Seleccioná una categoría' : null,
             ),
@@ -684,31 +748,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         ),
       ],
     ];
-  }
-}
-
-class _CategoriaItemRow extends StatelessWidget {
-  const _CategoriaItemRow({required this.item});
-
-  final CategoriaItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: item.color.withAlpha(38),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(item.icono, color: item.color, size: 16),
-        ),
-        const SizedBox(width: 10),
-        Text(item.nombre),
-      ],
-    );
   }
 }
 
