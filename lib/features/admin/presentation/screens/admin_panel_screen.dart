@@ -7,6 +7,7 @@ import '../../../socios/presentation/screens/socios_screen.dart';
 import 'categorias_screen.dart';
 import 'configuracion_screen.dart';
 import 'invitaciones_screen.dart';
+import 'log_cambios_screen.dart';
 import 'metodos_pago_screen.dart';
 import 'usuarios_screen.dart';
 
@@ -18,7 +19,7 @@ class AdminPanelScreen extends StatefulWidget {
 }
 
 class _AdminPanelScreenState extends State<AdminPanelScreen> {
-  static const _opciones = [
+  static const _opcionesAdmin = [
     _OpcionPanel(
       icono: Icons.settings,
       titulo: 'Configuración general',
@@ -61,6 +62,21 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       subtitulo: 'Padrón, integrantes y cuotas',
       esSocios: true,
     ),
+    _OpcionPanel(
+      icono: Icons.history,
+      titulo: 'Log de cambios',
+      subtitulo: 'Auditoría de modificaciones',
+      esLogCambios: true,
+    ),
+  ];
+
+  static const _opcionesAuditor = [
+    _OpcionPanel(
+      icono: Icons.history,
+      titulo: 'Log de cambios',
+      subtitulo: 'Auditoría de modificaciones',
+      esLogCambios: true,
+    ),
   ];
 
   @override
@@ -69,7 +85,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
-      if (!auth.esAdmin) {
+      if (!auth.esAdmin && !auth.esAuditor) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -83,6 +99,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final opciones = auth.esAdmin ? _opcionesAdmin : _opcionesAuditor;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
@@ -97,10 +115,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       ),
       body: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: _opciones.length,
+        itemCount: opciones.length,
         separatorBuilder: (_, _) => const SizedBox(height: 8),
         itemBuilder: (context, index) {
-          final opcion = _opciones[index];
+          final opcion = opciones[index];
           return Card(
             child: ListTile(
               leading: Container(
@@ -170,6 +188,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     MaterialPageRoute(
                         builder: (_) => const SociosScreen()),
                   );
+                } else if (opcion.esLogCambios) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const LogCambiosScreen()),
+                  );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Próximamente')),
@@ -195,6 +219,7 @@ class _OpcionPanel {
   final bool esMetodosPago;
   final bool esCuentaBancaria;
   final bool esSocios;
+  final bool esLogCambios;
 
   const _OpcionPanel({
     required this.icono,
@@ -207,5 +232,6 @@ class _OpcionPanel {
     this.esMetodosPago = false,
     this.esCuentaBancaria = false,
     this.esSocios = false,
+    this.esLogCambios = false,
   });
 }

@@ -374,3 +374,45 @@ Documento único id: "config". Incluye: nombreCooperadora, nombreEscuela, emailC
 ---
 
 *v3.0 — Módulos Ingresos/Gastos, Cuenta Bancaria y Proyectos implementados y funcionando.*
+
+---
+
+## 12. Actualizaciones de Roles y Auditoría
+
+### Nuevo rol: Auditor
+Agregado entre `solo_lectura` y `editor`. Acceso de solo lectura más visibilidad del log de cambios.
+
+**Tabla de permisos actualizada:**
+
+| Acción | Público | Consultante | Solo lectura | Auditor | Editor | Admin |
+|---|---|---|---|---|---|---|
+| Ver secciones públicas | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Ver secciones privadas | — | — | ✓ | ✓ | ✓ | ✓ |
+| Ver log de cambios | — | — | — | ✓ | — | ✓ |
+| Cargar ingresos/gastos | — | — | — | — | ✓ | ✓ |
+| Editar ingresos/gastos | — | — | — | — | ✓ | ✓ |
+| Gestionar proyectos | — | — | — | — | ✓ | ✓ |
+| Gestionar categorías | — | — | — | — | — | ✓ |
+| Gestionar usuarios | — | — | — | — | — | ✓ |
+| Configuración general | — | — | — | — | — | ✓ |
+
+> Vocales y Revisoras de Cuenta reciben rol `auditor` para acceder al log de cambios.
+
+### Entidad LogCambio
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | string | |
+| `entidadTipo` | string | `ingreso` / `gasto` / `cuota` / `proyecto` |
+| `entidadId` | string | ID del documento modificado |
+| `usuarioId` | string | Quién hizo el cambio |
+| `fecha` | timestamp | Cuándo |
+| `camposAnteriores` | map | Valores antes del cambio |
+| `camposNuevos` | map | Valores después del cambio |
+| `accion` | string | `creacion` / `modificacion` / `eliminacion` |
+
+### Vista de detalle de movimientos
+- Item del listado expandible con flecha (igual que historial bancario)
+- Al expandir muestra: categoría con ícono, método de pago con ícono, descripción, donante, comprobante descargable, quién cargó y cuándo
+- Botón editar solo para Editor/Admin
+- Comprobante visible también en pantalla pública si el movimiento es público
+

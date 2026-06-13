@@ -33,6 +33,7 @@ class AuthProvider extends ChangeNotifier {
 
   bool get esAdmin => rol == 'admin';
   bool get esEditor => rol == 'editor' || rol == 'admin';
+  bool get esAuditor => rol == 'auditor' || rol == 'admin';
   bool get esSoloLectura => rol == 'solo_lectura';
   bool get esConsultante => rol == 'consultante';
 

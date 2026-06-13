@@ -36,6 +36,28 @@ class MovimientosProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> eliminarIngreso(String id) async {
+    _setLoading(true);
+    try {
+      await _ingresoRepo.eliminar(id);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> eliminarGasto(String id) async {
+    _setLoading(true);
+    try {
+      await _gastoRepo.eliminar(id);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   void limpiarError() {
     error = null;
     notifyListeners();

@@ -169,6 +169,7 @@ class _RolChip extends StatelessWidget {
   static (Color bg, Color fg) _colores(String rol) => switch (rol) {
         'admin' => (AppTheme.azulOscuro, AppTheme.blanco),
         'editor' => (AppTheme.verdeTeal, AppTheme.blanco),
+        'auditor' => (AppTheme.azulMedio, AppTheme.blanco),
         'solo_lectura' => (const Color(0xFFE0E0E0), AppTheme.textoSecundario),
         'consultante' => (const Color(0xFFFFE0B2), const Color(0xFFE65100)),
         _ => (const Color(0xFFE0E0E0), AppTheme.textoSecundario),
@@ -177,6 +178,7 @@ class _RolChip extends StatelessWidget {
   static String _label(String rol) => switch (rol) {
         'admin' => 'Admin',
         'editor' => 'Editor',
+        'auditor' => 'Auditor',
         'solo_lectura' => 'Solo lectura',
         'consultante' => 'Consultante',
         _ => rol,
@@ -217,6 +219,8 @@ class _SelectorRol extends StatelessWidget {
         'Acceso completo a todas las funciones'),
     ('editor', 'Editor', Icons.edit_note,
         'Puede cargar y editar movimientos'),
+    ('auditor', 'Auditor', Icons.history,
+        'Puede ver el log de cambios y toda la información'),
     ('solo_lectura', 'Solo lectura', Icons.visibility,
         'Puede ver todo pero no modificar'),
     ('consultante', 'Consultante', Icons.person_outline,
