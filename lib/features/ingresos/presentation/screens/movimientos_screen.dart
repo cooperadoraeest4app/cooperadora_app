@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/data/categorias_data.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -29,6 +30,7 @@ class _MovimientoUnificado {
   final DateTime fecha;
   final String? descripcion;
   final String categoriaId;
+  final String? comprobante;
 
   const _MovimientoUnificado({
     required this.esIngreso,
@@ -36,6 +38,7 @@ class _MovimientoUnificado {
     required this.fecha,
     this.descripcion,
     required this.categoriaId,
+    this.comprobante,
   });
 
   factory _MovimientoUnificado.fromIngreso(Ingreso i) =>
@@ -45,6 +48,7 @@ class _MovimientoUnificado {
         fecha: i.fecha,
         descripcion: i.descripcion,
         categoriaId: i.categoriaId,
+        comprobante: i.comprobante,
       );
 
   factory _MovimientoUnificado.fromGasto(Gasto g) =>
@@ -54,6 +58,7 @@ class _MovimientoUnificado {
         fecha: g.fecha,
         descripcion: g.descripcion,
         categoriaId: g.categoriaId,
+        comprobante: g.comprobante,
       );
 }
 
@@ -264,12 +269,27 @@ class _MovimientoTile extends StatelessWidget {
         _formatFecha(item.fecha),
         style: Theme.of(context).textTheme.bodySmall,
       ),
-      trailing: Text(
-        '${item.esIngreso ? '+' : '-'}${_formatMonto(item.monto)}',
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
+      trailing: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            '${item.esIngreso ? '+' : '-'}${_formatMonto(item.monto)}',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          if (item.comprobante != null && item.comprobante!.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.receipt,
+                  size: 18, color: AppTheme.azulMedio),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () =>
+                  launchUrl(Uri.parse(item.comprobante!)),
             ),
+        ],
       ),
     );
   }

@@ -11,9 +11,21 @@ class StorageService {
     Uint8List bytes,
     String nombreArchivo,
   ) async {
+    if (bytes.isEmpty) {
+      throw Exception('Los bytes del archivo están vacíos');
+    }
+
     final ref = _storage.ref('comprobantes/$path/$nombreArchivo');
-    await ref.putData(bytes);
-    return ref.getDownloadURL();
+    // ignore: avoid_print
+    print('[StorageService] Subiendo $nombreArchivo (${bytes.length} bytes) → comprobantes/$path/');
+
+    final uploadTask = ref.putData(bytes);
+    await uploadTask;
+
+    final url = await ref.getDownloadURL();
+    // ignore: avoid_print
+    print('[StorageService] Upload completo. URL: $url');
+    return url;
   }
 
   /// Elimina un archivo dado su URL de descarga de Firebase Storage.

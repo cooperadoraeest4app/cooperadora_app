@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/data/categorias_data.dart';
+import '../../../../shared/services/storage_service.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
 import '../providers/movimientos_provider.dart';
@@ -67,6 +68,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   String? _donanteMiembroSeleccionado;
   TextEditingController? _miembroFieldController;
   String? _nombreComprobante;
+  Uint8List? _comprobanteBytes;
+  bool _subiendo = false;
 
   final _montoController = TextEditingController();
   final _descripcionController = TextEditingController();
@@ -133,7 +136,27 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final provider = context.read<MovimientosProvider>();
+    final messenger = ScaffoldMessenger.of(context);
     final now = DateTime.now();
+
+    String? comprobanteUrl;
+    if (_comprobanteBytes != null && _nombreComprobante != null) {
+      setState(() => _subiendo = true);
+      try {
+        final tipo = _esIngreso ? 'ingresos' : 'gastos';
+        final path =
+            '$tipo/${now.year}/${now.month.toString().padLeft(2, '0')}';
+        comprobanteUrl = await StorageService()
+            .subirComprobante(path, _comprobanteBytes!, _nombreComprobante!);
+      } catch (e) {
+        messenger.showSnackBar(SnackBar(
+          content: Text('No se pudo subir el comprobante: $e'),
+          backgroundColor: AppTheme.rojoGasto,
+        ));
+      } finally {
+        if (mounted) setState(() => _subiendo = false);
+      }
+    }
 
     if (_esIngreso) {
       final ingreso = Ingreso(
@@ -147,7 +170,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         categoriaId: _categoria!.nombre,
         usuarioId: 'usuario_prueba',
         fechaCreacion: now,
-        comprobante: _nombreComprobante,
+        comprobante: comprobanteUrl,
         donante: !_esMiembro && _donanteController.text.trim().isNotEmpty
             ? _donanteController.text.trim()
             : null,
@@ -174,7 +197,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         categoriaId: _categoria!.nombre,
         usuarioId: 'usuario_prueba',
         fechaCreacion: now,
-        comprobante: _nombreComprobante,
+        comprobante: comprobanteUrl,
       );
       await provider.agregarGasto(gasto);
     }
@@ -203,7 +226,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   @override
   Widget build(BuildContext context) {
     final isLoading =
-        context.watch<MovimientosProvider>().isLoading;
+        context.watch<MovimientosProvider>().isLoading || _subiendo;
 
     return Scaffold(
       appBar: AppBar(
@@ -385,21 +408,54 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   }
 
   Future<void> _seleccionarFoto() async {
-    final result =
-        await FilePicker.pickFiles(type: FileType.image);
-    if (result != null && result.files.isNotEmpty) {
-      setState(() => _nombreComprobante = result.files.first.name);
+    final result = await FilePicker.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    // ignore: avoid_print
+    print('File name: ${file.name}');
+    // ignore: avoid_print
+    print('Bytes length: ${file.bytes?.length}');
+    if (file.bytes == null || file.bytes!.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo leer el archivo')),
+        );
+      }
+      return;
     }
+    setState(() {
+      _nombreComprobante = file.name;
+      _comprobanteBytes = file.bytes;
+    });
   }
 
   Future<void> _adjuntarArchivo() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+      withData: true,
     );
-    if (result != null && result.files.isNotEmpty) {
-      setState(() => _nombreComprobante = result.files.first.name);
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    // ignore: avoid_print
+    print('File name: ${file.name}');
+    // ignore: avoid_print
+    print('Bytes length: ${file.bytes?.length}');
+    if (file.bytes == null || file.bytes!.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo leer el archivo')),
+        );
+      }
+      return;
     }
+    setState(() {
+      _nombreComprobante = file.name;
+      _comprobanteBytes = file.bytes;
+    });
   }
 
   Widget _buildComprobante() {
@@ -441,8 +497,10 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                   ),
                 ),
                 GestureDetector(
-                  onTap: () =>
-                      setState(() => _nombreComprobante = null),
+                  onTap: () => setState(() {
+                    _nombreComprobante = null;
+                    _comprobanteBytes = null;
+                  }),
                   child: const Icon(Icons.close,
                       size: 18, color: AppTheme.textoSecundario),
                 ),
