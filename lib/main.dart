@@ -10,6 +10,7 @@ import 'features/admin/presentation/providers/invitacion_provider.dart';
 import 'features/admin/presentation/providers/metodo_pago_provider.dart';
 import 'features/admin/presentation/providers/usuarios_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
+import 'features/ingresos/presentation/providers/frecuencia_provider.dart';
 import 'features/ingresos/presentation/providers/movimientos_provider.dart';
 import 'features/proyectos/presentation/providers/proyecto_provider.dart';
 import 'features/socios/presentation/providers/cuota_provider.dart';
@@ -42,6 +43,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ProyectoProvider()),
         ChangeNotifierProvider(create: (_) => SocioProvider()),
         ChangeNotifierProvider(create: (_) => CuotaProvider()),
+        ChangeNotifierProvider(create: (_) => FrecuenciaProvider()),
       ],
       child: MaterialApp(
         title: 'Cooperadora App',

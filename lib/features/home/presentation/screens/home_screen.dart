@@ -84,6 +84,7 @@ class _Movimiento {
   final String? descripcion;
   final String categoriaId;
   final String? comprobante;
+  final bool recurrente;
 
   const _Movimiento({
     required this.esIngreso,
@@ -92,6 +93,7 @@ class _Movimiento {
     this.descripcion,
     required this.categoriaId,
     this.comprobante,
+    this.recurrente = false,
   });
 
   factory _Movimiento.fromIngreso(Ingreso i) => _Movimiento(
@@ -100,7 +102,8 @@ class _Movimiento {
       fecha: i.fecha,
       descripcion: i.descripcion,
       categoriaId: i.categoriaId,
-      comprobante: i.comprobante);
+      comprobante: i.comprobante,
+      recurrente: i.recurrente);
 
   factory _Movimiento.fromGasto(Gasto g) => _Movimiento(
       esIngreso: false,
@@ -108,7 +111,8 @@ class _Movimiento {
       fecha: g.fecha,
       descripcion: g.descripcion,
       categoriaId: g.categoriaId,
-      comprobante: g.comprobante);
+      comprobante: g.comprobante,
+      recurrente: g.recurrente);
 }
 
 // ── HomeScreen ────────────────────────────────────────────────────────────────
@@ -634,15 +638,26 @@ class _ProyectoCard extends StatelessWidget {
 
 // ── Últimos movimientos ───────────────────────────────────────────────────────
 
-class _SeccionMovimientos extends StatelessWidget {
+class _SeccionMovimientos extends StatefulWidget {
   const _SeccionMovimientos({required this.movimientos});
 
   final List<_Movimiento> movimientos;
 
   @override
+  State<_SeccionMovimientos> createState() => _SeccionMovimientosState();
+}
+
+class _SeccionMovimientosState extends State<_SeccionMovimientos> {
+  bool _soloRecurrentes = false;
+
+  @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final puedeAgregar = auth.esEditor || auth.esAdmin;
+
+    final movimientos = _soloRecurrentes
+        ? widget.movimientos.where((m) => m.recurrente).toList()
+        : widget.movimientos;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -681,7 +696,33 @@ class _SeccionMovimientos extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              const Text(
+                'Solo Gastos e Ingresos recurrentes',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: AppTheme.textoPrincipal,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Switch(
+                value: _soloRecurrentes,
+                onChanged: (v) => setState(() => _soloRecurrentes = v),
+                activeThumbColor: AppTheme.verdeTeal,
+                inactiveThumbColor: AppTheme.blanco,
+                inactiveTrackColor:
+                    AppTheme.azulOscuro.withValues(alpha: 0.3),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
         if (puedeAgregar) ...[
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
@@ -690,12 +731,14 @@ class _SeccionMovimientos extends StatelessWidget {
           const SizedBox(height: 8),
         ],
         if (movimientos.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
             child: Center(
               child: Text(
-                'Sin movimientos registrados',
-                style: TextStyle(color: AppTheme.textoSecundario),
+                _soloRecurrentes
+                    ? 'Sin movimientos recurrentes registrados'
+                    : 'Sin movimientos registrados',
+                style: const TextStyle(color: AppTheme.textoSecundario),
               ),
             ),
           )

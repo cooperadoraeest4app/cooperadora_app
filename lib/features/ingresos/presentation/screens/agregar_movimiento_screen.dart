@@ -8,6 +8,7 @@ import '../../../admin/presentation/providers/categoria_provider.dart';
 import '../../../admin/presentation/providers/metodo_pago_provider.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
+import '../providers/frecuencia_provider.dart';
 import '../providers/movimientos_provider.dart';
 
 const _miembrosPrueba = [
@@ -102,6 +103,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   Uint8List? _comprobanteBytes;
   String? _comprobanteUrl;
   bool _subiendo = false;
+  bool _recurrente = false;
+  String? _frecuenciaId;
 
   final _montoController = TextEditingController();
   final _descripcionController = TextEditingController();
@@ -136,6 +139,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _metodoPago = i.metodoPagoId;
     _categoria = i.categoriaId;
     _comprobanteUrl = i.comprobante;
+    _recurrente = i.recurrente;
+    _frecuenciaId = i.frecuenciaId;
     if (i.donanteUsuarioId != null) {
       _esMiembro = true;
       _donanteMiembroSeleccionado = i.donanteUsuarioId;
@@ -157,6 +162,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _metodoPago = g.metodoPagoId;
     _categoria = g.categoriaId;
     _comprobanteUrl = g.comprobante;
+    _recurrente = g.recurrente;
+    _frecuenciaId = g.frecuenciaId;
   }
 
   @override
@@ -244,6 +251,9 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           metodoPagoId: _metodoPago!,
           categoriaId: _categoria!,
           comprobante: comprobanteResultante,
+          recurrente: _recurrente,
+          frecuenciaId: _recurrente ? _frecuenciaId : null,
+          proximaFecha: _recurrente ? _calcularProximaFecha() : null,
           donante: !_esMiembro && _donanteController.text.trim().isNotEmpty
               ? _donanteController.text.trim()
               : null,
@@ -267,6 +277,9 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           metodoPagoId: _metodoPago!,
           categoriaId: _categoria!,
           comprobante: comprobanteResultante,
+          recurrente: _recurrente,
+          frecuenciaId: _recurrente ? _frecuenciaId : null,
+          proximaFecha: _recurrente ? _calcularProximaFecha() : null,
         );
         await provider.actualizarGasto(updated);
       }
@@ -282,6 +295,9 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           usuarioId: 'usuario_prueba',
           fechaCreacion: now,
           comprobante: comprobanteResultante,
+          recurrente: _recurrente,
+          frecuenciaId: _recurrente ? _frecuenciaId : null,
+          proximaFecha: _recurrente ? _calcularProximaFecha() : null,
           donante: !_esMiembro && _donanteController.text.trim().isNotEmpty
               ? _donanteController.text.trim()
               : null,
@@ -308,6 +324,9 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           usuarioId: 'usuario_prueba',
           fechaCreacion: now,
           comprobante: comprobanteResultante,
+          recurrente: _recurrente,
+          frecuenciaId: _recurrente ? _frecuenciaId : null,
+          proximaFecha: _recurrente ? _calcularProximaFecha() : null,
         );
         await provider.agregarGasto(gasto);
       }
@@ -566,6 +585,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                   v == null ? 'Seleccioná una categoría' : null,
             ),
             if (_esIngreso) ..._buildCamposIngreso(),
+            _buildRecurrencia(),
             _buildComprobante(),
           ],
         ),
@@ -622,6 +642,94 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
       _nombreComprobante = file.name;
       _comprobanteBytes = file.bytes;
     });
+  }
+
+  DateTime? _calcularProximaFecha() {
+    if (!_recurrente || _frecuenciaId == null) return null;
+    final frecs = context.read<FrecuenciaProvider>().frecuencias;
+    final matches = frecs.where((f) => f.id == _frecuenciaId).toList();
+    if (matches.isEmpty) return null;
+    return _fecha.add(Duration(days: matches.first.diasIntervalo));
+  }
+
+  Widget _buildRecurrencia() {
+    final frecProvider = context.watch<FrecuenciaProvider>();
+    final frecs = frecProvider.frecuencias;
+
+    DateTime? proximaFecha;
+    if (_recurrente && _frecuenciaId != null) {
+      final matches = frecs.where((f) => f.id == _frecuenciaId).toList();
+      if (matches.isNotEmpty) {
+        proximaFecha = _fecha.add(Duration(days: matches.first.diasIntervalo));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        const Divider(),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(_esIngreso ? 'Ingreso recurrente' : 'Gasto recurrente'),
+          subtitle: const Text('Se repetirá automáticamente'),
+          value: _recurrente,
+          activeThumbColor: _colorActivo,
+          onChanged: (v) => setState(() {
+            _recurrente = v;
+            if (!v) _frecuenciaId = null;
+          }),
+        ),
+        if (_recurrente) ...[
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: _frecuenciaId,
+            decoration: const InputDecoration(labelText: 'Frecuencia'),
+            items: frecs.isEmpty
+                ? [
+                    const DropdownMenuItem<String>(
+                      enabled: false,
+                      value: '',
+                      child: Text('Cargando...'),
+                    )
+                  ]
+                : frecs
+                    .map((f) => DropdownMenuItem<String>(
+                          value: f.id,
+                          child: Text(f.nombre),
+                        ))
+                    .toList(),
+            onChanged: frecs.isEmpty
+                ? null
+                : (v) => setState(() => _frecuenciaId = v),
+            validator: (v) =>
+                _recurrente && v == null ? 'Seleccioná una frecuencia' : null,
+          ),
+          if (proximaFecha != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: _colorActivo.withAlpha(20),
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.event_repeat, size: 18, color: _colorActivo),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Próximo recordatorio: ${_formatFecha(proximaFecha)}',
+                    style: TextStyle(fontSize: 13, color: _colorActivo),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ],
+    );
   }
 
   Widget _buildComprobante() {

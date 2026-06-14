@@ -94,10 +94,17 @@ class _MovimientoUnificado {
       );
 }
 
-class MovimientosScreen extends StatelessWidget {
+class MovimientosScreen extends StatefulWidget {
   const MovimientosScreen({super.key, this.proyectoId});
 
   final String? proyectoId;
+
+  @override
+  State<MovimientosScreen> createState() => _MovimientosScreenState();
+}
+
+class _MovimientosScreenState extends State<MovimientosScreen> {
+  bool _soloRecurrentes = false;
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +114,9 @@ class MovimientosScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(proyectoId != null ? 'Movimientos del proyecto' : 'Movimientos'),
+        title: Text(widget.proyectoId != null
+            ? 'Movimientos del proyecto'
+            : 'Movimientos'),
         actions: [_AccionAuth()],
       ),
       body: StreamBuilder<List<Ingreso>>(
@@ -133,11 +142,20 @@ class MovimientosScreen extends StatelessWidget {
                 ...gastos.map(_MovimientoUnificado.fromGasto),
               ]..sort((a, b) => b.fecha.compareTo(a.fecha));
 
-              if (proyectoId != null) {
-                movimientos = movimientos.where((m) =>
-                  m.ingreso?.proyectoId == proyectoId ||
-                  m.gasto?.proyectoId == proyectoId,
-                ).toList();
+              if (widget.proyectoId != null) {
+                movimientos = movimientos
+                    .where((m) =>
+                        m.ingreso?.proyectoId == widget.proyectoId ||
+                        m.gasto?.proyectoId == widget.proyectoId)
+                    .toList();
+              }
+
+              if (_soloRecurrentes) {
+                movimientos = movimientos
+                    .where((m) =>
+                        m.ingreso?.recurrente == true ||
+                        m.gasto?.recurrente == true)
+                    .toList();
               }
 
               return Column(
@@ -146,14 +164,46 @@ class MovimientosScreen extends StatelessWidget {
                     totalIngresos: totalIngresos,
                     totalGastos: totalGastos,
                   ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Solo Gastos e Ingresos recurrentes',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: AppTheme.textoPrincipal,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Switch(
+                          value: _soloRecurrentes,
+                          onChanged: (v) =>
+                              setState(() => _soloRecurrentes = v),
+                          activeThumbColor: AppTheme.verdeTeal,
+                          inactiveThumbColor: AppTheme.blanco,
+                          inactiveTrackColor:
+                              AppTheme.azulOscuro.withValues(alpha: 0.3),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
                   Expanded(
                     child: loading
                         ? const Center(child: CircularProgressIndicator())
                         : movimientos.isEmpty
-                            ? const _EmptyState()
+                            ? _EmptyState(
+                                mensaje: _soloRecurrentes
+                                    ? 'No hay movimientos recurrentes registrados'
+                                    : null,
+                              )
                             : Card(
                                 margin:
-                                    const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                    const EdgeInsets.fromLTRB(16, 8, 16, 16),
                                 child: ListView.separated(
                                   itemCount: movimientos.length,
                                   separatorBuilder: (_, _) =>
@@ -524,7 +574,9 @@ class _DetalleRow extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  const _EmptyState({this.mensaje});
+
+  final String? mensaje;
 
   @override
   Widget build(BuildContext context) {
@@ -539,7 +591,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Sin movimientos registrados',
+            mensaje ?? 'Sin movimientos registrados',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: AppTheme.textoSecundario,
                 ),
