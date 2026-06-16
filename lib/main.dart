@@ -15,6 +15,7 @@ import 'features/ingresos/presentation/providers/movimientos_provider.dart';
 import 'features/proyectos/presentation/providers/proyecto_provider.dart';
 import 'features/socios/presentation/providers/cuota_provider.dart';
 import 'features/socios/presentation/providers/socio_provider.dart';
+import 'core/navigation/app_navigator.dart';
 import 'features/home/presentation/screens/home_screen.dart';
 
 void main() async {
@@ -56,6 +57,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => FrecuenciaProvider()),
       ],
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'Cooperadora App',
         theme: AppTheme.lightTheme(),
         home: const HomeScreen(),

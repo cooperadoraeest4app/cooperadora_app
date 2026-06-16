@@ -137,6 +137,16 @@ service cloud.firestore {
       allow write: if estaAutenticado();
     }
 
+    match /tipos_socio/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esAdmin();
+    }
+
+    match /subtipos_socio/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esAdmin();
+    }
+
     match /proveedores/{doc} {
       allow read: if estaAutenticado();
       allow write: if esEditor() && estaActivo();

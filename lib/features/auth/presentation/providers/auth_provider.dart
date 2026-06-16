@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import '../../../../core/navigation/app_navigator.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 
 class AuthProvider extends ChangeNotifier {
   final _auth = FirebaseAuth.instance;
@@ -8,6 +10,7 @@ class AuthProvider extends ChangeNotifier {
   User? _currentUser;
   bool _isLoading = false;
   String? _error;
+  bool _logoutPendiente = false;
   String? rol;
   Map<String, dynamic>? datosUsuario;
   Map<String, dynamic>? datosPersona;
@@ -24,6 +27,13 @@ class AuthProvider extends ChangeNotifier {
         datosUsuario = null;
         datosPersona = null;
         notifyListeners();
+        if (_logoutPendiente) {
+          _logoutPendiente = false;
+          navigatorKey.currentState?.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            (route) => false,
+          );
+        }
       }
     });
   }
@@ -188,6 +198,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _logoutPendiente = true;
     await _auth.signOut();
   }
 

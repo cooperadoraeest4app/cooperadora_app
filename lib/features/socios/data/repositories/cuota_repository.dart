@@ -76,10 +76,12 @@ class CuotaRepository {
     final now = DateTime.now();
     final periodo =
         '${now.month.toString().padLeft(2, '0')}/${now.year}';
-    final snap = await _cuotasCol
+    final snap = await FirebaseFirestore.instance
+        .collection('cuotas')
         .where('socioId', isEqualTo: socioId)
+        .where('periodo', isEqualTo: periodo)
         .get();
-    return snap.docs.any((d) => d.data()['periodo'] == periodo);
+    return snap.docs.isNotEmpty;
   }
 
   Future<void> inicializarDatosDefault() async {

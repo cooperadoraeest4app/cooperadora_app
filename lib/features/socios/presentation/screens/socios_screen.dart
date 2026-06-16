@@ -932,8 +932,8 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
                         ))
                     .toList(),
                 selectedItemBuilder: (context) => metodos
-                    .map((m) =>
-                        MetodoPagoRow(nombre: m['nombre'] as String))
+                    .map((m) => Text(m['nombre'] as String,
+                        overflow: TextOverflow.ellipsis))
                     .toList(),
                 onChanged: (v) => setState(() => _metodoPagoId = v),
                 validator: (v) => v == null ? 'Requerido' : null,

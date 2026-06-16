@@ -27,20 +27,11 @@ class MetodoPagoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = MetodoPagoIcon.iconOf(nombre);
     final color = MetodoPagoIcon.colorOf(nombre);
-    return Row(
-      children: [
-        Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: color.withAlpha(38),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 16),
-        ),
-        const SizedBox(width: 10),
-        Expanded(child: Text(nombre, overflow: TextOverflow.ellipsis)),
-      ],
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: color, size: 20),
+      title: Text(nombre),
     );
   }
 }
