@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/cuenta_bancaria.dart';
 import '../../domain/models/movimiento_bancario.dart';
@@ -92,6 +93,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
   // Formulario de configuración
   final _setupFormKey = GlobalKey<FormState>();
   final _bancoCtrl = TextEditingController();
+  final _titularCtrl = TextEditingController();
   String? _tipoCuenta;
   final _cbuCtrl = TextEditingController();
   final _aliasCtrl = TextEditingController();
@@ -103,6 +105,17 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
   final _periodoResumenCtrl = TextEditingController();
   bool _saldoInicializado = false;
   String? _archivoNombre;
+  bool _editandoCuenta = false;
+  double? _saldoExistente;
+
+  void _prepararEdicion(CuentaBancaria c) {
+    _bancoCtrl.text = c.banco;
+    _titularCtrl.text = c.titular ?? '';
+    _tipoCuenta = c.tipoCuenta;
+    _cbuCtrl.text = c.cbu;
+    _aliasCtrl.text = c.alias ?? '';
+    _saldoExistente = c.saldoActual;
+  }
 
   @override
   void didChangeDependencies() {
@@ -119,6 +132,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
   @override
   void dispose() {
     _bancoCtrl.dispose();
+    _titularCtrl.dispose();
     _cbuCtrl.dispose();
     _aliasCtrl.dispose();
     _saldoCtrl.dispose();
@@ -133,10 +147,11 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
     final cuenta = CuentaBancaria(
       id: 'cuenta_principal',
       banco: _bancoCtrl.text.trim(),
+      titular: _titularCtrl.text.trim().isEmpty ? null : _titularCtrl.text.trim(),
       tipoCuenta: _tipoCuenta!,
       cbu: _cbuCtrl.text.trim(),
       alias: _aliasCtrl.text.trim().isEmpty ? null : _aliasCtrl.text.trim(),
-      saldoActual: 0,
+      saldoActual: _saldoExistente ?? 0,
       activa: true,
       fechaActualizacion: DateTime.now(),
     );
@@ -148,11 +163,17 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
         backgroundColor: AppTheme.rojoGasto,
       ));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Cuenta configurada correctamente'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_editandoCuenta
+            ? 'Datos actualizados correctamente'
+            : 'Cuenta configurada correctamente'),
         backgroundColor: AppTheme.verdeIngreso,
       ));
-      setState(() => _saldoInicializado = false);
+      setState(() {
+        _saldoInicializado = false;
+        _editandoCuenta = false;
+        _saldoExistente = null;
+      });
     }
   }
 
@@ -244,10 +265,11 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
           fontWeight: FontWeight.w600,
         ),
         title: const Text('Cuenta Bancaria'),
+        actions: const [AccionAuthWidget()],
       ),
       body: provider.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : cuenta == null
+          : (cuenta == null || _editandoCuenta)
               ? _buildSinCuenta(esAdmin, provider.isSaving)
               : _buildConCuenta(cuenta, esAdmin, provider),
     );
@@ -284,9 +306,9 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Configurar cuenta bancaria',
-              style: TextStyle(
+            Text(
+              _editandoCuenta ? 'Editar datos de la cuenta' : 'Configurar cuenta bancaria',
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textoPrincipal,
@@ -311,6 +333,15 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? 'Ingresá el nombre del banco'
                           : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _titularCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Titular de la cuenta (opcional)',
+                        hintText: 'Nombre como figura en el banco',
+                      ),
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
@@ -369,8 +400,20 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: AppTheme.blanco),
                     )
-                  : const Text('Configurar cuenta'),
+                  : Text(_editandoCuenta ? 'Guardar cambios' : 'Configurar cuenta'),
             ),
+            if (_editandoCuenta) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: isSaving
+                    ? null
+                    : () => setState(() {
+                          _editandoCuenta = false;
+                          _saldoExistente = null;
+                        }),
+                child: const Text('Cancelar'),
+              ),
+            ],
           ],
         ),
       ),
@@ -390,8 +433,21 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _InfoCuentaCard(cuenta: cuenta),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           if (esAdmin) ...[
+            OutlinedButton.icon(
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              label: const Text('Editar datos de la cuenta'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.azulMedio,
+                side: const BorderSide(color: AppTheme.azulMedio),
+              ),
+              onPressed: () {
+                _prepararEdicion(cuenta);
+                setState(() => _editandoCuenta = true);
+              },
+            ),
+            const SizedBox(height: 16),
             _ActualizarSaldoCard(
               formKey: _saldoFormKey,
               saldoCtrl: _saldoCtrl,
@@ -432,6 +488,56 @@ class _InfoCuentaCard extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Datos de la cuenta',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textoPrincipal,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.copy_all, size: 18),
+                  color: AppTheme.azulMedio,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Copiar todos los datos',
+                  onPressed: () async {
+                    final buf = StringBuffer();
+                    buf.writeln('Banco: ${cuenta.banco}');
+                    if (cuenta.titular != null && cuenta.titular!.isNotEmpty) {
+                      buf.writeln('Titular: ${cuenta.titular}');
+                    }
+                    buf.writeln('Tipo: ${cuenta.tipoCuenta}');
+                    buf.writeln('CBU: ${cuenta.cbu}');
+                    if (cuenta.alias != null && cuenta.alias!.isNotEmpty) {
+                      buf.writeln('Alias: ${cuenta.alias}');
+                    }
+                    await Clipboard.setData(
+                        ClipboardData(text: buf.toString().trimRight()));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.check_circle,
+                                  color: AppTheme.verdeIngreso, size: 18),
+                              SizedBox(width: 8),
+                              Text('Datos de la cuenta copiados'),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             const Icon(Icons.account_balance,
                 size: 36, color: AppTheme.azulMedio),
             const SizedBox(height: 12),
@@ -449,30 +555,97 @@ class _InfoCuentaCard extends StatelessWidget {
               style: const TextStyle(
                   color: AppTheme.textoSecundario, fontSize: 13),
             ),
+            if (cuenta.titular != null && cuenta.titular!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                cuenta.titular!,
+                style: const TextStyle(
+                    color: AppTheme.textoSecundario, fontSize: 13),
+              ),
+            ],
             const SizedBox(height: 12),
             const Divider(),
             const SizedBox(height: 12),
-            _InfoRow(label: 'CBU', valor: cuenta.cbu),
+            _CopiableRow(label: 'CBU', valor: cuenta.cbu, snackMsg: 'CBU copiado'),
             if (cuenta.alias != null && cuenta.alias!.isNotEmpty) ...[
               const SizedBox(height: 6),
-              _AliasRow(alias: cuenta.alias!),
+              _CopiableRow(
+                label: 'Alias',
+                valor: cuenta.alias!,
+                snackMsg: 'Alias copiado: ${cuenta.alias!}',
+              ),
             ],
             const SizedBox(height: 20),
-            const Text(
-              'Saldo actual',
-              style: TextStyle(
-                color: AppTheme.textoSecundario,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Saldo actual',
+                  style: TextStyle(
+                    color: AppTheme.textoSecundario,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 14),
+                  color: AppTheme.textoSecundario,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Copiar saldo',
+                  onPressed: () async {
+                    final saldoStr = saldo == saldo.truncateToDouble()
+                        ? saldo.toInt().toString()
+                        : saldo.toStringAsFixed(2);
+                    await Clipboard.setData(ClipboardData(text: saldoStr));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.check_circle,
+                                  color: AppTheme.verdeIngreso, size: 18),
+                              SizedBox(width: 8),
+                              Text('Saldo copiado al portapapeles'),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 4),
-            Text(
-              '\$${saldoFormat.format(saldo)}',
-              style: TextStyle(
-                fontSize: 38,
-                fontWeight: FontWeight.w700,
-                color: saldo >= 0 ? AppTheme.verdeIngreso : AppTheme.rojoGasto,
+            GestureDetector(
+              onTap: () async {
+                final saldoStr = saldo == saldo.truncateToDouble()
+                    ? saldo.toInt().toString()
+                    : saldo.toStringAsFixed(2);
+                await Clipboard.setData(ClipboardData(text: saldoStr));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Row(
+                        children: [
+                          Icon(Icons.check_circle,
+                              color: AppTheme.verdeIngreso, size: 18),
+                          SizedBox(width: 8),
+                          Text('Saldo copiado al portapapeles'),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: Text(
+                '\$${saldoFormat.format(saldo)}',
+                style: TextStyle(
+                  fontSize: 38,
+                  fontWeight: FontWeight.w700,
+                  color: saldo >= 0 ? AppTheme.verdeIngreso : AppTheme.rojoGasto,
+                ),
               ),
             ),
             const SizedBox(height: 4),
@@ -493,22 +666,30 @@ class _InfoCuentaCard extends StatelessWidget {
       '${d.year}';
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.valor});
+// ── Fila copiable (CBU, alias, titular) ──────────────────────────────────────
+
+class _CopiableRow extends StatelessWidget {
+  const _CopiableRow({
+    required this.label,
+    required this.valor,
+    required this.snackMsg,
+  });
 
   final String label;
   final String valor;
+  final String snackMsg;
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           '$label: ',
           style: const TextStyle(
               color: AppTheme.textoSecundario, fontSize: 13),
         ),
-        Expanded(
+        Flexible(
           child: Text(
             valor,
             style: const TextStyle(
@@ -519,63 +700,30 @@ class _InfoRow extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-      ],
-    );
-  }
-}
-
-// ── Alias con copia ───────────────────────────────────────────────────────────
-
-class _AliasRow extends StatelessWidget {
-  const _AliasRow({required this.alias});
-
-  final String alias;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Text(
-          'Alias: ',
-          style: TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
-        ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              alias,
-              style: const TextStyle(
-                color: AppTheme.textoPrincipal,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(width: 4),
-            IconButton(
-              icon: const Icon(Icons.copy, size: 16),
-              color: AppTheme.azulMedio,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              tooltip: 'Copiar alias',
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: alias));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Row(
-                        children: [
-                          const Icon(Icons.check_circle,
-                              color: AppTheme.verdeIngreso, size: 18),
-                          const SizedBox(width: 8),
-                          Text('Alias copiado: $alias'),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-              },
-            ),
-          ],
+        const SizedBox(width: 2),
+        IconButton(
+          icon: const Icon(Icons.copy, size: 16),
+          color: AppTheme.azulMedio,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          tooltip: 'Copiar $label',
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: valor));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.check_circle,
+                          color: AppTheme.verdeIngreso, size: 18),
+                      const SizedBox(width: 8),
+                      Text(snackMsg),
+                    ],
+                  ),
+                ),
+              );
+            }
+          },
         ),
       ],
     );

@@ -10,6 +10,7 @@ class AuthProvider extends ChangeNotifier {
   String? _error;
   String? rol;
   Map<String, dynamic>? datosUsuario;
+  Map<String, dynamic>? datosPersona;
 
   AuthProvider() {
     _currentUser = _auth.currentUser;
@@ -21,6 +22,7 @@ class AuthProvider extends ChangeNotifier {
       } else {
         rol = null;
         datosUsuario = null;
+        datosPersona = null;
         notifyListeners();
       }
     });
@@ -40,46 +42,131 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _cargarDatosUsuario(String uid) async {
     final firestore = FirebaseFirestore.instance;
     try {
-      // 1. Primary: document with auth uid as ID (new registrations)
+      // 1. Primary: document with auth uid as ID (correct path for Firestore rules)
       final byId = await firestore.collection('usuarios').doc(uid).get();
       if (byId.exists) {
-        datosUsuario = {
-          ...byId.data()!,
-          'id': byId.id,
-        };
+        datosUsuario = {...byId.data()!, 'id': byId.id};
         rol = datosUsuario!['rol'] as String?;
+        await _cargarPersona(firestore);
         notifyListeners();
         return;
       }
 
-      // 2. By authUid field
+      // 2. Legacy: document has authUid field but wrong document ID — auto-migrate
+      Map<String, dynamic>? datos;
       final byAuthUid = await firestore
           .collection('usuarios')
           .where('authUid', isEqualTo: uid)
           .limit(1)
           .get();
       if (byAuthUid.docs.isNotEmpty) {
-        final doc = byAuthUid.docs.first;
-        datosUsuario = {...doc.data(), 'id': doc.id};
-        rol = datosUsuario!['rol'] as String?;
-        notifyListeners();
-        return;
+        datos = byAuthUid.docs.first.data();
       }
 
-      // 3. Fallback: any active user (temporary during migration)
-      final fallback = await firestore
-          .collection('usuarios')
-          .where('activo', isEqualTo: true)
-          .limit(1)
-          .get();
-      if (fallback.docs.isNotEmpty) {
-        final doc = fallback.docs.first;
-        datosUsuario = {...doc.data(), 'id': doc.id};
+      // 3. Last resort: any active user with no authUid set (initial manual setup)
+      if (datos == null) {
+        final fallback = await firestore
+            .collection('usuarios')
+            .where('activo', isEqualTo: true)
+            .limit(1)
+            .get();
+        if (fallback.docs.isNotEmpty) {
+          final d = fallback.docs.first.data();
+          final existingAuthUid = d['authUid'] as String?;
+          // Only use if authUid is unset or matches — avoids cross-user collision
+          if (existingAuthUid == null || existingAuthUid == uid) {
+            datos = d;
+          }
+        }
+      }
+
+      if (datos != null) {
+        // Auto-migrate: create document at correct path so Firestore rules work
+        try {
+          await firestore.collection('usuarios').doc(uid).set({
+            ...datos,
+            'authUid': uid,
+          });
+          // Reload from the now-correct path
+          final migrated =
+              await firestore.collection('usuarios').doc(uid).get();
+          if (migrated.exists) {
+            datosUsuario = {...migrated.data()!, 'id': migrated.id};
+            rol = datosUsuario!['rol'] as String?;
+            await _cargarPersona(firestore);
+            notifyListeners();
+            return;
+          }
+        } catch (_) {
+          // Migration write failed (permissions) — use in-memory data
+        }
+        datosUsuario = {...datos, 'id': uid};
         rol = datosUsuario!['rol'] as String?;
+        await _cargarPersona(firestore);
       }
     } catch (_) {
       // Error loading role — no permissions assigned
     }
+    notifyListeners();
+  }
+
+  Future<void> _cargarPersona(FirebaseFirestore firestore) async {
+    final personaId = datosUsuario?['personaId'] as String?;
+    if (personaId == null) return;
+    try {
+      final doc = await firestore.collection('personas').doc(personaId).get();
+      if (doc.exists) {
+        datosPersona = {...doc.data()!, 'id': doc.id};
+      }
+    } catch (_) {
+      // No permissions or persona not found
+    }
+  }
+
+  Future<void> actualizarPerfil({
+    String? nombre,
+    String? apellido,
+    String? telefono,
+    String? direccion,
+    String? fotoUrl,
+  }) async {
+    final uid = currentUser?.uid;
+    if (uid == null) return;
+
+    final firestore = FirebaseFirestore.instance;
+    String? personaId = datosUsuario?['personaId'] as String?;
+
+    final updates = <String, dynamic>{};
+    if (nombre != null) updates['nombre'] = nombre;
+    if (apellido != null) updates['apellido'] = apellido;
+    if (telefono != null) updates['telefono'] = telefono;
+    if (direccion != null) updates['direccion'] = direccion;
+    if (fotoUrl != null) updates['fotoUrl'] = fotoUrl;
+
+    if (updates.isEmpty) return;
+
+    if (personaId == null || personaId.isEmpty) {
+      final personaRef = firestore.collection('personas').doc();
+      await personaRef.set({
+        'nombre': nombre ?? '',
+        'apellido': apellido ?? '',
+        'telefono': telefono ?? '',
+        'direccion': direccion ?? '',
+        'email': currentUser?.email ?? '',
+        'activo': true,
+        'fechaCreacion': FieldValue.serverTimestamp(),
+      });
+      await firestore
+          .collection('usuarios')
+          .doc(uid)
+          .update({'personaId': personaRef.id});
+      personaId = personaRef.id;
+      datosUsuario = {...?datosUsuario, 'personaId': personaId};
+    } else {
+      await firestore.collection('personas').doc(personaId).update(updates);
+    }
+
+    datosPersona = {...?datosPersona, ...updates};
     notifyListeners();
   }
 

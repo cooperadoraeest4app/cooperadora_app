@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../domain/models/cuenta_bancaria.dart';
 import '../../domain/models/movimiento_bancario.dart';
 import '../providers/cuenta_bancaria_provider.dart';
@@ -76,6 +77,7 @@ class CuentaBancariaPublicaScreen extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
         title: const Text('Cuenta Bancaria'),
+        actions: const [AccionAuthWidget()],
       ),
       body: provider.isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -146,16 +148,73 @@ class _SaldoCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
         child: Column(
           children: [
-            const Text(
-              'Saldo actual',
-              style: TextStyle(
-                color: AppTheme.textoSecundario,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Saldo actual',
+                  style: TextStyle(
+                    color: AppTheme.textoSecundario,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 14),
+                  color: AppTheme.textoSecundario,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Copiar saldo',
+                  onPressed: () async {
+                    final s = cuenta.saldoActual;
+                    final saldoStr = s == s.truncateToDouble()
+                        ? s.toInt().toString()
+                        : s.toStringAsFixed(2);
+                    await Clipboard.setData(ClipboardData(text: saldoStr));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.check_circle,
+                                  color: AppTheme.verdeIngreso, size: 18),
+                              SizedBox(width: 8),
+                              Text('Saldo copiado al portapapeles'),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 6),
-            _buildSaldoWidget(cuenta.saldoActual),
+            GestureDetector(
+              onTap: () async {
+                final s = cuenta.saldoActual;
+                final saldoStr = s == s.truncateToDouble()
+                    ? s.toInt().toString()
+                    : s.toStringAsFixed(2);
+                await Clipboard.setData(ClipboardData(text: saldoStr));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Row(
+                        children: [
+                          Icon(Icons.check_circle,
+                              color: AppTheme.verdeIngreso, size: 18),
+                          SizedBox(width: 8),
+                          Text('Saldo copiado al portapapeles'),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: _buildSaldoWidget(cuenta.saldoActual),
+            ),
             const SizedBox(height: 4),
             Text(
               'Actualizado: ${_fmtFecha(cuenta.fechaActualizacion)}',
@@ -178,33 +237,78 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cbu = cuenta.cbu;
-    final cbuMask =
-        'CBU ····${cbu.length >= 4 ? cbu.substring(cbu.length - 4) : cbu}';
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Datos de la cuenta',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textoPrincipal,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Datos de la cuenta',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textoPrincipal,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.copy_all, size: 18),
+                  color: AppTheme.azulMedio,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Copiar todos los datos',
+                  onPressed: () async {
+                    final buf = StringBuffer();
+                    buf.writeln('Banco: ${cuenta.banco}');
+                    if (cuenta.titular != null && cuenta.titular!.isNotEmpty) {
+                      buf.writeln('Titular: ${cuenta.titular}');
+                    }
+                    buf.writeln('Tipo: ${cuenta.tipoCuenta}');
+                    buf.writeln('CBU: ${cuenta.cbu}');
+                    if (cuenta.alias != null && cuenta.alias!.isNotEmpty) {
+                      buf.writeln('Alias: ${cuenta.alias}');
+                    }
+                    await Clipboard.setData(
+                        ClipboardData(text: buf.toString().trimRight()));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.check_circle,
+                                  color: AppTheme.verdeIngreso, size: 18),
+                              SizedBox(width: 8),
+                              Text('Datos de la cuenta copiados'),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             _InfoRow(label: 'Banco', valor: cuenta.banco),
+            if (cuenta.titular != null && cuenta.titular!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _InfoRow(label: 'Titular', valor: cuenta.titular!),
+            ],
             const SizedBox(height: 6),
             _InfoRow(label: 'Tipo', valor: cuenta.tipoCuenta),
             const SizedBox(height: 6),
-            _InfoRow(label: 'CBU', valor: cbuMask),
+            _CopiableRow(label: 'CBU', valor: cuenta.cbu, snackMsg: 'CBU copiado'),
             if (cuenta.alias != null && cuenta.alias!.isNotEmpty) ...[
               const SizedBox(height: 6),
-              _AliasRow(alias: cuenta.alias!),
+              _CopiableRow(
+                label: 'Alias',
+                valor: cuenta.alias!,
+                snackMsg: 'Alias copiado: ${cuenta.alias!}',
+              ),
             ],
           ],
         ),
@@ -244,58 +348,64 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-// ── Alias con copia ───────────────────────────────────────────────────────────
+// ── Fila copiable (CBU, alias, titular) ──────────────────────────────────────
 
-class _AliasRow extends StatelessWidget {
-  const _AliasRow({required this.alias});
+class _CopiableRow extends StatelessWidget {
+  const _CopiableRow({
+    required this.label,
+    required this.valor,
+    required this.snackMsg,
+  });
 
-  final String alias;
+  final String label;
+  final String valor;
+  final String snackMsg;
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
-          'Alias: ',
-          style: TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
+        Text(
+          '$label: ',
+          style: const TextStyle(
+              color: AppTheme.textoSecundario, fontSize: 13),
         ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              alias,
-              style: const TextStyle(
-                color: AppTheme.textoPrincipal,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+        Flexible(
+          child: Text(
+            valor,
+            style: const TextStyle(
+              color: AppTheme.textoPrincipal,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
             ),
-            const SizedBox(width: 4),
-            IconButton(
-              icon: const Icon(Icons.copy, size: 16),
-              color: AppTheme.azulMedio,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              tooltip: 'Copiar alias',
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: alias));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Row(
-                        children: [
-                          const Icon(Icons.check_circle,
-                              color: AppTheme.verdeIngreso, size: 18),
-                          const SizedBox(width: 8),
-                          Text('Alias copiado: $alias'),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-              },
-            ),
-          ],
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 2),
+        IconButton(
+          icon: const Icon(Icons.copy, size: 16),
+          color: AppTheme.azulMedio,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          tooltip: 'Copiar $label',
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: valor));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.check_circle,
+                          color: AppTheme.verdeIngreso, size: 18),
+                      const SizedBox(width: 8),
+                      Text(snackMsg),
+                    ],
+                  ),
+                ),
+              );
+            }
+          },
         ),
       ],
     );

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/proyecto.dart';
 import '../providers/proyecto_provider.dart';
@@ -141,6 +142,7 @@ class _ProyectosScreenState extends State<ProyectosScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Proyectos'),
+        actions: const [AccionAuthWidget()],
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppTheme.blanco,

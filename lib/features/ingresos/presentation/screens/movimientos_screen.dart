@@ -5,12 +5,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/data/categorias_data.dart';
 import '../../../../shared/utils/metodo_pago_icon.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../admin/presentation/providers/categoria_provider.dart';
-import '../../../admin/presentation/screens/admin_panel_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
+import '../providers/frecuencia_provider.dart';
 import '../providers/movimientos_provider.dart';
 import 'agregar_movimiento_screen.dart';
 
@@ -43,6 +43,9 @@ class _MovimientoUnificado {
   final String usuarioId;
   final DateTime fechaCreacion;
   final String? comprobante;
+  final bool recurrente;
+  final String? frecuenciaId;
+  final DateTime? proximaFecha;
   final Ingreso? ingreso;
   final Gasto? gasto;
 
@@ -58,6 +61,9 @@ class _MovimientoUnificado {
     required this.usuarioId,
     required this.fechaCreacion,
     this.comprobante,
+    this.recurrente = false,
+    this.frecuenciaId,
+    this.proximaFecha,
     this.ingreso,
     this.gasto,
   });
@@ -75,6 +81,9 @@ class _MovimientoUnificado {
         usuarioId: i.usuarioId,
         fechaCreacion: i.fechaCreacion,
         comprobante: i.comprobante,
+        recurrente: i.recurrente,
+        frecuenciaId: i.frecuenciaId,
+        proximaFecha: i.proximaFecha,
         ingreso: i,
       );
 
@@ -90,6 +99,9 @@ class _MovimientoUnificado {
         usuarioId: g.usuarioId,
         fechaCreacion: g.fechaCreacion,
         comprobante: g.comprobante,
+        recurrente: g.recurrente,
+        frecuenciaId: g.frecuenciaId,
+        proximaFecha: g.proximaFecha,
         gasto: g,
       );
 }
@@ -117,7 +129,7 @@ class _MovimientosScreenState extends State<MovimientosScreen> {
         title: Text(widget.proyectoId != null
             ? 'Movimientos del proyecto'
             : 'Movimientos'),
-        actions: [_AccionAuth()],
+        actions: const [AccionAuthWidget()],
       ),
       body: StreamBuilder<List<Ingreso>>(
         stream: provider.ingresos,
@@ -450,6 +462,7 @@ class _MovimientoTileState extends State<_MovimientoTile> {
             iconoColor: AppTheme.textoSecundario,
             texto: _formatFechaHora(item.fechaCreacion),
           ),
+          if (item.recurrente) _buildRecurrencia(context, item),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -502,6 +515,35 @@ class _MovimientoTileState extends State<_MovimientoTile> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildRecurrencia(BuildContext context, _MovimientoUnificado item) {
+    final frecuencias = context.watch<FrecuenciaProvider>().frecuencias;
+    final fid = item.frecuenciaId;
+    final nombreFrecuencia = frecuencias.isEmpty || fid == null
+        ? ''
+        : frecuencias
+            .firstWhere((f) => f.id == fid,
+                orElse: () =>
+                    FrecuenciaRecurrencia(id: '', nombre: '', diasIntervalo: 0))
+            .nombre;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (nombreFrecuencia.isNotEmpty)
+          _DetalleRow(
+            icono: Icons.repeat,
+            iconoColor: AppTheme.azulMedio,
+            texto: 'Recurrente · $nombreFrecuencia',
+          ),
+        if (item.proximaFecha != null)
+          _DetalleRow(
+            icono: Icons.event,
+            iconoColor: AppTheme.azulMedio,
+            texto: 'Próxima fecha: ${_formatFecha(item.proximaFecha!)}',
+          ),
+      ],
     );
   }
 
@@ -598,95 +640,6 @@ class _EmptyState extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AccionAuth extends StatelessWidget {
-  const _AccionAuth();
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-
-    if (!auth.isLoggedIn) {
-      return IconButton(
-        icon: const Icon(Icons.login),
-        tooltip: 'Ingresar',
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        ),
-      );
-    }
-
-    final email = auth.currentUser?.email ?? '';
-    final inicial = email.isNotEmpty ? email[0].toUpperCase() : '?';
-
-    return PopupMenuButton<String>(
-      offset: const Offset(0, 48),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: CircleAvatar(
-          backgroundColor: AppTheme.celesteAccento,
-          radius: 17,
-          child: Text(
-            inicial,
-            style: const TextStyle(
-              color: AppTheme.azulOscuro,
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
-          ),
-        ),
-      ),
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          enabled: false,
-          child: Text(
-            email,
-            style: const TextStyle(
-              color: AppTheme.textoSecundario,
-              fontSize: 12,
-            ),
-          ),
-        ),
-        if (auth.esAdmin || auth.esAuditor) ...[
-          const PopupMenuDivider(),
-          const PopupMenuItem(
-            value: 'admin',
-            child: Row(
-              children: [
-                Icon(Icons.admin_panel_settings,
-                    size: 18, color: AppTheme.azulMedio),
-                SizedBox(width: 8),
-                Text('Panel de administración'),
-              ],
-            ),
-          ),
-        ],
-        const PopupMenuDivider(),
-        const PopupMenuItem(
-          value: 'logout',
-          child: Row(
-            children: [
-              Icon(Icons.logout, size: 18, color: AppTheme.rojoGasto),
-              SizedBox(width: 8),
-              Text('Cerrar sesión'),
-            ],
-          ),
-        ),
-      ],
-      onSelected: (value) {
-        if (value == 'admin') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminPanelScreen()),
-          );
-        } else if (value == 'logout') {
-          context.read<AuthProvider>().logout();
-        }
-      },
     );
   }
 }

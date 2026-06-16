@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../providers/invitacion_provider.dart';
 
 class InvitacionesScreen extends StatelessWidget {
@@ -23,6 +24,7 @@ class InvitacionesScreen extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
         title: const Text('Invitaciones'),
+        actions: const [AccionAuthWidget()],
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: provider.invitaciones,

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../admin/presentation/providers/metodo_pago_provider.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/repositories/cuota_repository.dart';
 import '../../domain/models/cuota.dart';
@@ -78,6 +79,7 @@ class _SociosScreenState extends State<SociosScreen>
         backgroundColor: AppTheme.azulOscuro,
         foregroundColor: Colors.white,
         title: const Text('Socios'),
+        actions: const [AccionAuthWidget()],
         bottom: TabBar(
           controller: _tabCtrl,
           indicatorColor: Colors.white,

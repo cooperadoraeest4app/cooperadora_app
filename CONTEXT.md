@@ -416,3 +416,47 @@ Agregado entre `solo_lectura` y `editor`. Acceso de solo lectura más visibilida
 - Botón editar solo para Editor/Admin
 - Comprobante visible también en pantalla pública si el movimiento es público
 
+
+---
+
+## 13. Actualizaciones Recientes
+
+### Reglas de Seguridad Firestore
+Archivo `firestore.rules` implementado y desplegado. Resumen:
+- **Lectura pública:** configuracion, categorias, tipos_proyecto, metodos_pago, cuenta_bancaria, movimientos_bancarios, proyectos, items_proyecto, ingresos, gastos, frecuencias_recurrencia
+- **Solo autenticados:** usuarios, personas, socios, integrantes, cuotas, tarifas_cuota, tipos_cuota, invitaciones, proveedores, presupuestos_proveedor
+- **Solo Auditor/Admin:** log_cambios
+- **Solo Admin:** escritura en configuracion, categorias, metodos_pago, cuenta_bancaria, tarifas_cuota, tipos_cuota, frecuencias_recurrencia
+- **Editor y Admin:** escritura en ingresos, gastos, proyectos, items_proyecto, socios, integrantes, cuotas, personas, proveedores
+- **Verificación de usuario activo:** `estaActivo()` en todas las escrituras de Editor
+
+### Módulos implementados adicionales
+- **Firebase Storage:** comprobantes en ingresos, gastos y cuotas. Path: `comprobantes/{tipo}/{año}/{mes}/`
+- **Log de cambios:** colección `log_cambios` con campos entidadTipo, entidadId, usuarioId, fecha, camposAnteriores, camposNuevos, accion. Visible para Admin y Auditor.
+- **Rol Auditor:** nuevo rol entre solo_lectura y editor. Acceso de solo lectura + log de cambios.
+- **Items expandibles en movimientos:** detalle inline con categoría, método de pago, donante, comprobante, quién cargó, botones editar/eliminar según rol.
+- **Edición de movimientos:** formulario reutilizable con modo edición.
+- **Recurrencia:** campos recurrente, frecuenciaId, proximaFecha en Ingreso y Gasto. Filtro en listado.
+- **Detalle proyecto público:** pantalla de solo lectura con ítems y movimientos del proyecto.
+- **Comprobantes públicos:** visibles y descargables sin login.
+
+### Estado actual de implementación
+**Completado ✅**
+- Toda la infraestructura Firebase (Auth, Firestore, Storage, Rules)
+- Módulo Ingresos y Gastos completo con edición, log, recurrencia, comprobantes
+- Módulo Cuenta Bancaria completo con historial y vista pública
+- Módulo Proyectos completo con detalle público e ítems
+- Módulo Socios y Cuotas completo
+- Panel de administración completo
+- Sistema de autenticación con invitaciones
+- Control de roles (admin, editor, solo_lectura, auditor, consultante)
+- Pantalla pública (HomeScreen) completa
+- Log de cambios con auditoría
+
+**Pendiente 🔲**
+- Gráficos y reportes comparativos
+- Notificaciones push para Android
+- Build para Android
+- Reglas de seguridad Firebase Storage
+- Módulo Votaciones (requiere decisiones institucionales)
+

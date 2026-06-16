@@ -6,9 +6,10 @@ class CuentaBancariaRepository {
   static const _docId = 'cuenta_principal';
 
   final _col = FirebaseFirestore.instance.collection('cuenta_bancaria');
-
-  CollectionReference<Map<String, dynamic>> get _movCol =>
-      _col.doc(_docId).collection('movimientos');
+  final _movCol = FirebaseFirestore.instance
+      .collection('cuenta_bancaria')
+      .doc('cuenta_principal')
+      .collection('movimientos');
 
   Stream<CuentaBancaria?> obtener() {
     return _col.doc(_docId).snapshots().map((snap) {

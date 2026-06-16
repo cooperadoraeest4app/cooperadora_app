@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../providers/categoria_provider.dart';
 
 const _kIconos = <(String, IconData)>[
@@ -93,6 +94,7 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
             fontWeight: FontWeight.w600,
           ),
           title: const Text('Categorías'),
+          actions: const [AccionAuthWidget()],
           bottom: const TabBar(
             labelColor: AppTheme.blanco,
             unselectedLabelColor: AppTheme.celesteAccento,

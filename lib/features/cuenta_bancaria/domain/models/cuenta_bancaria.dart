@@ -5,6 +5,7 @@ const _unset = Object();
 class CuentaBancaria {
   final String id;
   final String banco;
+  final String? titular;
   final String tipoCuenta;
   final String cbu;
   final String? alias;
@@ -16,6 +17,7 @@ class CuentaBancaria {
   const CuentaBancaria({
     required this.id,
     required this.banco,
+    this.titular,
     required this.tipoCuenta,
     required this.cbu,
     this.alias,
@@ -27,6 +29,7 @@ class CuentaBancaria {
 
   Map<String, dynamic> toMap() => {
         'banco': banco,
+        'titular': titular,
         'tipoCuenta': tipoCuenta,
         'cbu': cbu,
         'alias': alias,
@@ -40,6 +43,7 @@ class CuentaBancaria {
       CuentaBancaria(
         id: id,
         banco: map['banco'] as String? ?? '',
+        titular: map['titular'] as String?,
         tipoCuenta: map['tipoCuenta'] as String? ?? '',
         cbu: map['cbu'] as String? ?? '',
         alias: map['alias'] as String?,
@@ -53,6 +57,7 @@ class CuentaBancaria {
 
   CuentaBancaria copyWith({
     String? banco,
+    Object? titular = _unset,
     String? tipoCuenta,
     String? cbu,
     Object? alias = _unset,
@@ -64,6 +69,7 @@ class CuentaBancaria {
       CuentaBancaria(
         id: id,
         banco: banco ?? this.banco,
+        titular: titular == _unset ? this.titular : titular as String?,
         tipoCuenta: tipoCuenta ?? this.tipoCuenta,
         cbu: cbu ?? this.cbu,
         alias: alias == _unset ? this.alias : alias as String?,

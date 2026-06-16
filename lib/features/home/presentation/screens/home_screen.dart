@@ -6,10 +6,9 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/data/categorias_data.dart';
 import '../../../admin/presentation/providers/configuracion_provider.dart';
 import '../../../cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
-import '../../../admin/presentation/screens/admin_panel_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_publica_screen.dart';
-import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
 import '../../../ingresos/presentation/providers/movimientos_provider.dart';
@@ -18,7 +17,7 @@ import '../../../ingresos/presentation/screens/movimientos_screen.dart';
 import '../../../proyectos/domain/models/proyecto.dart';
 import '../../../proyectos/presentation/providers/proyecto_provider.dart';
 import '../../../proyectos/presentation/screens/proyectos_screen.dart';
-import '../../../proyectos/presentation/screens/proyecto_publico_detalle_screen.dart';
+import '../../../proyectos/presentation/screens/proyecto_detalle_screen.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -140,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: null,
-        actions: const [_AccionAuth()],
+        actions: const [AccionAuthWidget()],
       ),
       body: StreamBuilder<List<Ingreso>>(
         stream: provider.ingresos,
@@ -574,7 +573,7 @@ class _ProyectoCard extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ProyectoPublicoDetalleScreen(proyecto: proyecto),
+              builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
             ),
           ),
           child: Padding(
@@ -869,104 +868,3 @@ class _BotonesAccionRapida extends StatelessWidget {
   }
 }
 
-// ── Auth actions ──────────────────────────────────────────────────────────────
-
-class _AccionAuth extends StatelessWidget {
-  const _AccionAuth();
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-
-    if (!auth.isLoggedIn) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 16),
-        child: OutlinedButton(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          ),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.white,
-            side: const BorderSide(color: Colors.white, width: 1),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(8)),
-            ),
-          ),
-          child: const Text('Ingresar'),
-        ),
-      );
-    }
-
-    final email = auth.currentUser?.email ?? '';
-    final inicial = email.isNotEmpty ? email[0].toUpperCase() : '?';
-
-    return PopupMenuButton<String>(
-      offset: const Offset(0, 48),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: CircleAvatar(
-          backgroundColor: AppTheme.celesteAccento,
-          radius: 17,
-          child: Text(
-            inicial,
-            style: const TextStyle(
-              color: AppTheme.azulOscuro,
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
-          ),
-        ),
-      ),
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          enabled: false,
-          child: Text(
-            email,
-            style: const TextStyle(
-              color: AppTheme.textoSecundario,
-              fontSize: 12,
-            ),
-          ),
-        ),
-        if (auth.esAdmin) ...[
-          const PopupMenuDivider(),
-          const PopupMenuItem(
-            value: 'admin',
-            child: Row(
-              children: [
-                Icon(Icons.admin_panel_settings,
-                    size: 18, color: AppTheme.azulMedio),
-                SizedBox(width: 8),
-                Text('Panel de administración'),
-              ],
-            ),
-          ),
-        ],
-        const PopupMenuDivider(),
-        const PopupMenuItem(
-          value: 'logout',
-          child: Row(
-            children: [
-              Icon(Icons.logout, size: 18, color: AppTheme.rojoGasto),
-              SizedBox(width: 8),
-              Text('Cerrar sesión'),
-            ],
-          ),
-        ),
-      ],
-      onSelected: (value) {
-        if (value == 'admin') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminPanelScreen()),
-          );
-        } else if (value == 'logout') {
-          context.read<AuthProvider>().logout();
-        }
-      },
-    );
-  }
-}

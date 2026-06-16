@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../../data/repositories/cuenta_bancaria_repository.dart';
 import '../../domain/models/cuenta_bancaria.dart';
@@ -16,6 +17,16 @@ class CuentaBancariaProvider extends ChangeNotifier {
   String? error;
 
   CuentaBancariaProvider() {
+    // Debug directo — sin pasar por repo
+    FirebaseFirestore.instance
+        .collection('movimientos_bancarios')
+        .orderBy('fechaCreacion', descending: true)
+        .snapshots()
+        .listen(
+          (snap) => print('Movimientos bancarios: ${snap.docs.length}'),
+          onError: (e) => print('Error movimientos_bancarios: $e'),
+        );
+
     _cuentaSub = _repo.obtener().listen(
       (c) {
         cuenta = c;
@@ -30,7 +41,15 @@ class CuentaBancariaProvider extends ChangeNotifier {
     );
     _movimientosSub = _repo.obtenerMovimientos().listen(
       (list) {
+        // ignore: avoid_print
+        print('Movimientos recibidos: ${list.length}');
         movimientos = list;
+        notifyListeners();
+      },
+      onError: (e) {
+        // ignore: avoid_print
+        print('Error stream movimientos_bancarios: $e');
+        error = e.toString();
         notifyListeners();
       },
     );

@@ -656,6 +656,12 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     final frecProvider = context.watch<FrecuenciaProvider>();
     final frecs = frecProvider.frecuencias;
 
+    if (_frecuenciaId != null &&
+        frecs.isNotEmpty &&
+        !frecs.any((f) => f.id == _frecuenciaId)) {
+      _frecuenciaId = null;
+    }
+
     DateTime? proximaFecha;
     if (_recurrente && _frecuenciaId != null) {
       final matches = frecs.where((f) => f.id == _frecuenciaId).toList();

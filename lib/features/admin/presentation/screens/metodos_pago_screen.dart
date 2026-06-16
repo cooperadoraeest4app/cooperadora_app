@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../providers/metodo_pago_provider.dart';
 
 class MetodosPagoScreen extends StatefulWidget {
@@ -45,6 +46,7 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
           fontWeight: FontWeight.w600,
         ),
         title: const Text('Métodos de pago'),
+        actions: const [AccionAuthWidget()],
       ),
       body: Builder(
         builder: (ctx) {

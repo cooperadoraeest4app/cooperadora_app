@@ -1,0 +1,150 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function estaAutenticado() {
+      return request.auth != null;
+    }
+
+    function obtenerRol() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol;
+    }
+
+    function usuarioExiste() {
+      return exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+
+    function esAdmin() {
+      return estaAutenticado() && usuarioExiste() && obtenerRol() == 'admin';
+    }
+
+    function esEditor() {
+      return estaAutenticado() && usuarioExiste() && (obtenerRol() == 'editor' || obtenerRol() == 'admin');
+    }
+
+    function esAuditor() {
+      return estaAutenticado() && usuarioExiste() && (obtenerRol() == 'auditor' || obtenerRol() == 'admin');
+    }
+
+    function estaActivo() {
+      return usuarioExiste() && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.activo == true;
+    }
+
+    // COLECCIONES PÚBLICAS (lectura sin autenticación)
+    match /configuracion/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    match /categorias/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    match /tipos_proyecto/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    match /metodos_pago/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    match /cuenta_bancaria/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    match /cuenta_bancaria/{cuentaId}/movimientos/{movId} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    match /movimientos_bancarios/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    match /proyectos/{doc} {
+      allow read: if true;
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /items_proyecto/{doc} {
+      allow read: if true;
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /ingresos/{doc} {
+      allow read: if true;
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /gastos/{doc} {
+      allow read: if true;
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /frecuencias_recurrencia/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    // COLECCIONES SOLO AUTENTICADOS
+    match /usuarios/{userId} {
+      allow read: if estaAutenticado();
+      allow write: if esAdmin() || (estaAutenticado() && request.auth.uid == userId);
+    }
+
+    match /personas/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /socios/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /integrantes/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /cuotas/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /tarifas_cuota/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esAdmin();
+    }
+
+    match /tipos_cuota/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esAdmin();
+    }
+
+    match /invitaciones/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esAdmin() || esEditor();
+    }
+
+    match /log_cambios/{doc} {
+      allow read: if esAuditor();
+      allow write: if estaAutenticado();
+    }
+
+    match /proveedores/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /presupuestos_proveedor/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esEditor() && estaActivo();
+    }
+  }
+}

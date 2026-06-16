@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dart';
 import '../../../socios/presentation/screens/socios_screen.dart';
@@ -112,6 +113,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           fontWeight: FontWeight.w600,
         ),
         title: const Text('Panel de Administración'),
+        actions: const [AccionAuthWidget()],
       ),
       body: ListView.separated(
         padding: const EdgeInsets.all(16),

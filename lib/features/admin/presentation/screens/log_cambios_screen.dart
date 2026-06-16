@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 
 class LogCambiosScreen extends StatefulWidget {
   const LogCambiosScreen({super.key});
@@ -14,6 +16,9 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
   DateTime? _desde;
   DateTime? _hasta;
 
+  // Stream base estable — no se recrea en cada setState
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _baseStream;
+
   static const _tipos = [
     ('todos', 'Todos'),
     ('ingreso', 'Ingresos'),
@@ -22,40 +27,43 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
     ('proyecto', 'Proyectos'),
   ];
 
-  Stream<List<Map<String, dynamic>>> get _stream {
-    return FirebaseFirestore.instance
+  @override
+  void initState() {
+    super.initState();
+    _baseStream = FirebaseFirestore.instance
         .collection('log_cambios')
         .orderBy('fecha', descending: true)
         .limit(200)
-        .snapshots()
-        .map((s) {
-      var docs = s.docs.map((d) => {...d.data(), 'id': d.id}).toList();
+        .snapshots();
+  }
 
-      if (_filtroTipo != 'todos') {
-        docs = docs
-            .where((d) => d['entidadTipo'] == _filtroTipo)
-            .toList();
-      }
-      if (_desde != null) {
-        docs = docs.where((d) {
-          final ts = d['fecha'];
-          if (ts == null) return false;
-          final dt = ts is Timestamp ? ts.toDate() : ts as DateTime;
-          return !dt.isBefore(_desde!);
-        }).toList();
-      }
-      if (_hasta != null) {
-        final limite = _hasta!.add(const Duration(days: 1));
-        docs = docs.where((d) {
-          final ts = d['fecha'];
-          if (ts == null) return false;
-          final dt = ts is Timestamp ? ts.toDate() : ts as DateTime;
-          return dt.isBefore(limite);
-        }).toList();
-      }
+  List<Map<String, dynamic>> _aplicarFiltros(
+      QuerySnapshot<Map<String, dynamic>> s) {
+    // ignore: avoid_print
+    print('Log cambios recibidos: ${s.docs.length}');
+    var docs = s.docs.map((d) => {...d.data(), 'id': d.id}).toList();
 
-      return docs;
-    });
+    if (_filtroTipo != 'todos') {
+      docs = docs.where((d) => d['entidadTipo'] == _filtroTipo).toList();
+    }
+    if (_desde != null) {
+      docs = docs.where((d) {
+        final ts = d['fecha'];
+        if (ts == null) return false;
+        final dt = ts is Timestamp ? ts.toDate() : ts as DateTime;
+        return !dt.isBefore(_desde!);
+      }).toList();
+    }
+    if (_hasta != null) {
+      final limite = _hasta!.add(const Duration(days: 1));
+      docs = docs.where((d) {
+        final ts = d['fecha'];
+        if (ts == null) return false;
+        final dt = ts is Timestamp ? ts.toDate() : ts as DateTime;
+        return dt.isBefore(limite);
+      }).toList();
+    }
+    return docs;
   }
 
   Future<void> _seleccionarDesde() async {
@@ -91,18 +99,33 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
           fontWeight: FontWeight.w600,
         ),
         title: const Text('Log de cambios'),
+        actions: const [AccionAuthWidget()],
       ),
       body: Column(
         children: [
           _buildFiltros(),
           Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _stream,
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _baseStream,
               builder: (context, snap) {
+                if (snap.hasError) {
+                  // ignore: avoid_print
+                  print('Error log_cambios StreamBuilder: ${snap.error}');
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Error al cargar: ${snap.error}',
+                        style: const TextStyle(color: AppTheme.rojoGasto),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final items = snap.data ?? [];
+                final items = _aplicarFiltros(snap.data!);
                 if (items.isEmpty) {
                   return Center(
                     child: Column(

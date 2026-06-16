@@ -36,7 +36,17 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MovimientosProvider()),
         ChangeNotifierProvider(create: (_) => ConfiguracionProvider()),
         ChangeNotifierProvider(create: (_) => InvitacionProvider()),
-        ChangeNotifierProvider(create: (_) => UsuariosProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, UsuariosProvider>(
+          create: (_) => UsuariosProvider(),
+          update: (_, auth, usuarios) {
+            if (auth.currentUser != null) {
+              usuarios!.iniciarSiNecesario();
+            } else {
+              usuarios!.limpiar();
+            }
+            return usuarios;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => CategoriaProvider()),
         ChangeNotifierProvider(create: (_) => MetodoPagoProvider()),
         ChangeNotifierProvider(create: (_) => CuentaBancariaProvider()),

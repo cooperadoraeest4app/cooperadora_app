@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../providers/configuracion_provider.dart';
 
 class ConfiguracionScreen extends StatefulWidget {
@@ -98,6 +99,7 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
           fontWeight: FontWeight.w600,
         ),
         title: const Text('Configuración'),
+        actions: const [AccionAuthWidget()],
       ),
       body: provider.isLoading
           ? const Center(child: CircularProgressIndicator())

@@ -1,1 +1,5 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"cooperadora-app","appId":"1:963645798761:android:615eae72a30ba7653e25f8","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"cooperadora-app","configurations":{"android":"1:963645798761:android:615eae72a30ba7653e25f8","ios":"1:963645798761:ios:50d081e853bbfa773e25f8","web":"1:963645798761:web:f7fcd7b692d2e6063e25f8","windows":"1:963645798761:web:1682c7a3fa724aba3e25f8"}}}}}}
+﻿{
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/usuarios_provider.dart';
 
@@ -24,9 +25,10 @@ class UsuariosScreen extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
         title: const Text('Usuarios'),
+        actions: const [AccionAuthWidget()],
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: provider.usuarios,
+        stream: provider.usuariosStream,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
