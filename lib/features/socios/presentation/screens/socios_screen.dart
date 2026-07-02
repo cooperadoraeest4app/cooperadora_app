@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../admin/domain/models/persona.dart';
 import '../../../admin/presentation/providers/metodo_pago_provider.dart';
+import '../../../admin/presentation/providers/persona_provider.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/repositories/cuota_repository.dart';
@@ -19,20 +20,12 @@ import '../../../../shared/utils/metodo_pago_icon.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-Color _colorTipo(String tipoId) => switch (tipoId) {
+Color _colorTipo(String tipoSocio) => switch (tipoSocio) {
       'activo' => AppTheme.azulMedio,
       'honorario' => const Color(0xFF8E44AD),
       'adherente' => const Color(0xFFE67E22),
       _ => AppTheme.textoSecundario,
     };
-
-Future<int> _contarIntegrantes(String socioId) async {
-  final snap = await FirebaseFirestore.instance
-      .collection('integrantes')
-      .where('socioId', isEqualTo: socioId)
-      .get();
-  return snap.docs.length;
-}
 
 // ── SociosScreen ──────────────────────────────────────────────────────────────
 
@@ -178,11 +171,16 @@ class _SociosTabState extends State<_SociosTab> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<SocioProvider>();
+    final personaProvider = context.watch<PersonaProvider>();
+
     final socios = _query.isEmpty
         ? provider.todos
-        : provider.todos
-            .where((s) => s.nombreDisplay.toLowerCase().contains(_query))
-            .toList();
+        : provider.todos.where((s) {
+            final nombre =
+                personaProvider.nombreCompleto(s.personaId).toLowerCase();
+            return nombre.contains(_query) ||
+                s.numeroSocio.toString().contains(_query);
+          }).toList();
 
     return Column(
       children: [
@@ -191,7 +189,7 @@ class _SociosTabState extends State<_SociosTab> {
           child: TextField(
             controller: _searchCtrl,
             decoration: InputDecoration(
-              hintText: 'Buscar por apellido o razón social…',
+              hintText: 'Buscar por nombre o número de socio…',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _query.isNotEmpty
                   ? IconButton(
@@ -232,8 +230,9 @@ class _SociosTabState extends State<_SociosTab> {
                       itemCount: socios.length,
                       itemBuilder: (_, i) => _SocioCard(
                         socio: socios[i],
-                        tipoNombre: provider
-                            .nombreTipo(socios[i].tipoSocioId),
+                        tipoNombre: provider.nombreTipo(socios[i].tipoSocio),
+                        nombrePersona: personaProvider
+                            .nombreCompleto(socios[i].personaId),
                         puedeGestionar: widget.puedeGestionar,
                       ),
                     ),
@@ -249,11 +248,13 @@ class _SocioCard extends StatefulWidget {
   const _SocioCard({
     required this.socio,
     required this.tipoNombre,
+    required this.nombrePersona,
     required this.puedeGestionar,
   });
 
   final Socio socio;
   final String tipoNombre;
+  final String nombrePersona;
   final bool puedeGestionar;
 
   @override
@@ -262,19 +263,17 @@ class _SocioCard extends StatefulWidget {
 
 class _SocioCardState extends State<_SocioCard> {
   late Future<bool> _alDiaFuture;
-  late Future<int> _integrantesFuture;
 
   @override
   void initState() {
     super.initState();
     _alDiaFuture = CuotaRepository().estaAlDia(widget.socio.id);
-    _integrantesFuture = _contarIntegrantes(widget.socio.id);
   }
 
   @override
   Widget build(BuildContext context) {
     final s = widget.socio;
-    final color = _colorTipo(s.tipoSocioId);
+    final color = _colorTipo(s.tipoSocio);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -293,13 +292,26 @@ class _SocioCardState extends State<_SocioCard> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      s.nombreDisplay,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                        color: AppTheme.textoPrincipal,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'N° ${s.numeroSocio}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textoSecundario,
+                          ),
+                        ),
+                        Text(
+                          widget.nombrePersona,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                            color: AppTheme.textoPrincipal,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   _Chip(
@@ -341,8 +353,10 @@ class _SocioCardState extends State<_SocioCard> {
                           context: context,
                           isScrollControlled: true,
                           useSafeArea: true,
-                          builder: (_) =>
-                              _ModalPagoRapido(socio: widget.socio),
+                          builder: (_) => _ModalPagoRapido(
+                            socio: widget.socio,
+                            nombre: widget.nombrePersona,
+                          ),
                         ),
                       ),
                     ),
@@ -364,19 +378,6 @@ class _SocioCardState extends State<_SocioCard> {
                         color: snap.data!
                             ? AppTheme.verdeIngreso
                             : AppTheme.amarilloAlerta,
-                      );
-                    },
-                  ),
-                  FutureBuilder<int>(
-                    future: _integrantesFuture,
-                    builder: (_, snap) {
-                      if (!snap.hasData || snap.data == 0) {
-                        return const SizedBox.shrink();
-                      }
-                      return _Chip(
-                        label:
-                            '${snap.data} integrante${snap.data == 1 ? '' : 's'}',
-                        color: AppTheme.textoSecundario,
                       );
                     },
                   ),
@@ -446,6 +447,7 @@ class _CuotasTabState extends State<_CuotasTab> {
   Widget build(BuildContext context) {
     final cuotaProv = context.watch<CuotaProvider>();
     final socioProv = context.watch<SocioProvider>();
+    final personaProv = context.watch<PersonaProvider>();
     final auth = context.watch<AuthProvider>();
     final puedeGestionar = auth.esAdmin || auth.esEditor;
 
@@ -459,59 +461,71 @@ class _CuotasTabState extends State<_CuotasTab> {
     }
 
     final sociosConCuota = socioProv.todos.where((s) {
-      final tipo = socioProv.tipoById(s.tipoSocioId);
+      final tipo = socioProv.tipoById(s.tipoSocio);
       return s.activo && tipo?.requiereCuota == true;
     }).toList()
-      ..sort((a, b) => a.nombreDisplay.compareTo(b.nombreDisplay));
+      ..sort((a, b) => personaProv
+          .nombreCompleto(a.personaId)
+          .compareTo(personaProv.nombreCompleto(b.personaId)));
 
     return Column(
       children: [
         // ── Filtros ──────────────────────────────────────────────────
         Container(
           color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                color: AppTheme.azulOscuro,
-                onPressed: _prevMes,
-              ),
-              Expanded(
-                child: Text(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  color: AppTheme.azulOscuro,
+                  onPressed: _prevMes,
+                ),
+                Text(
                   '${_meses[_mes.month - 1]} ${_mes.year}',
-                  textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
-                    fontSize: 16,
+                    fontSize: 15,
                     color: AppTheme.textoPrincipal,
                   ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                color: AppTheme.azulOscuro,
-                onPressed: _nextMes,
-              ),
-              const SizedBox(width: 4),
-              if (cuotaProv.tiposCuota.isNotEmpty)
-                DropdownButton<String>(
-                  value: _tipoCuotaId,
-                  isDense: true,
-                  underline: const SizedBox.shrink(),
-                  style: const TextStyle(
-                    color: AppTheme.textoPrincipal,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  items: cuotaProv.tiposCuota
-                      .map((t) => DropdownMenuItem(
-                          value: t.id, child: Text(t.nombre)))
-                      .toList(),
-                  onChanged: (v) => setState(() => _tipoCuotaId = v),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  color: AppTheme.azulOscuro,
+                  onPressed: _nextMes,
                 ),
-              const SizedBox(width: 8),
-            ],
+                if (cuotaProv.tiposCuota.isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.celesteFondo,
+                      borderRadius:
+                          const BorderRadius.all(Radius.circular(8)),
+                    ),
+                    child: DropdownButton<String>(
+                      value: _tipoCuotaId,
+                      isDense: true,
+                      underline: const SizedBox.shrink(),
+                      style: const TextStyle(
+                        color: AppTheme.textoPrincipal,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      items: cuotaProv.tiposCuota
+                          .map((t) => DropdownMenuItem(
+                              value: t.id, child: Text(t.nombre)))
+                          .toList(),
+                      onChanged: (v) =>
+                          setState(() => _tipoCuotaId = v),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
         const Divider(height: 1),
@@ -568,6 +582,7 @@ class _CuotasTabState extends State<_CuotasTab> {
                   else
                     ...sociosConCuota.map((s) => _SocioCuotaTile(
                           socio: s,
+                          nombre: personaProv.nombreCompleto(s.personaId),
                           alDia: !deudaIds.contains(s.id),
                           puedeGestionar: puedeGestionar,
                           tipoCuotaId: _tipoCuotaId,
@@ -649,11 +664,13 @@ class _ResumenCard extends StatelessWidget {
 class _SocioCuotaTile extends StatelessWidget {
   const _SocioCuotaTile({
     required this.socio,
+    required this.nombre,
     required this.alDia,
     required this.puedeGestionar,
     this.tipoCuotaId,
   });
   final Socio socio;
+  final String nombre;
   final bool alDia;
   final bool puedeGestionar;
   final String? tipoCuotaId;
@@ -668,7 +685,7 @@ class _SocioCuotaTile extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                socio.nombreDisplay,
+                nombre,
                 style: const TextStyle(
                     fontWeight: FontWeight.w600, fontSize: 14),
               ),
@@ -697,7 +714,8 @@ class _SocioCuotaTile extends StatelessWidget {
                     context: context,
                     isScrollControlled: true,
                     useSafeArea: true,
-                    builder: (_) => _ModalPagoRapido(socio: socio),
+                    builder: (_) =>
+                        _ModalPagoRapido(socio: socio, nombre: nombre),
                   ),
                 ),
               )
@@ -740,8 +758,9 @@ class _Chip extends StatelessWidget {
 // ── _ModalPagoRapido ──────────────────────────────────────────────────────────
 
 class _ModalPagoRapido extends StatefulWidget {
-  const _ModalPagoRapido({required this.socio});
+  const _ModalPagoRapido({required this.socio, required this.nombre});
   final Socio socio;
+  final String nombre;
 
   @override
   State<_ModalPagoRapido> createState() => _ModalPagoRapidoState();
@@ -788,8 +807,9 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
           .read<CuotaProvider>()
           .obtenerTarifaVigente(tipoCuotaId);
       if (mounted) {
-        _montoCtrl.text =
-            tarifa != null ? tarifa.monto.toStringAsFixed(2) : '';
+        _montoCtrl.text = tarifa != null
+            ? NumberFormat('#,##0.##', 'es_AR').format(tarifa.monto)
+            : '';
       }
     } finally {
       if (mounted) setState(() => _cargandoTarifa = false);
@@ -854,7 +874,7 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.socio.nombreDisplay,
+                widget.nombre,
                 style: const TextStyle(
                     fontSize: 18, fontWeight: FontWeight.w700),
               ),
@@ -974,6 +994,8 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
 }
 
 // ── _ModalSocio ───────────────────────────────────────────────────────────────
+// Alta de socio en un solo paso: buscar Persona existente o crear una nueva,
+// y dar de alta el Socio vinculado con numeroSocio automático.
 
 class _ModalSocio extends StatefulWidget {
   const _ModalSocio();
@@ -984,36 +1006,53 @@ class _ModalSocio extends StatefulWidget {
 
 class _ModalSocioState extends State<_ModalSocio> {
   final _form = GlobalKey<FormState>();
+
+  bool _personaNueva = false;
+  Persona? _personaSeleccionada;
+  final _buscarPersonaCtrl = TextEditingController();
+
+  String _tipoPersonaNueva = 'fisica';
+  final _nombreCtrl = TextEditingController();
   final _apellidoCtrl = TextEditingController();
+  final _dniCtrl = TextEditingController();
+  DateTime? _fechaNacimiento;
+  final _telefonoCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _direccionCtrl = TextEditingController();
   final _razonSocialCtrl = TextEditingController();
   final _cuitCtrl = TextEditingController();
-  final _observacionesCtrl = TextEditingController();
+  Persona? _personaContacto;
 
-  String? _tipoId;
+  String _tipoSocio = 'activo';
   String? _subtipoId;
-  DateTime _fechaIngreso = DateTime.now();
-  bool _saving = false;
-
   List<SubtipoSocio> _subtipos = [];
   StreamSubscription<List<SubtipoSocio>>? _subtiposSub;
 
-  bool get _esHonorario => _tipoId == 'honorario';
+  DateTime _fechaIngreso = DateTime.now();
+  final _observacionesCtrl = TextEditingController();
+
+  bool _saving = false;
+
+  String get _tipoPersonaEfectivo =>
+      _personaSeleccionada?.tipoPersona ?? _tipoPersonaNueva;
+  bool get _esFiscal => _tipoPersonaEfectivo == 'fiscal';
+  String get _tipoSocioEfectivo => _esFiscal ? 'honorario' : _tipoSocio;
 
   @override
   void initState() {
     super.initState();
+    _cargarSubtipos(_tipoSocio);
   }
 
-  void _cargarSubtipos(String tipoId) {
+  void _cargarSubtipos(String tipoSocio) {
     _subtiposSub?.cancel();
     final repo = context.read<SocioProvider>().repo;
-    _subtiposSub = repo.obtenerSubtipos(tipoId).listen((list) {
+    _subtiposSub = repo.obtenerSubtipos(tipoSocio).listen((list) {
       if (!mounted) return;
       setState(() {
         _subtipos = list;
-        if (_subtipoId != null &&
-            !list.any((s) => s.id == _subtipoId)) {
-          _subtipoId = list.isNotEmpty ? list.first.id : null;
+        if (_subtipoId != null && !list.any((s) => s.id == _subtipoId)) {
+          _subtipoId = null;
         }
       });
     });
@@ -1022,7 +1061,13 @@ class _ModalSocioState extends State<_ModalSocio> {
   @override
   void dispose() {
     _subtiposSub?.cancel();
+    _buscarPersonaCtrl.dispose();
+    _nombreCtrl.dispose();
     _apellidoCtrl.dispose();
+    _dniCtrl.dispose();
+    _telefonoCtrl.dispose();
+    _emailCtrl.dispose();
+    _direccionCtrl.dispose();
     _razonSocialCtrl.dispose();
     _cuitCtrl.dispose();
     _observacionesCtrl.dispose();
@@ -1030,30 +1075,73 @@ class _ModalSocioState extends State<_ModalSocio> {
   }
 
   Future<void> _guardar() async {
-    if (!_form.currentState!.validate()) return;
+    if (_personaSeleccionada == null && !_form.currentState!.validate()) {
+      return;
+    }
+    if (_personaSeleccionada == null && _personaNueva) {
+      if (!_form.currentState!.validate()) return;
+    }
+    if (_personaSeleccionada == null && !_personaNueva) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Seleccioná o creá una persona')),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
-      final provider = context.read<SocioProvider>();
+      final personaProvider = context.read<PersonaProvider>();
+      final socioProvider = context.read<SocioProvider>();
+      final uid = context.read<AuthProvider>().currentUser?.uid;
+
+      String personaId;
+      if (_personaSeleccionada != null) {
+        personaId = _personaSeleccionada!.id;
+      } else {
+        final esFisica = _tipoPersonaNueva == 'fisica';
+        final nuevaPersona = Persona(
+          id: '',
+          tipoPersona: _tipoPersonaNueva,
+          nombre: esFisica ? _nombreCtrl.text.trim() : '',
+          apellido: esFisica ? _apellidoCtrl.text.trim() : '',
+          dni: esFisica && _dniCtrl.text.trim().isNotEmpty
+              ? _dniCtrl.text.trim()
+              : null,
+          fechaNacimiento: esFisica ? _fechaNacimiento : null,
+          telefono: _telefonoCtrl.text.trim().isEmpty
+              ? null
+              : _telefonoCtrl.text.trim(),
+          email: _emailCtrl.text.trim().isEmpty
+              ? null
+              : _emailCtrl.text.trim(),
+          direccion: esFisica && _direccionCtrl.text.trim().isNotEmpty
+              ? _direccionCtrl.text.trim()
+              : null,
+          razonSocial: esFisica ? null : _razonSocialCtrl.text.trim(),
+          cuit: !esFisica && _cuitCtrl.text.trim().isNotEmpty
+              ? _cuitCtrl.text.trim()
+              : null,
+          personaContactoId: !esFisica ? _personaContacto?.id : null,
+          subtipo: esFisica ? _subtipoId : null,
+          activo: true,
+          fechaCreacion: DateTime.now(),
+        );
+        personaId = await personaProvider.agregar(nuevaPersona);
+      }
+
       final socio = Socio(
         id: '',
-        tipoSocioId: _tipoId!,
-        subtipoSocioId: _subtipoId ?? '',
-        apellidoFamilia: _esHonorario
-            ? null
-            : _apellidoCtrl.text.trim().toUpperCase(),
-        razonSocial:
-            _esHonorario ? _razonSocialCtrl.text.trim() : null,
-        cuit: _esHonorario && _cuitCtrl.text.trim().isNotEmpty
-            ? _cuitCtrl.text.trim()
-            : null,
+        numeroSocio: 0,
+        personaId: personaId,
+        tipoSocio: _tipoSocioEfectivo,
         activo: true,
         fechaIngreso: _fechaIngreso,
         observaciones: _observacionesCtrl.text.trim().isEmpty
             ? null
             : _observacionesCtrl.text.trim(),
-        fechaCreacion: DateTime.now(),
+        usuarioId: uid,
       );
-      await provider.agregar(socio);
+      await socioProvider.agregar(socio);
       if (mounted) Navigator.pop(context);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1062,7 +1150,7 @@ class _ModalSocioState extends State<_ModalSocio> {
 
   @override
   Widget build(BuildContext context) {
-    final tipos = context.watch<SocioProvider>().tipos;
+    final personaProvider = context.watch<PersonaProvider>();
 
     return Padding(
       padding: EdgeInsets.only(
@@ -1078,98 +1166,339 @@ class _ModalSocioState extends State<_ModalSocio> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Agregar socio',
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w700),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 16),
-              tipos.isEmpty
-                  ? const InputDecorator(
-                      decoration:
-                          InputDecoration(labelText: 'Tipo de socio *'),
-                      child: Text(
-                        'Cargando tipos…',
-                        style:
-                            TextStyle(color: AppTheme.textoSecundario),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: !_personaNueva
+                            ? AppTheme.celesteFondo
+                            : null,
                       ),
-                    )
-                  : DropdownButtonFormField<String>(
-                      initialValue: _tipoId,
-                      decoration: const InputDecoration(
-                          labelText: 'Tipo de socio *'),
-                      items: tipos
-                          .map((t) => DropdownMenuItem(
-                              value: t.id, child: Text(t.nombre)))
-                          .toList(),
-                      onChanged: (v) {
-                        setState(() {
-                          _tipoId = v;
-                          _subtipoId = null;
-                          _subtipos = [];
-                        });
-                        if (v != null) _cargarSubtipos(v);
-                      },
-                      validator: (v) =>
-                          v == null ? 'Requerido' : null,
+                      onPressed: () => setState(() {
+                        _personaNueva = false;
+                      }),
+                      child: const Text('Buscar persona'),
                     ),
-              const SizedBox(height: 12),
-              if (_tipoId != null)
-                _subtipos.isEmpty
-                    ? const InputDecorator(
-                        decoration:
-                            InputDecoration(labelText: 'Subtipo *'),
-                        child: Text(
-                          'Cargando subtipos…',
-                          style: TextStyle(
-                              color: AppTheme.textoSecundario),
-                        ),
-                      )
-                    : DropdownButtonFormField<String>(
-                        initialValue: _subtipoId,
-                        decoration:
-                            const InputDecoration(labelText: 'Subtipo *'),
-                        items: _subtipos
-                            .map((s) => DropdownMenuItem(
-                                value: s.id, child: Text(s.nombre)))
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _subtipoId = v),
-                        validator: (v) =>
-                            v == null ? 'Requerido' : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: _personaNueva
+                            ? AppTheme.celesteFondo
+                            : null,
                       ),
-              if (_tipoId != null) ...[
+                      onPressed: () => setState(() {
+                        _personaNueva = true;
+                        _personaSeleccionada = null;
+                      }),
+                      child: const Text('Crear persona nueva'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (!_personaNueva) ...[
+                if (_personaSeleccionada != null)
+                  Card(
+                    color: AppTheme.celesteFondo,
+                    child: ListTile(
+                      leading: const Icon(Icons.person,
+                          color: AppTheme.azulMedio),
+                      title: Text(_personaSeleccionada!.nombreCompleto),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () =>
+                            setState(() => _personaSeleccionada = null),
+                      ),
+                    ),
+                  )
+                else
+                  Autocomplete<Persona>(
+                    displayStringForOption: (p) => p.nombreCompleto,
+                    optionsBuilder: (val) =>
+                        personaProvider.buscar(val.text),
+                    onSelected: (p) =>
+                        setState(() => _personaSeleccionada = p),
+                    fieldViewBuilder: (context, ctrl, focusNode, _) {
+                      return TextFormField(
+                        controller: ctrl,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(
+                          labelText: 'Buscar persona',
+                          hintText: 'Por nombre, apellido o DNI',
+                          suffixIcon: Icon(Icons.search),
+                        ),
+                        validator: (_) => (!_personaNueva &&
+                                _personaSeleccionada == null)
+                            ? 'Seleccioná una persona'
+                            : null,
+                      );
+                    },
+                    optionsViewBuilder: (context, onSelected, options) =>
+                        Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        elevation: 4,
+                        borderRadius:
+                            const BorderRadius.all(Radius.circular(8)),
+                        child: ConstrainedBox(
+                          constraints:
+                              const BoxConstraints(maxHeight: 180),
+                          child: ListView.builder(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: options.length,
+                            itemBuilder: (_, i) {
+                              final p = options.elementAt(i);
+                              return ListTile(
+                                dense: true,
+                                leading:
+                                    const Icon(Icons.person_outline, size: 18),
+                                title: Text(p.nombreCompleto),
+                                onTap: () => onSelected(p),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ] else ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: _tipoPersonaNueva == 'fisica'
+                              ? AppTheme.celesteFondo
+                              : null,
+                        ),
+                        onPressed: () =>
+                            setState(() => _tipoPersonaNueva = 'fisica'),
+                        child: const Text('Física'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: _tipoPersonaNueva == 'fiscal'
+                              ? AppTheme.celesteFondo
+                              : null,
+                        ),
+                        onPressed: () =>
+                            setState(() => _tipoPersonaNueva = 'fiscal'),
+                        child: const Text('Fiscal'),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
-                if (_esHonorario) ...[
+                if (_tipoPersonaNueva == 'fisica') ...[
+                  TextFormField(
+                    controller: _nombreCtrl,
+                    decoration: const InputDecoration(labelText: 'Nombre *'),
+                    textCapitalization: TextCapitalization.words,
+                    validator: (v) => (_personaNueva &&
+                            (v == null || v.trim().isEmpty))
+                        ? 'Requerido'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _apellidoCtrl,
+                    decoration:
+                        const InputDecoration(labelText: 'Apellido *'),
+                    textCapitalization: TextCapitalization.words,
+                    validator: (v) => (_personaNueva &&
+                            (v == null || v.trim().isEmpty))
+                        ? 'Requerido'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _dniCtrl,
+                    decoration: const InputDecoration(labelText: 'DNI'),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        initialDate: _fechaNacimiento ?? DateTime(2000),
+                        firstDate: DateTime(1900),
+                        lastDate: DateTime.now(),
+                      );
+                      if (d != null) setState(() => _fechaNacimiento = d);
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                          labelText: 'Fecha de nacimiento'),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(_fechaNacimiento == null
+                              ? '—'
+                              : '${_fechaNacimiento!.day.toString().padLeft(2, '0')}/${_fechaNacimiento!.month.toString().padLeft(2, '0')}/${_fechaNacimiento!.year}'),
+                          const Icon(Icons.calendar_today_outlined,
+                              size: 18, color: AppTheme.azulMedio),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _telefonoCtrl,
+                    decoration: const InputDecoration(labelText: 'Teléfono'),
+                    keyboardType: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _emailCtrl,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _direccionCtrl,
+                    decoration: const InputDecoration(labelText: 'Dirección'),
+                  ),
+                ] else ...[
                   TextFormField(
                     controller: _razonSocialCtrl,
-                    decoration: const InputDecoration(
-                        labelText: 'Razón social *'),
+                    decoration:
+                        const InputDecoration(labelText: 'Razón social *'),
                     textCapitalization: TextCapitalization.words,
-                    validator: (v) => v == null || v.trim().isEmpty
+                    validator: (v) => (_personaNueva &&
+                            (v == null || v.trim().isEmpty))
                         ? 'Requerido'
                         : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _cuitCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'CUIT'),
+                    decoration: const InputDecoration(labelText: 'CUIT'),
                     keyboardType: TextInputType.number,
                   ),
-                ] else ...[
-                  TextFormField(
-                    controller: _apellidoCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Apellido de familia *',
-                      helperText: 'Se guardará en mayúsculas',
+                  const SizedBox(height: 12),
+                  Autocomplete<Persona>(
+                    displayStringForOption: (p) => p.nombreCompleto,
+                    optionsBuilder: (val) => personaProvider
+                        .buscar(val.text, soloTipo: 'fisica'),
+                    onSelected: (p) =>
+                        setState(() => _personaContacto = p),
+                    fieldViewBuilder: (context, ctrl, focusNode, _) {
+                      ctrl.text = _personaContacto?.nombreCompleto ?? '';
+                      return TextFormField(
+                        controller: ctrl,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(
+                          labelText: 'Persona de contacto',
+                          suffixIcon: Icon(Icons.search),
+                        ),
+                      );
+                    },
+                    optionsViewBuilder: (context, onSelected, options) =>
+                        Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        elevation: 4,
+                        borderRadius:
+                            const BorderRadius.all(Radius.circular(8)),
+                        child: ConstrainedBox(
+                          constraints:
+                              const BoxConstraints(maxHeight: 180),
+                          child: ListView.builder(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: options.length,
+                            itemBuilder: (_, i) {
+                              final p = options.elementAt(i);
+                              return ListTile(
+                                dense: true,
+                                leading:
+                                    const Icon(Icons.person_outline, size: 18),
+                                title: Text(p.nombreCompleto),
+                                onTap: () => onSelected(p),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
                     ),
-                    textCapitalization: TextCapitalization.characters,
-                    validator: (v) => v == null || v.trim().isEmpty
-                        ? 'Requerido'
-                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _telefonoCtrl,
+                    decoration: const InputDecoration(labelText: 'Teléfono'),
+                    keyboardType: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _emailCtrl,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                    keyboardType: TextInputType.emailAddress,
                   ),
                 ],
+              ],
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              if (_esFiscal)
+                const InputDecorator(
+                  decoration: InputDecoration(labelText: 'Tipo de socio'),
+                  child: Text('Honorario'),
+                )
+              else
+                DropdownButtonFormField<String>(
+                  initialValue: _tipoSocio,
+                  decoration:
+                      const InputDecoration(labelText: 'Tipo de socio *'),
+                  items: const [
+                    DropdownMenuItem(value: 'activo', child: Text('Activo')),
+                    DropdownMenuItem(
+                        value: 'adherente', child: Text('Adherente')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      _tipoSocio = v;
+                      _subtipoId = null;
+                    });
+                    _cargarSubtipos(v);
+                  },
+                ),
+              if (_personaNueva &&
+                  _tipoPersonaNueva == 'fisica' &&
+                  !_esFiscal) ...[
+                const SizedBox(height: 12),
+                _subtipos.isEmpty
+                    ? const InputDecorator(
+                        decoration: InputDecoration(labelText: 'Subtipo'),
+                        child: Text(
+                          'Cargando…',
+                          style: TextStyle(color: AppTheme.textoSecundario),
+                        ),
+                      )
+                    : DropdownButtonFormField<String>(
+                        initialValue: _subtipoId,
+                        decoration:
+                            const InputDecoration(labelText: 'Subtipo'),
+                        items: _subtipos
+                            .map((s) => DropdownMenuItem(
+                                value: s.id, child: Text(s.nombre)))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _subtipoId = v),
+                      ),
               ],
               const SizedBox(height: 12),
               InkWell(

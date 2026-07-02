@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/usuarios_provider.dart';
@@ -97,13 +98,12 @@ class _UsuarioCard extends StatelessWidget {
                   Row(
                     children: [
                       Flexible(
-                        child: Text(
-                          email,
+                        child: NombreUsuarioWidget(
+                          usuarioId: id,
                           style: const TextStyle(
                             color: AppTheme.textoPrincipal,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (esAdminUser) ...[
@@ -115,6 +115,14 @@ class _UsuarioCard extends StatelessWidget {
                         ),
                       ],
                     ],
+                  ),
+                  Text(
+                    email,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textoSecundario,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
                   _RolChip(rol: rol),

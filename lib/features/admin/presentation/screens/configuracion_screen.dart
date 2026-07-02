@@ -282,6 +282,11 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
             s['socios'] ?? false,
             (v) => provider.actualizarSeccion('socios', v),
           ),
+          _buildSwitch(
+            'Inventario',
+            s['inventario'] ?? true,
+            (v) => provider.actualizarSeccion('inventario', v),
+          ),
         ],
       ),
     );

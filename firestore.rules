@@ -56,9 +56,19 @@ service cloud.firestore {
       allow write: if esAdmin();
     }
 
+    match /cuenta_bancaria/caja_chica {
+      allow read: if true;
+      allow write: if esEditor() || esAdmin();
+    }
+
     match /cuenta_bancaria/{cuentaId}/movimientos/{movId} {
       allow read: if true;
       allow write: if esAdmin();
+    }
+
+    match /cuenta_bancaria/caja_chica/movimientos/{movId} {
+      allow read: if true;
+      allow write: if esEditor() || esAdmin();
     }
 
     match /movimientos_bancarios/{doc} {
@@ -99,15 +109,11 @@ service cloud.firestore {
 
     match /personas/{doc} {
       allow read: if estaAutenticado();
-      allow write: if esEditor() && estaActivo();
+      allow create: if estaAutenticado();
+      allow update, delete: if esEditor() && estaActivo();
     }
 
     match /socios/{doc} {
-      allow read: if estaAutenticado();
-      allow write: if esEditor() && estaActivo();
-    }
-
-    match /integrantes/{doc} {
       allow read: if estaAutenticado();
       allow write: if esEditor() && estaActivo();
     }
@@ -128,8 +134,9 @@ service cloud.firestore {
     }
 
     match /invitaciones/{doc} {
-      allow read: if estaAutenticado();
-      allow write: if esAdmin() || esEditor();
+      allow read: if true;
+      allow create, delete: if esAdmin() || esEditor();
+      allow update: if esAdmin() || esEditor() || estaAutenticado();
     }
 
     match /log_cambios/{doc} {
@@ -147,6 +154,11 @@ service cloud.firestore {
       allow write: if esAdmin();
     }
 
+    match /cursos/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
     match /proveedores/{doc} {
       allow read: if estaAutenticado();
       allow write: if esEditor() && estaActivo();
@@ -154,6 +166,11 @@ service cloud.firestore {
 
     match /presupuestos_proveedor/{doc} {
       allow read: if estaAutenticado();
+      allow write: if esEditor() && estaActivo();
+    }
+
+    match /inventario/{doc} {
+      allow read: if true;
       allow write: if esEditor() && estaActivo();
     }
   }

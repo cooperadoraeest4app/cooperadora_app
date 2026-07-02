@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../admin/data/repositories/invitacion_repository.dart';
-import '../../../ingresos/presentation/screens/movimientos_screen.dart';
+import '../../../home/presentation/screens/home_screen.dart';
+import '../providers/auth_provider.dart';
 
 class RegistroScreen extends StatefulWidget {
   const RegistroScreen({super.key});
@@ -54,7 +56,9 @@ class _RegistroScreenState extends State<RegistroScreen> {
 
     setState(() => _isLoading = true);
     try {
+      debugPrint('[registro] Verificando código: $codigo');
       final inv = await _repo.obtenerPorCodigo(codigo);
+      debugPrint('[registro] Invitación encontrada: $inv');
       if (!mounted) return;
 
       if (inv == null) {
@@ -91,7 +95,8 @@ class _RegistroScreenState extends State<RegistroScreen> {
         _invitacion = inv;
         _paso = 1;
       });
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[registro] ERROR al verificar código: $e\n$st');
       if (!mounted) return;
       _mostrarError('Error al verificar el código');
     } finally {
@@ -158,15 +163,20 @@ class _RegistroScreenState extends State<RegistroScreen> {
       }
 
       if (!mounted) return;
+      await context.read<AuthProvider>().recargarRol();
+      if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const MovimientosScreen()),
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
         (_) => false,
       );
     } on FirebaseAuthException catch (e) {
+      debugPrint('[registro] FirebaseAuthException: ${e.code} — ${e.message}');
       if (!mounted) return;
       _mostrarError(_traducirError(e.code));
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[registro] ERROR REAL al crear cuenta: $e');
+      debugPrint('[registro] Stack: $st');
       if (!mounted) return;
       _mostrarError('Error al crear la cuenta. Intentá nuevamente.');
     } finally {

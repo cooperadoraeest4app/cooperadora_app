@@ -75,6 +75,15 @@ class ProyectoProvider extends ChangeNotifier {
     }
   }
 
+  Proyecto? obtenerPorId(String id) {
+    final todos = [...enCurso, ...planificados, ...finalizados];
+    try {
+      return todos.firstWhere((p) => p.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> agregar(Proyecto p) async {
     isSaving = true;
     error = null;

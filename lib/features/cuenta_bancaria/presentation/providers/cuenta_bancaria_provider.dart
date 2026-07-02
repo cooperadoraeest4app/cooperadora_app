@@ -9,9 +9,13 @@ class CuentaBancariaProvider extends ChangeNotifier {
   final _repo = CuentaBancariaRepository();
   StreamSubscription<CuentaBancaria?>? _cuentaSub;
   StreamSubscription<List<MovimientoBancario>>? _movimientosSub;
+  StreamSubscription<Map<String, dynamic>?>? _cajaChicaSub;
+  StreamSubscription<List<Map<String, dynamic>>>? _movCajaChicaSub;
 
   CuentaBancaria? cuenta;
   List<MovimientoBancario> movimientos = [];
+  Map<String, dynamic>? cajaChica;
+  List<Map<String, dynamic>> movimientosCajaChica = [];
   bool isLoading = true;
   bool isSaving = false;
   String? error;
@@ -53,21 +57,43 @@ class CuentaBancariaProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+    _cajaChicaSub = _repo.obtenerCajaChica().listen(
+      (data) {
+        cajaChica = data;
+        notifyListeners();
+      },
+      onError: (e) {
+        error = e.toString();
+        notifyListeners();
+      },
+    );
+    _movCajaChicaSub = _repo.obtenerMovimientosCajaChica().listen(
+      (list) {
+        movimientosCajaChica = list;
+        notifyListeners();
+      },
+      onError: (e) {
+        error = e.toString();
+        notifyListeners();
+      },
+    );
   }
 
   @override
   void dispose() {
     _cuentaSub?.cancel();
     _movimientosSub?.cancel();
+    _cajaChicaSub?.cancel();
+    _movCajaChicaSub?.cancel();
     super.dispose();
   }
 
-  Future<void> crearCuenta(CuentaBancaria c) async {
+  Future<void> crearCuenta(CuentaBancaria c, String usuarioId) async {
     isSaving = true;
     error = null;
     notifyListeners();
     try {
-      await _repo.crear(c);
+      await _repo.crear(c, usuarioId);
     } catch (e) {
       error = e.toString();
     } finally {
@@ -135,12 +161,84 @@ class CuentaBancariaProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> eliminarMovimiento(String id) async {
+  Future<void> actualizarCajaChica(
+    double nuevoSaldo,
+    String usuarioId, {
+    String? observaciones,
+  }) async {
     isSaving = true;
     error = null;
     notifyListeners();
     try {
-      await _repo.eliminarMovimiento(id);
+      await _repo.actualizarCajaChica(nuevoSaldo, usuarioId, observaciones);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> sumarACajaChica(
+    double monto,
+    String usuarioId,
+    String descripcion,
+  ) async {
+    isSaving = true;
+    error = null;
+    notifyListeners();
+    try {
+      await _repo.sumarACajaChica(monto, usuarioId, descripcion);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> descontarDeCajaChica(
+    double monto,
+    String usuarioId,
+    String descripcion,
+  ) async {
+    isSaving = true;
+    error = null;
+    notifyListeners();
+    try {
+      await _repo.descontarDeCajaChica(monto, usuarioId, descripcion);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> depositarACuentaBancaria(
+    double monto,
+    String usuarioId, {
+    String? observaciones,
+  }) async {
+    isSaving = true;
+    error = null;
+    notifyListeners();
+    try {
+      await _repo.depositarACuentaBancaria(monto, usuarioId, observaciones);
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> eliminarMovimiento(String id, String usuarioId) async {
+    isSaving = true;
+    error = null;
+    notifyListeners();
+    try {
+      await _repo.eliminarMovimiento(id, usuarioId);
     } catch (e) {
       error = e.toString();
     } finally {

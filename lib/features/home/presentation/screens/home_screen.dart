@@ -4,13 +4,18 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/data/categorias_data.dart';
+import '../../../admin/presentation/providers/categoria_provider.dart';
 import '../../../admin/presentation/providers/configuracion_provider.dart';
+import '../../../inventario/domain/models/bien_inventario.dart';
+import '../../../inventario/presentation/providers/inventario_provider.dart';
+import '../../../inventario/presentation/screens/inventario_screen.dart';
 import '../../../cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
-import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_publica_screen.dart';
+import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
+import '../../../ingresos/presentation/providers/frecuencia_provider.dart';
 import '../../../ingresos/presentation/providers/movimientos_provider.dart';
 import '../../../ingresos/presentation/screens/agregar_movimiento_screen.dart';
 import '../../../ingresos/presentation/screens/movimientos_screen.dart';
@@ -84,6 +89,7 @@ class _Movimiento {
   final String categoriaId;
   final String? comprobante;
   final bool recurrente;
+  final String? frecuenciaId;
 
   const _Movimiento({
     required this.esIngreso,
@@ -93,6 +99,7 @@ class _Movimiento {
     required this.categoriaId,
     this.comprobante,
     this.recurrente = false,
+    this.frecuenciaId,
   });
 
   factory _Movimiento.fromIngreso(Ingreso i) => _Movimiento(
@@ -102,7 +109,8 @@ class _Movimiento {
       descripcion: i.descripcion,
       categoriaId: i.categoriaId,
       comprobante: i.comprobante,
-      recurrente: i.recurrente);
+      recurrente: i.recurrente,
+      frecuenciaId: i.frecuenciaId);
 
   factory _Movimiento.fromGasto(Gasto g) => _Movimiento(
       esIngreso: false,
@@ -111,7 +119,8 @@ class _Movimiento {
       descripcion: g.descripcion,
       categoriaId: g.categoriaId,
       comprobante: g.comprobante,
-      recurrente: g.recurrente);
+      recurrente: g.recurrente,
+      frecuenciaId: g.frecuenciaId);
 }
 
 // ── HomeScreen ────────────────────────────────────────────────────────────────
@@ -183,7 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 24),
                     const _SeccionProyectos(),
                     const SizedBox(height: 24),
-                    _SeccionMovimientos(movimientos: ultimos10),
+                    _SeccionTabsMovimientosInventario(movimientos: ultimos10),
                     const SizedBox(height: 32),
                   ],
                 ),
@@ -297,7 +306,7 @@ class _SaldoCard extends StatelessWidget {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const CuentaBancariaPublicaScreen()),
+                    builder: (_) => const CuentaBancariaScreen()),
               ),
               style: TextButton.styleFrom(
                 foregroundColor: AppTheme.azulMedio,
@@ -635,126 +644,292 @@ class _ProyectoCard extends StatelessWidget {
   }
 }
 
-// ── Últimos movimientos ───────────────────────────────────────────────────────
+// ── Sección combinada: Movimientos + Inventario ───────────────────────────────
 
-class _SeccionMovimientos extends StatefulWidget {
-  const _SeccionMovimientos({required this.movimientos});
-
+class _SeccionTabsMovimientosInventario extends StatefulWidget {
+  const _SeccionTabsMovimientosInventario({required this.movimientos});
   final List<_Movimiento> movimientos;
 
   @override
-  State<_SeccionMovimientos> createState() => _SeccionMovimientosState();
+  State<_SeccionTabsMovimientosInventario> createState() =>
+      _SeccionTabsMovimientosInventarioState();
 }
 
-class _SeccionMovimientosState extends State<_SeccionMovimientos> {
+class _SeccionTabsMovimientosInventarioState
+    extends State<_SeccionTabsMovimientosInventario>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabCtrl;
   bool _soloRecurrentes = false;
+  String? _frecuenciaFiltro;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  static ButtonStyle get _verTodosStyle => TextButton.styleFrom(
+        foregroundColor: AppTheme.azulMedio,
+        backgroundColor: AppTheme.celesteAccento.withValues(alpha: 0.25),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(8)),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final puedeAgregar = auth.esEditor || auth.esAdmin;
+    final frecuencias = context.watch<FrecuenciaProvider>().frecuencias;
+    final config = context.watch<ConfiguracionProvider>();
+    final inventarioProv = context.watch<InventarioProvider>();
 
-    final movimientos = _soloRecurrentes
+    var movimientos = _soloRecurrentes
         ? widget.movimientos.where((m) => m.recurrente).toList()
         : widget.movimientos;
+    if (_soloRecurrentes && _frecuenciaFiltro != null) {
+      movimientos = movimientos
+          .where((m) => m.frecuenciaId == _frecuenciaFiltro)
+          .toList();
+    }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              const Text(
-                'Últimos movimientos',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textoPrincipal,
-                ),
-              ),
-              const Spacer(),
-              TextButton(
-                style: TextButton.styleFrom(
-                  foregroundColor: AppTheme.azulMedio,
-                  backgroundColor:
-                      AppTheme.celesteAccento.withValues(alpha: 0.25),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(8)),
+    final inventarioVisible = config.seccionesPublicas['inventario'] ?? true;
+    final ultimos5 = inventarioProv.todos.take(5).toList();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TabBar(
+              controller: _tabCtrl,
+              tabs: const [
+                Tab(icon: Icon(Icons.swap_vert), text: 'Movimientos'),
+                Tab(icon: Icon(Icons.inventory_2), text: 'Inventario'),
+              ],
+              labelColor: AppTheme.azulMedio,
+              unselectedLabelColor: AppTheme.textoSecundario,
+              indicatorColor: AppTheme.azulMedio,
+            ),
+            SizedBox(
+              height: 400,
+              child: TabBarView(
+                controller: _tabCtrl,
+                children: [
+                  // ── Tab Movimientos ──────────────────────────────────────
+                  Column(
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      // HEADER FIJO
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Últimos movimientos',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textoPrincipal,
+                                  ),
+                                ),
+                                TextButton(
+                                  style: _verTodosStyle,
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const MovimientosScreen()),
+                                  ),
+                                  child: const Text('Ver todos'),
+                                ),
+                              ],
+                            ),
+                            if (puedeAgregar) ...[
+                              const SizedBox(height: 4),
+                              const _BotonesAccionRapida(),
+                            ],
+                            Row(
+                              children: [
+                                const Flexible(
+                                  child: Text(
+                                    'Solo recurrentes',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: AppTheme.textoPrincipal,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Switch(
+                                  value: _soloRecurrentes,
+                                  onChanged: (v) => setState(() {
+                                    _soloRecurrentes = v;
+                                    if (!v) _frecuenciaFiltro = null;
+                                  }),
+                                  activeThumbColor: AppTheme.verdeTeal,
+                                  inactiveThumbColor: AppTheme.blanco,
+                                  inactiveTrackColor: AppTheme.azulOscuro
+                                      .withValues(alpha: 0.3),
+                                ),
+                                if (_soloRecurrentes) ...[
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: InputDecorator(
+                                      decoration: const InputDecoration(
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 6),
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String?>(
+                                          value: _frecuenciaFiltro,
+                                          isDense: true,
+                                          isExpanded: true,
+                                          items: [
+                                            const DropdownMenuItem(
+                                                value: null,
+                                                child: Text('Todas',
+                                                    style: TextStyle(
+                                                        fontSize: 13))),
+                                            ...frecuencias.map((f) =>
+                                                DropdownMenuItem(
+                                                  value: f.id,
+                                                  child: Text(f.nombre,
+                                                      style: const TextStyle(
+                                                          fontSize: 13)),
+                                                )),
+                                          ],
+                                          onChanged: (v) => setState(
+                                              () => _frecuenciaFiltro = v),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      // LISTADO SCROLLEABLE
+                      Expanded(
+                        child: movimientos.isEmpty
+                            ? Center(
+                                child: Text(
+                                  _soloRecurrentes
+                                      ? 'Sin movimientos recurrentes'
+                                      : 'Sin movimientos registrados',
+                                  style: const TextStyle(
+                                      color: AppTheme.textoSecundario),
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: movimientos.length,
+                                separatorBuilder: (_, _) =>
+                                    const Divider(height: 1, indent: 72),
+                                itemBuilder: (ctx, i) =>
+                                    _MovimientoTile(item: movimientos[i]),
+                              ),
+                      ),
+                    ],
                   ),
-                ),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const MovimientosScreen()),
-                ),
-                child: const Text('Ver todos'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              const Text(
-                'Solo Gastos e Ingresos recurrentes',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: AppTheme.textoPrincipal,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Switch(
-                value: _soloRecurrentes,
-                onChanged: (v) => setState(() => _soloRecurrentes = v),
-                activeThumbColor: AppTheme.verdeTeal,
-                inactiveThumbColor: AppTheme.blanco,
-                inactiveTrackColor:
-                    AppTheme.azulOscuro.withValues(alpha: 0.3),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        if (puedeAgregar) ...[
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: _BotonesAccionRapida(),
-          ),
-          const SizedBox(height: 8),
-        ],
-        if (movimientos.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: Text(
-                _soloRecurrentes
-                    ? 'Sin movimientos recurrentes registrados'
-                    : 'Sin movimientos registrados',
-                style: const TextStyle(color: AppTheme.textoSecundario),
+                  // ── Tab Inventario ───────────────────────────────────────
+                  SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: Row(
+                            children: [
+                              const Text(
+                                'Últimos bienes',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textoPrincipal,
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                style: _verTodosStyle,
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const InventarioScreen()),
+                                ),
+                                child: const Text('Ver todos'),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!inventarioVisible)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: Text(
+                                'Inventario no habilitado públicamente',
+                                style: TextStyle(
+                                    color: AppTheme.textoSecundario),
+                              ),
+                            ),
+                          )
+                        else if (inventarioProv.isLoading)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child:
+                                Center(child: CircularProgressIndicator()),
+                          )
+                        else if (ultimos5.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: Text(
+                                'Sin bienes registrados',
+                                style: TextStyle(
+                                    color: AppTheme.textoSecundario),
+                              ),
+                            ),
+                          )
+                        else
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: ultimos5.length,
+                            separatorBuilder: (_, _) =>
+                                const Divider(height: 1, indent: 56),
+                            itemBuilder: (ctx, i) =>
+                                _BienTile(bien: ultimos5[i]),
+                          ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-          )
-        else
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: movimientos.length,
-              separatorBuilder: (_, _) =>
-                  const Divider(height: 1, indent: 72),
-              itemBuilder: (context, i) =>
-                  _MovimientoTile(item: movimientos[i]),
-            ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -766,15 +941,23 @@ class _MovimientoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final categoria =
-        findCategoria(item.categoriaId, esIngreso: item.esIngreso);
+    final catProvider = context.watch<CategoriaProvider>();
+    final categorias =
+        catProvider.obtenerActivas(item.esIngreso ? 'ingreso' : 'gasto');
+    final catMap = categorias.firstWhere(
+      (c) => c['id'] == item.categoriaId || c['nombre'] == item.categoriaId,
+      orElse: () => {
+        'nombre': item.categoriaId,
+        'icono': 'category',
+        'color': '#6B7A99',
+      },
+    );
     final color = item.esIngreso ? AppTheme.verdeIngreso : AppTheme.rojoGasto;
-    final iconoColor = categoria?.color ?? color;
-    final icono = categoria?.icono ??
-        (item.esIngreso ? Icons.arrow_upward : Icons.arrow_downward);
+    final iconoColor = colorFromHex(catMap['color'] as String? ?? '#6B7A99');
+    final icono = iconFromNombre(catMap['icono'] as String? ?? 'category');
     final titulo = item.descripcion?.isNotEmpty == true
         ? item.descripcion!
-        : item.categoriaId;
+        : (catMap['nombre'] as String? ?? item.categoriaId);
 
     return ListTile(
       leading: CircleAvatar(
@@ -868,3 +1051,58 @@ class _BotonesAccionRapida extends StatelessWidget {
   }
 }
 
+class _BienTile extends StatelessWidget {
+  const _BienTile({required this.bien});
+  final BienInventario bien;
+
+  Color _colorEstado(String estado) => switch (estado) {
+        'bueno' => AppTheme.verdeIngreso,
+        'regular' => AppTheme.amarilloAlerta,
+        'malo' => const Color(0xFFE67E22),
+        _ => AppTheme.textoSecundario,
+      };
+
+  String _labelEstado(String estado) => switch (estado) {
+        'bueno' => 'Bueno',
+        'regular' => 'Regular',
+        'malo' => 'Malo',
+        'dado_de_baja' => 'Baja',
+        _ => estado,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _colorEstado(bien.estado);
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: color.withAlpha(38),
+        child: Icon(Icons.inventory_2_outlined, color: color, size: 20),
+      ),
+      title: Text(
+        bien.descripcion,
+        style: Theme.of(context).textTheme.bodyLarge,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        bien.codigo,
+        style: const TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 11,
+          color: AppTheme.textoSecundario,
+        ),
+      ),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withAlpha(30),
+          borderRadius: const BorderRadius.all(Radius.circular(10)),
+        ),
+        child: Text(
+          _labelEstado(bien.estado),
+          style: TextStyle(
+              color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+}

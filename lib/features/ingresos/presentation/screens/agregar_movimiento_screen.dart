@@ -6,10 +6,27 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/services/storage_service.dart';
 import '../../../admin/presentation/providers/categoria_provider.dart';
 import '../../../admin/presentation/providers/metodo_pago_provider.dart';
+import '../../../admin/presentation/providers/persona_provider.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
+import '../../../proyectos/presentation/providers/proyecto_provider.dart';
+import '../../../inventario/domain/models/bien_inventario.dart';
+import '../../../inventario/presentation/providers/inventario_provider.dart';
+import '../../../socios/domain/models/cuota.dart';
+import '../../../socios/domain/models/socio.dart';
+import '../../../socios/domain/models/tipo_cuota.dart';
+import '../../../socios/presentation/providers/cuota_provider.dart';
+import '../../../socios/presentation/providers/socio_provider.dart';
 import '../providers/frecuencia_provider.dart';
 import '../providers/movimientos_provider.dart';
+
+const _categoriasInventariables = {
+  'Equipamiento',
+  'Materiales escolares',
+  'Donación',
+};
 
 const _miembrosPrueba = [
   'Ana García',
@@ -19,6 +36,18 @@ const _miembrosPrueba = [
   'Laura Sánchez',
   'Pedro Fernández',
 ];
+
+IconData _iconoEstadoProyecto(String estado) => switch (estado) {
+      'en_curso' => Icons.play_circle_outline,
+      'planificado' => Icons.schedule,
+      _ => Icons.folder_outlined,
+    };
+
+Color _colorEstadoProyecto(String estado) => switch (estado) {
+      'en_curso' => AppTheme.verdeTeal,
+      'planificado' => AppTheme.azulMedio,
+      _ => AppTheme.textoSecundario,
+    };
 
 IconData _iconoMetodoPago(String nombre) {
   switch (nombre.toLowerCase()) {
@@ -105,6 +134,17 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   bool _subiendo = false;
   bool _recurrente = false;
   String? _frecuenciaId;
+  String? _proyectoId;
+  Socio? _socioSeleccionado;
+  String? _tipoCuotaId;
+  double? _tarifaVigente;
+  final _periodoCtrl = TextEditingController();
+  // Inventario
+  bool _registrarEnInventario = false;
+  String? _estadoInicialBien;
+  final _descripcionBienCtrl = TextEditingController();
+  final _nroActaBienCtrl = TextEditingController();
+  final _ubicacionBienCtrl = TextEditingController();
 
   final _montoController = TextEditingController();
   final _descripcionController = TextEditingController();
@@ -121,11 +161,29 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     super.initState();
     _tipo = widget.tipoInicial;
     _fechaController.text = _formatFecha(DateTime.now());
+    final now = DateTime.now();
+    _periodoCtrl.text =
+        '${now.month.toString().padLeft(2, '0')}/${now.year}';
     if (widget.ingresoEditar != null) {
       _cargarIngreso(widget.ingresoEditar!);
     } else if (widget.gastoEditar != null) {
       _cargarGasto(widget.gastoEditar!);
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final cuotaProv = context.read<CuotaProvider>();
+      final tipoMensual = cuotaProv.tiposCuota.firstWhere(
+        (t) => t.nombre.toLowerCase().contains('mensual'),
+        orElse: () =>
+            const TipoCuota(id: '', nombre: '', orden: 0, activo: false),
+      );
+      if (tipoMensual.id.isEmpty) return;
+      _tipoCuotaId = tipoMensual.id;
+      final tarifa = await cuotaProv.obtenerTarifaVigente(tipoMensual.id);
+      if (tarifa != null && mounted) {
+        setState(() => _tarifaVigente = tarifa.monto);
+      }
+    });
   }
 
   void _cargarIngreso(Ingreso i) {
@@ -141,6 +199,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _comprobanteUrl = i.comprobante;
     _recurrente = i.recurrente;
     _frecuenciaId = i.frecuenciaId;
+    _proyectoId = i.proyectoId;
     if (i.donanteUsuarioId != null) {
       _esMiembro = true;
       _donanteMiembroSeleccionado = i.donanteUsuarioId;
@@ -164,6 +223,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _comprobanteUrl = g.comprobante;
     _recurrente = g.recurrente;
     _frecuenciaId = g.frecuenciaId;
+    _proyectoId = g.proyectoId;
   }
 
   @override
@@ -174,7 +234,42 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _donanteController.dispose();
     _emailController.dispose();
     _telefonoController.dispose();
+    _periodoCtrl.dispose();
+    _descripcionBienCtrl.dispose();
+    _nroActaBienCtrl.dispose();
+    _ubicacionBienCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _cargarTarifaVigente() async {
+    if (_tarifaVigente != null) {
+      final monto = _tarifaVigente!;
+      setState(() {
+        _montoController.text = monto == monto.truncateToDouble()
+            ? monto.toInt().toString()
+            : monto.toString();
+      });
+      return;
+    }
+    // Fallback async: race condition donde initState corrió antes de que
+    // el provider cargara los tipos de cuota.
+    final cuotaProv = context.read<CuotaProvider>();
+    final tipoMensual = cuotaProv.tiposCuota.firstWhere(
+      (t) => t.nombre.toLowerCase().contains('mensual'),
+      orElse: () =>
+          const TipoCuota(id: '', nombre: '', orden: 0, activo: false),
+    );
+    if (tipoMensual.id.isEmpty) return;
+    _tipoCuotaId = tipoMensual.id;
+    final tarifa = await cuotaProv.obtenerTarifaVigente(tipoMensual.id);
+    if (tarifa != null && mounted) {
+      setState(() {
+        _tarifaVigente = tarifa.monto;
+        _montoController.text = tarifa.monto == tarifa.monto.truncateToDouble()
+            ? tarifa.monto.toInt().toString()
+            : tarifa.monto.toString();
+      });
+    }
   }
 
   bool get _esIngreso => _tipo == 'ingreso';
@@ -192,6 +287,9 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     setState(() {
       _tipo = tipo;
       _categoria = null;
+      if (tipo == 'ingreso' && _metodoPago == 'Caja Chica') {
+        _metodoPago = null;
+      }
     });
   }
 
@@ -214,8 +312,21 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final provider = context.read<MovimientosProvider>();
+    final cuentaProvider = context.read<CuentaBancariaProvider>();
+    final catProvider = context.read<CategoriaProvider>();
+    final cuotaProvider = context.read<CuotaProvider>();
+    final inventarioProvider = context.read<InventarioProvider>();
     final messenger = ScaffoldMessenger.of(context);
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
     final now = DateTime.now();
+    final socioSeleccionado = _socioSeleccionado;
+    final tipoCuotaId = _tipoCuotaId;
+    final catNombreSeleccionada = catProvider
+        .obtenerActivas(_tipo)
+        .firstWhere((c) => c['id'] == _categoria,
+            orElse: () => {'nombre': _esIngreso ? '' : 'Gasto'})['nombre']
+        as String;
+    final esCuotaSocial = _esIngreso && catNombreSeleccionada == 'Cuota Social';
 
     String? comprobanteUrl;
     if (_comprobanteBytes != null && _nombreComprobante != null) {
@@ -250,6 +361,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           descripcion: descripcion,
           metodoPagoId: _metodoPago!,
           categoriaId: _categoria!,
+          proyectoId: _proyectoId,
           comprobante: comprobanteResultante,
           recurrente: _recurrente,
           frecuenciaId: _recurrente ? _frecuenciaId : null,
@@ -266,7 +378,9 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                   ? _telefonoController.text.trim()
                   : null,
           donanteUsuarioId:
-              _esYoDonante ? 'usuario_prueba' : _donanteMiembroSeleccionado,
+              _esYoDonante ? uid : _donanteMiembroSeleccionado,
+          ultimaModificacionPor: uid,
+          ultimaModificacionFecha: now,
         );
         await provider.actualizarIngreso(updated);
       } else if (!_esIngreso && widget.gastoEditar != null) {
@@ -276,10 +390,13 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           descripcion: descripcion,
           metodoPagoId: _metodoPago!,
           categoriaId: _categoria!,
+          proyectoId: _proyectoId,
           comprobante: comprobanteResultante,
           recurrente: _recurrente,
           frecuenciaId: _recurrente ? _frecuenciaId : null,
           proximaFecha: _recurrente ? _calcularProximaFecha() : null,
+          ultimaModificacionPor: uid,
+          ultimaModificacionFecha: now,
         );
         await provider.actualizarGasto(updated);
       }
@@ -292,7 +409,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           descripcion: descripcion,
           metodoPagoId: _metodoPago!,
           categoriaId: _categoria!,
-          usuarioId: 'usuario_prueba',
+          proyectoId: _proyectoId,
+          usuarioId: uid,
           fechaCreacion: now,
           comprobante: comprobanteResultante,
           recurrente: _recurrente,
@@ -310,9 +428,47 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                   ? _telefonoController.text.trim()
                   : null,
           donanteUsuarioId:
-              _esYoDonante ? 'usuario_prueba' : _donanteMiembroSeleccionado,
+              _esYoDonante ? uid : _donanteMiembroSeleccionado,
         );
         await provider.agregarIngreso(ingreso);
+        if (_metodoPago == 'Efectivo' && provider.error == null) {
+          await cuentaProvider.sumarACajaChica(
+              monto, uid, descripcion ?? catNombreSeleccionada);
+        }
+        if (esCuotaSocial && socioSeleccionado != null && provider.error == null) {
+          await cuotaProvider.registrarPago(Cuota(
+            id: '',
+            socioId: socioSeleccionado.id,
+            tipoCuotaId: tipoCuotaId ?? '',
+            periodo: _periodoCtrl.text.trim(),
+            monto: monto,
+            moneda: 'ARS',
+            metodoPagoId: _metodoPago!,
+            usuarioId: uid,
+            fechaPago: _fecha,
+            fechaCreacion: now,
+          ));
+        }
+        if (_registrarEnInventario &&
+            catNombreSeleccionada == 'Donación' &&
+            provider.error == null) {
+          await inventarioProvider.agregar(BienInventario(
+            id: '',
+            codigo: '',
+            descripcion: _descripcionBienCtrl.text.trim(),
+            estado: _estadoInicialBien ?? 'bueno',
+            tipoAlta: 'donacion',
+            fechaAlta: _fecha,
+            nroActa: _nroActaBienCtrl.text.trim(),
+            cantidad: 1,
+            valor: monto,
+            ubicacion: _ubicacionBienCtrl.text.trim().isEmpty
+                ? null
+                : _ubicacionBienCtrl.text.trim(),
+            usuarioId: uid,
+            fechaCreacion: now,
+          ));
+        }
       } else {
         final gasto = Gasto(
           id: '',
@@ -321,7 +477,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           descripcion: descripcion,
           metodoPagoId: _metodoPago!,
           categoriaId: _categoria!,
-          usuarioId: 'usuario_prueba',
+          proyectoId: _proyectoId,
+          usuarioId: uid,
           fechaCreacion: now,
           comprobante: comprobanteResultante,
           recurrente: _recurrente,
@@ -329,6 +486,33 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           proximaFecha: _recurrente ? _calcularProximaFecha() : null,
         );
         await provider.agregarGasto(gasto);
+
+        if (_metodoPago == 'Caja Chica' && provider.error == null) {
+          final cats = catProvider.obtenerActivas(_tipo);
+          final catNombre = cats
+              .firstWhere((c) => c['id'] == _categoria,
+                  orElse: () => {'nombre': 'Gasto'})['nombre'] as String;
+          final observacion = descripcion ?? catNombre;
+          await cuentaProvider.descontarDeCajaChica(monto, uid, observacion);
+        }
+        if (_registrarEnInventario && provider.error == null) {
+          await inventarioProvider.agregar(BienInventario(
+            id: '',
+            codigo: '',
+            descripcion: _descripcionBienCtrl.text.trim(),
+            estado: _estadoInicialBien ?? 'bueno',
+            tipoAlta: 'compra',
+            fechaAlta: _fecha,
+            nroActa: _nroActaBienCtrl.text.trim(),
+            cantidad: 1,
+            valor: monto,
+            ubicacion: _ubicacionBienCtrl.text.trim().isEmpty
+                ? null
+                : _ubicacionBienCtrl.text.trim(),
+            usuarioId: uid,
+            fechaCreacion: now,
+          ));
+        }
       }
     }
 
@@ -459,8 +643,21 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   Widget _buildFormCard() {
     final catProvider = context.watch<CategoriaProvider>();
     final metodoProvider = context.watch<MetodoPagoProvider>();
+    final proyectoProvider = context.watch<ProyectoProvider>();
+    final socioProvider = context.watch<SocioProvider>();
+    final personaProvider = context.watch<PersonaProvider>();
     final cats = catProvider.obtenerActivas(_tipo);
+    final catSeleccionada = _categoria != null
+        ? cats.firstWhere((c) => c['id'] == _categoria,
+            orElse: () => <String, dynamic>{})
+        : <String, dynamic>{};
+    final esCuotaSocial = _esIngreso && catSeleccionada['nombre'] == 'Cuota Social';
     final metodos = metodoProvider.obtenerActivos();
+    final proyectos = [
+      ...proyectoProvider.enCurso,
+      ...proyectoProvider.planificados,
+      ...proyectoProvider.finalizados,
+    ];
 
     return Card(
       child: Padding(
@@ -512,10 +709,10 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                   const InputDecoration(labelText: 'Método de pago'),
               items: metodoProvider.isLoading
                   ? [const DropdownMenuItem<String>(enabled: false, value: '', child: Text('Cargando...'))]
-                  : metodos.isEmpty
+                  : metodos.isEmpty && _esIngreso
                       ? [const DropdownMenuItem<String>(enabled: false, value: '', child: Text('Sin métodos disponibles'))]
-                      : metodos
-                          .map((m) => DropdownMenuItem<String>(
+                      : [
+                          ...metodos.map((m) => DropdownMenuItem<String>(
                                 value: m['nombre'] as String,
                                 child: ListTile(
                                   dense: true,
@@ -526,16 +723,26 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                                       color: AppTheme.azulMedio),
                                   title: Text(m['nombre'] as String),
                                 ),
-                              ))
-                          .toList(),
-              selectedItemBuilder: metodoProvider.isLoading || metodos.isEmpty
+                              )),
+                          if (!_esIngreso)
+                            const DropdownMenuItem<String>(
+                              value: 'Caja Chica',
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(Icons.wallet,
+                                    size: 20, color: AppTheme.verdeTeal),
+                                title: Text('Caja Chica'),
+                              ),
+                            ),
+                        ],
+              selectedItemBuilder: metodoProvider.isLoading
                   ? null
-                  : (ctx) => metodos
-                      .map((m) => Text(m['nombre'] as String))
-                      .toList(),
-              onChanged: metodoProvider.isLoading || metodos.isEmpty
-                  ? null
-                  : (v) => setState(() => _metodoPago = v),
+                  : (ctx) => [
+                        ...metodos.map((m) => Text(m['nombre'] as String)),
+                        if (!_esIngreso) const Text('Caja Chica'),
+                      ],
+              onChanged: (v) => setState(() => _metodoPago = v),
               validator: (v) =>
                   v == null ? 'Seleccioná un método de pago' : null,
             ),
@@ -580,13 +787,73 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                       cats.map((c) => Text(c['nombre'] as String)).toList(),
               onChanged: catProvider.isLoading || cats.isEmpty
                   ? null
-                  : (v) => setState(() => _categoria = v),
+                  : (v) {
+                      final nom = v != null
+                          ? (cats.firstWhere((c) => c['id'] == v,
+                                  orElse: () => {})['nombre'] as String?)
+                          : null;
+                      setState(() {
+                        _categoria = v;
+                        if (nom != 'Cuota Social') _socioSeleccionado = null;
+                        if (!_categoriasInventariables.contains(nom)) {
+                          _registrarEnInventario = false;
+                        }
+                      });
+                      if (nom == 'Cuota Social') _cargarTarifaVigente();
+                    },
               validator: (v) =>
                   v == null ? 'Seleccioná una categoría' : null,
             ),
-            if (_esIngreso) ..._buildCamposIngreso(),
-            _buildRecurrencia(),
+            if (!esCuotaSocial) ...[
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String?>(
+                initialValue: _proyectoId,
+                decoration: const InputDecoration(labelText: 'Proyecto (opcional)'),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Sin proyecto asociado'),
+                  ),
+                  ...proyectos.map((p) => DropdownMenuItem<String?>(
+                        value: p.id,
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            _iconoEstadoProyecto(p.estado),
+                            size: 18,
+                            color: _colorEstadoProyecto(p.estado),
+                          ),
+                          title: Text(p.nombre),
+                        ),
+                      )),
+                ],
+                selectedItemBuilder: (ctx) => [
+                  const Text('Sin proyecto asociado'),
+                  ...proyectos.map((p) => Text(p.nombre)),
+                ],
+                onChanged: (v) => setState(() => _proyectoId = v),
+              ),
+            ],
+            if (_esIngreso) ...[
+              if (!esCuotaSocial) ..._buildCamposIngreso(),
+              if (esCuotaSocial)
+                ..._buildCamposCuotaSocial(
+                  opciones: socioProvider.todos
+                      .where((s) => s.activo)
+                      .map((s) => (
+                            socio: s,
+                            nombre: personaProvider.nombreCompleto(s.personaId),
+                          ))
+                      .toList(),
+                ),
+            ],
+            if (!esCuotaSocial) _buildRecurrencia(),
             _buildComprobante(),
+            if (!_modoEdicion &&
+                _categoriasInventariables.contains(catSeleccionada['nombre']))
+              _buildInventarioSection(
+                  esDonacion: catSeleccionada['nombre'] == 'Donación'),
           ],
         ),
       ),
@@ -852,6 +1119,88 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     );
   }
 
+  List<Widget> _buildCamposCuotaSocial({
+    required List<({Socio socio, String nombre})> opciones,
+  }) {
+    return [
+      const SizedBox(height: 16),
+      const Divider(),
+      const SizedBox(height: 8),
+      const Text(
+        'Cuota del socio',
+        style: TextStyle(
+          color: AppTheme.textoSecundario,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      const SizedBox(height: 12),
+      Autocomplete<({Socio socio, String nombre})>(
+        displayStringForOption: (o) => o.nombre,
+        optionsBuilder: (val) {
+          if (val.text.isEmpty) return opciones.take(5);
+          final q = val.text.toLowerCase();
+          return opciones.where((o) => o.nombre.toLowerCase().contains(q));
+        },
+        onSelected: (o) => setState(() => _socioSeleccionado = o.socio),
+        fieldViewBuilder: (context, ctrl, focusNode, onSubmitted) {
+          return TextFormField(
+            controller: ctrl,
+            focusNode: focusNode,
+            decoration: const InputDecoration(
+              labelText: 'Socio',
+              hintText: 'Buscar por nombre',
+              suffixIcon: Icon(Icons.search),
+            ),
+            validator: (_) =>
+                _socioSeleccionado == null ? 'Seleccioná un socio' : null,
+          );
+        },
+        optionsViewBuilder: (context, onSelected, options) => Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            borderRadius: const BorderRadius.all(Radius.circular(8)),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (_, i) {
+                  final o = options.elementAt(i);
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.people_outline, size: 18),
+                    title: Text(o.nombre),
+                    onTap: () => onSelected(o),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _periodoCtrl,
+        keyboardType: TextInputType.number,
+        inputFormatters: [_PeriodoFormatter()],
+        decoration: const InputDecoration(
+          labelText: 'Período (MM/AAAA)',
+          hintText: 'ej: 06/2026',
+        ),
+        validator: (v) {
+          if (v == null || v.isEmpty) return 'Ingresá el período';
+          if (!RegExp(r'^\d{2}/\d{4}$').hasMatch(v)) {
+            return 'Formato: MM/AAAA';
+          }
+          return null;
+        },
+      ),
+    ];
+  }
+
   List<Widget> _buildCamposIngreso() {
     return [
       const SizedBox(height: 8),
@@ -994,6 +1343,128 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         ),
       ],
     ];
+  }
+
+  Widget _buildInventarioSection({required bool esDonacion}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        const Divider(),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(esDonacion
+              ? 'Registrar en inventario como bien donado'
+              : 'Registrar en inventario'),
+          subtitle: Text(esDonacion
+              ? 'Esta donación corresponde a un bien mueble inventariable'
+              : 'Este gasto corresponde a un bien mueble inventariable'),
+          value: _registrarEnInventario,
+          activeThumbColor: AppTheme.verdeTeal,
+          onChanged: (v) => setState(() => _registrarEnInventario = v),
+        ),
+        if (_registrarEnInventario) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _descripcionBienCtrl,
+            decoration:
+                const InputDecoration(labelText: 'Descripción del bien'),
+            validator: (v) => _registrarEnInventario &&
+                    (v == null || v.trim().isEmpty)
+                ? 'Ingresá la descripción del bien'
+                : null,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _nroActaBienCtrl,
+            decoration: const InputDecoration(labelText: 'Nro. de acta'),
+            validator: (v) => _registrarEnInventario &&
+                    (v == null || v.trim().isEmpty)
+                ? 'Ingresá el nro. de acta'
+                : null,
+          ),
+          const SizedBox(height: 12),
+          InputDecorator(
+            decoration: const InputDecoration(labelText: 'Estado inicial'),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _estadoInicialBien ?? 'bueno',
+                isExpanded: true,
+                isDense: true,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'bueno',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.check_circle,
+                          color: AppTheme.verdeIngreso, size: 18),
+                      title: Text('Bueno'),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'regular',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.warning_amber,
+                          color: AppTheme.amarilloAlerta, size: 18),
+                      title: Text('Regular'),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'malo',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.error_outline,
+                          color: Color(0xFFE67E22), size: 18),
+                      title: Text('Malo'),
+                    ),
+                  ),
+                ],
+                selectedItemBuilder: (ctx) => const [
+                  Text('Bueno'),
+                  Text('Regular'),
+                  Text('Malo'),
+                ],
+                onChanged: (v) =>
+                    setState(() => _estadoInicialBien = v ?? 'bueno'),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _ubicacionBienCtrl,
+            decoration:
+                const InputDecoration(labelText: 'Ubicación (opcional)'),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PeriodoFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.length <= 2) {
+      return newValue.copyWith(
+        text: digits,
+        selection: TextSelection.collapsed(offset: digits.length),
+      );
+    }
+    final result =
+        '${digits.substring(0, 2)}/${digits.substring(2, digits.length.clamp(2, 6))}';
+    return TextEditingValue(
+      text: result,
+      selection: TextSelection.collapsed(offset: result.length),
+    );
   }
 }
 

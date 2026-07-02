@@ -460,3 +460,163 @@ Archivo `firestore.rules` implementado y desplegado. Resumen:
 - Reglas de seguridad Firebase Storage
 - Módulo Votaciones (requiere decisiones institucionales)
 
+
+---
+
+## 14. Sesión de Auditoría y Refinamiento — Actualizaciones
+
+### Widgets compartidos creados
+- **`AccionAuthWidget`** (`lib/shared/widgets/accion_auth_widget.dart`): botón Ingresar / avatar con menú desplegable (Mi perfil, Panel de administración si esAdmin||esAuditor, Cerrar sesión). Usado en TODAS las pantallas con AppBar.
+- **`NombreUsuarioWidget`** (`lib/shared/widgets/nombre_usuario_widget.dart`): resuelve un `usuarioId` a nombre completo (vía `personaId`) o email como fallback. Muestra `SizedBox.shrink()` si el usuario no está logueado. Usa guard de loading para evitar mostrar IDs crudos.
+
+### Sistema de auditoría — patrón estándar
+Aplicado a: Ingresos, Gastos, Proyectos, Ítems de Proyecto, Cuenta Bancaria.
+
+Cada entidad auditable tiene `usuarioId` (creador), `ultimaModificacionPor` (nullable), `ultimaModificacionFecha` (nullable). Cada operación se registra en `log_cambios` vía `LogCambioService.registrar()`.
+
+UI: "Creado por: {nombre}" y "Última modificación: {nombre} · {fecha}" con `NombreUsuarioWidget`, label en negrita, mismo tamaño que el texto circundante de la sección.
+
+### Pantallas unificadas
+Eliminadas pantallas públicas separadas: `ProyectoPublicoDetalleScreen` y `CuentaBancariaPublicaScreen`. Ahora una sola pantalla por módulo verifica el rol y muestra campos editables o de solo lectura según corresponda.
+
+### Patrón ListTile en dropdowns (CRÍTICO)
+Cualquier Row con texto sin Expanded dentro de DropdownMenuItem rompe el layout en Flutter web. Usar siempre ListTile dense con leading/title, y selectedItemBuilder con solo texto.
+
+### Bugs resueltos
+- Usuarios duplicados en Firestore por migración manual de authUid — un solo documento por usuario con ID = authUid.
+- Reglas de Firestore: usar exists() antes de get() en funciones de rol para evitar permission-denied en falsos negativos.
+- Subcolección cuenta bancaria: movimientos están en cuenta_bancaria/cuenta_principal/movimientos, no en colección top-level.
+- Auto-creación de Persona si el usuario no tiene personaId al editar perfil.
+- Registro con invitación: recargarRol() explícito tras crear usuario, navegación con pushAndRemoveUntil a HomeScreen.
+
+### Funcionalidades agregadas
+- Filtro de recurrencia con dropdown de Frecuencia en Movimientos y Home.
+- Proyecto asociado opcional en Ingreso/Gasto, con link presionable en el detalle.
+- Firebase Storage para resúmenes bancarios: comprobantes/resumenes_bancarios/{año}/{mes}/.
+- Log de cambios con tipos: ingreso, gasto, proyecto, item_proyecto, cuenta_bancaria.
+- Pantalla de perfil de usuario con edición inline y cambio de contraseña.
+
+
+---
+
+## 15. Entidad Inventario
+
+### BienInventario
+Registro legal de bienes muebles de la Cooperadora (comprados o donados). NO incluye materiales consumibles (librería, juguetería, etc.).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | string | |
+| `codigo` | string | Código único auto-generado. Formato: INV-{año}-{nro correlativo} |
+| `descripcion` | string | Qué es el bien (marca, color, características) |
+| `estado` | string | `bueno` / `regular` / `malo` / `dado_de_baja` |
+| `ubicacion` | string | Opcional. Ej: "Aula 3", "Depósito" |
+| `categoriaInventario` | string | Opcional. Ej: "Mobiliario", "Tecnología", "Musical" |
+| `fechaAlta` | timestamp | Fecha de compra o recepción |
+| `nroActaAlta` | string | Número de acta de aprobación |
+| `cantidadAlta` | number | Cantidad recibida |
+| `tipoAlta` | string | `compra` / `donacion` |
+| `valorAlta` | number | Monto de compra o valor estimado. Null si no calculable |
+| `gastoId` | string | Opcional. Vincula con Gasto si fue compra |
+| `ingresoId` | string | Opcional. Vincula con Ingreso si fue donación |
+| `usuarioAltaId` | string | Quién registró el alta |
+| `fechaBaja` | timestamp | Opcional |
+| `nroActaBaja` | string | Opcional |
+| `cantidadBaja` | number | Opcional |
+| `motivoBaja` | string | `venta` / `deterioro` / `rotura` / `robo` / `donacion` / `permuta` / `otro` |
+| `valorBaja` | number | Opcional. Monto de venta o valor de permuta |
+| `usuarioBajaId` | string | Quién registró la baja |
+| `ultimaModificacionPor` | string | Nullable |
+| `ultimaModificacionFecha` | timestamp | Nullable |
+
+**Permisos:** Alta y baja por Editor/Admin. Visibilidad configurable por Admin (visible por defecto).
+
+**Integración con Gastos/Ingresos:** toggle opcional en el formulario al seleccionar categorías que impliquen bienes muebles. Al activar aparece mini-formulario inline con datos del alta. Al guardar se crea el bien en inventario vinculado por `gastoId` o `ingresoId`.
+
+**Colección Firestore:** `inventario`
+
+
+---
+
+## 16. Actualizaciones Recientes — Segunda Sesión
+
+### Módulo Caja Chica
+Documento fijo `"caja_chica"` en colección `cuenta_bancaria`. Movimientos en subcolección `cuenta_bancaria/caja_chica/movimientos`.
+
+**Permisos:** Editor y Admin pueden actualizar el saldo (no solo Admin).
+
+**Integración automática:**
+- Ingreso en efectivo → suma automáticamente a Caja Chica
+- Gasto en efectivo → resta automáticamente de Caja Chica
+- Depósito bancario desde Caja Chica → operación atómica (batch write) que descuenta Caja Chica y suma Cuenta Bancaria simultáneamente
+
+**UI:** Tab "Caja Chica" en `cuenta_bancaria_screen.dart` junto a tab "Cuenta Bancaria". Botón "Depositar al banco" visible para Editor/Admin.
+
+### Módulo Inventario
+Colección `inventario`. Código auto-generado formato `INV-{año}-{correlativo}`.
+
+**Integración con Gastos/Ingresos:** toggle opcional en formulario al seleccionar categorías que impliquen bienes muebles. Al activar aparece mini-formulario inline. Al guardar se crea automáticamente el bien vinculado por `gastoId` o `ingresoId`.
+
+**Permisos:** Alta y baja por Editor/Admin. Visible públicamente por defecto (configurable por Admin).
+
+**UI:** `InventarioScreen` con filtros por estado, acceso desde panel admin y desde HomeScreen.
+
+### Módulo Cuota Social integrado con Ingresos
+Cuando categoría es "Cuota Social":
+- Se ocultan campos no aplicables: proyecto, donante, recurrencia
+- Aparecen campos: socio (autocomplete), período MM/YYYY, monto precargado desde tarifa vigente
+- Al guardar se registra automáticamente la cuota del socio seleccionado
+
+### Filtros en pantalla Movimientos
+Panel desplegable (botón "Filtros" con badge de cantidad activos) visible solo para usuarios logueados. Filtros: tipo (Ingresos/Gastos/Ambos), fecha desde/hasta, categoría, forma de pago, usuario (con checkboxes "Creado por" / "Modificado por").
+
+### Libro de Actas — Pendiente con restricción legal
+El manual de Cooperadoras ABC.gob.ar exige que las actas sean escritas de puño y letra en libro físico, sin hojas agregadas ni impresiones. La app puede funcionar como borrador digital y archivo de fotos/PDF del libro físico, pero NO puede reemplazar el libro legal. Implementación postergada.
+
+### Libros obligatorios — Estado
+- ✅ Libro de socios — módulo Socios
+- ✅ Libro de tesorería — módulo Ingresos y Gastos
+- ✅ Libro inventario — módulo Inventario
+- ✅ Comprobantes correlativos — Firebase Storage
+- 🔲 Libro de actas — requiere libro físico por ley
+
+### TODO pendiente en código
+`// TODO: Mecanismo de adelanto y reintegro — gasto adelantado por miembro, se asienta al momento del reintegro desde Caja Chica.`
+
+
+---
+
+## 17. Rediseño del Modelo Persona-Socio-Usuario (CAMBIO ESTRUCTURAL)
+
+> IMPORTANTE: Este rediseño reemplaza el modelo anterior de Socio como grupo familiar con Integrantes. Según el manual de Cooperadoras ABC.gob.ar, el Socio es una Persona individual con número de socio propio, no un grupo. Se elimina la entidad Integrante.
+
+### Motivación
+El manual establece que cada Socio debe tener: número de socio único, nombre y apellido, DNI, domicilio, teléfono y email — datos de una persona, no de un grupo familiar. Si padre y madre quieren ambos tener voz/voto, cada uno se inscribe como Socio individual con su propio número.
+
+### Persona — Modelo actualizado
+
+Campos nuevos respecto al modelo anterior: tipoPersona (fisica/fiscal), fechaNacimiento (nuevo, para todas las personas físicas), razonSocial, cuit, personaContactoId (solo fiscal), subtipo, cursoId (solo alumnos), hijosIds (opcional, informativo).
+
+Regla automática: si tipoPersona es fiscal, el Socio asociado es automáticamente tipo honorario.
+
+### Curso — Nueva entidad catálogo
+Campos: id, nombre (ej 3 B), nivel (opcional), orden (opcional - si no se define, dropdown ordena alfabéticamente por nombre), activo. Gestionable desde panel Admin. Colección: cursos.
+
+### Socio — Modelo simplificado
+Campos: id, numeroSocio (correlativo único, obligatorio por ley), personaId (reemplaza apellidoFamilia), tipoSocio (activo/honorario/adherente, derivado automático a honorario si persona es fiscal), activo, fechaIngreso, observaciones.
+
+### Entidad eliminada: Integrante
+Ya no existe. La relación familiar informativa se maneja con hijosIds en Persona.
+
+### Tipos de Socio segun Art 40 Decreto 4767/72
+1. Socio Activo - Persona Fisica mayor de edad vinculada a la comunidad escolar. Paga cuota. Voz y voto.
+2. Socio Honorario - Persona Fiscal o Fisica que colabore. Solo voz, mediante delegado (personaContactoId).
+3. Socio Adherente - Persona Fisica mayor de 15 anios, cuota inferior. Solo voz, sin voto.
+
+Consultante sigue existiendo como categoria propia de la app (no legal) para Usuarios sin condicion de Socio que quieran expresar opinion.
+
+### Votaciones - Separacion de resultados (a implementar)
+Resultado vinculante: solo votos de Socios Activos. Por separado: Opinion de la comunidad con votos de Consultantes, sin peso legal, desglosado, nunca mezclado con el resultado oficial.
+
+### Migracion de datos pendiente
+Los Socios existentes (grupo familiar con apellidoFamilia) deben convertirse en Socios individuales vinculados a una Persona. Los Integrantes existentes deben revisarse uno por uno. Reasignar numeroSocio correlativo.

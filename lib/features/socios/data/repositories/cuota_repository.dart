@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../../shared/services/log_cambio_service.dart';
 import '../../domain/models/cuota.dart';
 import '../../domain/models/tarifa_cuota.dart';
 import '../../domain/models/tipo_cuota.dart';
@@ -53,8 +54,16 @@ class CuotaRepository {
     return list.first;
   }
 
-  Future<void> registrarPago(Cuota cuota) =>
-      _cuotasCol.add(cuota.toMap());
+  Future<void> registrarPago(Cuota cuota) async {
+    final ref = await _cuotasCol.add(cuota.toMap());
+    await LogCambioService().registrar(
+      entidadTipo: 'cuota',
+      entidadId: ref.id,
+      usuarioId: cuota.usuarioId,
+      accion: 'creacion',
+      nuevo: cuota.toMap(),
+    );
+  }
 
   Future<void> actualizarTarifa(TarifaCuota tarifa) {
     if (tarifa.id.isEmpty) return _tarifasCol.add(tarifa.toMap());

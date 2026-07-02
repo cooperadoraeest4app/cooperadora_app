@@ -18,6 +18,8 @@ class Gasto {
   final String usuarioId;
   final String? comprobante;
   final DateTime fechaCreacion;
+  final String? ultimaModificacionPor;
+  final DateTime? ultimaModificacionFecha;
 
   const Gasto({
     required this.id,
@@ -35,6 +37,8 @@ class Gasto {
     required this.usuarioId,
     this.comprobante,
     required this.fechaCreacion,
+    this.ultimaModificacionPor,
+    this.ultimaModificacionFecha,
   });
 
   Map<String, dynamic> toMap() {
@@ -54,6 +58,10 @@ class Gasto {
       'usuarioId': usuarioId,
       'comprobante': comprobante,
       'fechaCreacion': Timestamp.fromDate(fechaCreacion),
+      'ultimaModificacionPor': ultimaModificacionPor,
+      'ultimaModificacionFecha': ultimaModificacionFecha != null
+          ? Timestamp.fromDate(ultimaModificacionFecha!)
+          : null,
     };
   }
 
@@ -76,6 +84,10 @@ class Gasto {
       usuarioId: map['usuarioId'] as String,
       comprobante: map['comprobante'] as String?,
       fechaCreacion: (map['fechaCreacion'] as Timestamp).toDate(),
+      ultimaModificacionPor: map['ultimaModificacionPor'] as String?,
+      ultimaModificacionFecha: map['ultimaModificacionFecha'] != null
+          ? (map['ultimaModificacionFecha'] as Timestamp).toDate()
+          : null,
     );
   }
 
@@ -95,6 +107,8 @@ class Gasto {
     String? usuarioId,
     Object? comprobante = _unset,
     DateTime? fechaCreacion,
+    Object? ultimaModificacionPor = _unset,
+    Object? ultimaModificacionFecha = _unset,
   }) {
     return Gasto(
       id: id ?? this.id,
@@ -120,6 +134,12 @@ class Gasto {
       comprobante:
           comprobante == _unset ? this.comprobante : comprobante as String?,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
+      ultimaModificacionPor: ultimaModificacionPor == _unset
+          ? this.ultimaModificacionPor
+          : ultimaModificacionPor as String?,
+      ultimaModificacionFecha: ultimaModificacionFecha == _unset
+          ? this.ultimaModificacionFecha
+          : ultimaModificacionFecha as DateTime?,
     );
   }
 }

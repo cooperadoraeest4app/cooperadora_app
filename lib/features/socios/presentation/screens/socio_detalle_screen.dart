@@ -8,12 +8,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../shared/services/storage_service.dart';
 import '../../../../shared/utils/metodo_pago_icon.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../admin/data/repositories/persona_repository.dart';
+import '../../../admin/domain/models/persona.dart';
 import '../../../admin/presentation/providers/metodo_pago_provider.dart';
+import '../../../admin/presentation/providers/persona_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../data/repositories/cuota_repository.dart';
 import '../../data/repositories/socio_repository.dart';
 import '../../domain/models/cuota.dart';
-import '../../domain/models/integrante.dart';
 import '../../domain/models/socio.dart';
 import '../../domain/models/subtipo_socio.dart';
 import '../../domain/models/tipo_socio.dart';
@@ -29,14 +32,6 @@ String _fmtMonto(double m) =>
     NumberFormat.currency(locale: 'es_AR', symbol: '\$', decimalDigits: 2)
         .format(m);
 
-String _tipoIntegranteLabel(String tipo) => switch (tipo) {
-      'padre' => 'Padre',
-      'madre' => 'Madre',
-      'tutor' => 'Tutor/a',
-      'alumno' => 'Alumno/a',
-      _ => 'Otro',
-    };
-
 // ── SocioDetalleScreen ────────────────────────────────────────────────────────
 
 class SocioDetalleScreen extends StatefulWidget {
@@ -49,14 +44,26 @@ class SocioDetalleScreen extends StatefulWidget {
 
 class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
   final _socioRepo = SocioRepository();
+  final _personaRepo = PersonaRepository();
 
   late Socio _original;
-  String? _tipoId;
+  late Future<Persona?> _personaFuture;
+  Persona? _personaOriginal;
+  bool _personaInicializada = false;
+
+  String? _tipoSocio;
   String? _subtipoId;
+
+  late TextEditingController _nombreCtrl;
   late TextEditingController _apellidoCtrl;
+  late TextEditingController _dniCtrl;
+  late TextEditingController _telefonoCtrl;
+  late TextEditingController _emailCtrl;
+  late TextEditingController _direccionCtrl;
   late TextEditingController _razonSocialCtrl;
   late TextEditingController _cuitCtrl;
   late TextEditingController _observacionesCtrl;
+  DateTime? _fechaNacimiento;
   late DateTime _fechaIngreso;
 
   List<SubtipoSocio> _subtipos = [];
@@ -64,28 +71,13 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
 
   bool _saving = false;
 
-  bool get _esHonorario => _tipoId == 'honorario';
+  bool get _esFiscal => _personaOriginal?.tipoPersona == 'fiscal';
 
   bool get _hayCambios {
-    if (_tipoId == null) return false;
+    if (!_personaInicializada) return false;
     final s = _original;
-    if (_tipoId != s.tipoSocioId) return true;
-    final origSubtipo =
-        s.subtipoSocioId.isNotEmpty ? s.subtipoSocioId : null;
-    if (_subtipoId != origSubtipo) return true;
-    if (!_esHonorario) {
-      if (_apellidoCtrl.text.trim().toUpperCase() !=
-          (s.apellidoFamilia ?? '')) {
-        return true;
-      }
-    } else {
-      if (_razonSocialCtrl.text.trim() != (s.razonSocial ?? '')) {
-        return true;
-      }
-      if (_cuitCtrl.text.trim() != (s.cuit ?? '')) {
-        return true;
-      }
-    }
+    final p = _personaOriginal!;
+    if (_tipoSocio != s.tipoSocio) return true;
     if (_observacionesCtrl.text.trim() != (s.observaciones ?? '')) {
       return true;
     }
@@ -94,30 +86,75 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
     if (fi.year != orig.year || fi.month != orig.month || fi.day != orig.day) {
       return true;
     }
+    if (_esFiscal) {
+      if (_razonSocialCtrl.text.trim() != (p.razonSocial ?? '')) return true;
+      if (_cuitCtrl.text.trim() != (p.cuit ?? '')) return true;
+    } else {
+      if (_nombreCtrl.text.trim() != p.nombre) return true;
+      if (_apellidoCtrl.text.trim() != p.apellido) return true;
+      if (_dniCtrl.text.trim() != (p.dni ?? '')) return true;
+      final origSubtipo = p.subtipo;
+      if (_subtipoId != origSubtipo) return true;
+      final fn = _fechaNacimiento;
+      final origFn = p.fechaNacimiento;
+      if ((fn == null) != (origFn == null)) return true;
+      if (fn != null &&
+          origFn != null &&
+          (fn.year != origFn.year ||
+              fn.month != origFn.month ||
+              fn.day != origFn.day)) {
+        return true;
+      }
+    }
+    if (_telefonoCtrl.text.trim() != (p.telefono ?? '')) return true;
+    if (_emailCtrl.text.trim() != (p.email ?? '')) return true;
+    if (!_esFiscal && _direccionCtrl.text.trim() != (p.direccion ?? '')) {
+      return true;
+    }
     return false;
   }
 
   @override
   void initState() {
     super.initState();
-    _init(widget.socio);
+    _original = widget.socio;
+    _tipoSocio = widget.socio.tipoSocio;
+    _fechaIngreso = widget.socio.fechaIngreso;
+
+    _nombreCtrl = TextEditingController();
+    _apellidoCtrl = TextEditingController();
+    _dniCtrl = TextEditingController();
+    _telefonoCtrl = TextEditingController();
+    _emailCtrl = TextEditingController();
+    _direccionCtrl = TextEditingController();
+    _razonSocialCtrl = TextEditingController();
+    _cuitCtrl = TextEditingController();
+    _observacionesCtrl =
+        TextEditingController(text: widget.socio.observaciones ?? '');
+
+    _personaFuture = _personaRepo.obtenerPorId(widget.socio.personaId);
+    _cargarSubtipos(widget.socio.tipoSocio);
   }
 
-  void _init(Socio s) {
-    _original = s;
-    _tipoId = s.tipoSocioId;
-    _subtipoId = s.subtipoSocioId.isNotEmpty ? s.subtipoSocioId : null;
-    _apellidoCtrl = TextEditingController(text: s.apellidoFamilia ?? '');
-    _razonSocialCtrl = TextEditingController(text: s.razonSocial ?? '');
-    _cuitCtrl = TextEditingController(text: s.cuit ?? '');
-    _observacionesCtrl = TextEditingController(text: s.observaciones ?? '');
-    _fechaIngreso = s.fechaIngreso;
-    if (s.tipoSocioId.isNotEmpty) _cargarSubtipos(s.tipoSocioId);
+  void _initPersona(Persona p) {
+    if (_personaInicializada) return;
+    _personaInicializada = true;
+    _personaOriginal = p;
+    _nombreCtrl.text = p.nombre;
+    _apellidoCtrl.text = p.apellido;
+    _dniCtrl.text = p.dni ?? '';
+    _telefonoCtrl.text = p.telefono ?? '';
+    _emailCtrl.text = p.email ?? '';
+    _direccionCtrl.text = p.direccion ?? '';
+    _razonSocialCtrl.text = p.razonSocial ?? '';
+    _cuitCtrl.text = p.cuit ?? '';
+    _fechaNacimiento = p.fechaNacimiento;
+    _subtipoId = p.subtipo;
   }
 
-  void _cargarSubtipos(String tipoId) {
+  void _cargarSubtipos(String tipoSocio) {
     _subtiposSub?.cancel();
-    _subtiposSub = _socioRepo.obtenerSubtipos(tipoId).listen((list) {
+    _subtiposSub = _socioRepo.obtenerSubtipos(tipoSocio).listen((list) {
       if (!mounted) return;
       setState(() {
         _subtipos = list;
@@ -131,7 +168,12 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
   @override
   void dispose() {
     _subtiposSub?.cancel();
+    _nombreCtrl.dispose();
     _apellidoCtrl.dispose();
+    _dniCtrl.dispose();
+    _telefonoCtrl.dispose();
+    _emailCtrl.dispose();
+    _direccionCtrl.dispose();
     _razonSocialCtrl.dispose();
     _cuitCtrl.dispose();
     _observacionesCtrl.dispose();
@@ -141,30 +183,49 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
   Future<void> _guardar() async {
     setState(() => _saving = true);
     try {
-      final updated = _original.copyWith(
-        tipoSocioId: _tipoId!,
-        subtipoSocioId: _subtipoId ?? '',
-        apellidoFamilia: _esHonorario
+      final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+      final personaProvider = context.read<PersonaProvider>();
+      final socioProvider = context.read<SocioProvider>();
+      final p = _personaOriginal!;
+
+      final personaActualizada = p.copyWith(
+        nombre: _esFiscal ? p.nombre : _nombreCtrl.text.trim(),
+        apellido: _esFiscal ? p.apellido : _apellidoCtrl.text.trim(),
+        dni: _esFiscal
+            ? p.dni
+            : (_dniCtrl.text.trim().isEmpty ? null : _dniCtrl.text.trim()),
+        fechaNacimiento: _esFiscal ? p.fechaNacimiento : _fechaNacimiento,
+        telefono: _telefonoCtrl.text.trim().isEmpty
             ? null
-            : _apellidoCtrl.text.trim().toUpperCase(),
-        clearApellidoFamilia: _esHonorario,
-        razonSocial:
-            _esHonorario ? _razonSocialCtrl.text.trim() : null,
-        clearRazonSocial: !_esHonorario,
-        cuit: _esHonorario && _cuitCtrl.text.trim().isNotEmpty
-            ? _cuitCtrl.text.trim()
-            : null,
-        clearCuit: !_esHonorario || _cuitCtrl.text.trim().isEmpty,
+            : _telefonoCtrl.text.trim(),
+        email:
+            _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
+        direccion: _esFiscal
+            ? p.direccion
+            : (_direccionCtrl.text.trim().isEmpty
+                ? null
+                : _direccionCtrl.text.trim()),
+        razonSocial: _esFiscal ? _razonSocialCtrl.text.trim() : p.razonSocial,
+        cuit: _esFiscal
+            ? (_cuitCtrl.text.trim().isEmpty ? null : _cuitCtrl.text.trim())
+            : p.cuit,
+        subtipo: _esFiscal ? p.subtipo : _subtipoId,
+      );
+      await personaProvider.actualizar(personaActualizada);
+
+      final socioActualizado = _original.copyWith(
+        tipoSocio: _tipoSocio!,
         observaciones: _observacionesCtrl.text.trim().isEmpty
             ? null
             : _observacionesCtrl.text.trim(),
-        clearObservaciones: _observacionesCtrl.text.trim().isEmpty,
         fechaIngreso: _fechaIngreso,
       );
-      await context.read<SocioProvider>().actualizar(updated);
+      await socioProvider.actualizar(socioActualizado, uid);
+
       if (mounted) {
         setState(() {
-          _original = updated;
+          _original = socioActualizado;
+          _personaOriginal = personaActualizada;
           _saving = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -179,8 +240,7 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: AppTheme.rojoGasto),
+              content: Text('Error: $e'), backgroundColor: AppTheme.rojoGasto),
         );
       }
     }
@@ -205,91 +265,274 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
         foregroundColor: Colors.white,
-        title: Text(_original.nombreDisplay),
+        title: Text(_personaOriginal?.nombreCompleto ?? 'Socio'),
       ),
-      body: Stack(
-        children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      body: FutureBuilder<Persona?>(
+        future: _personaFuture,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final persona = snap.data;
+          if (persona == null) {
+            return const Center(
+              child: Text('No se encontró la persona vinculada a este socio.'),
+            );
+          }
+          _initPersona(persona);
+
+          return Stack(
             children: [
-              _EditCard(
-                tipos: tipos,
-                tipoId: _tipoId,
-                subtipoId: _subtipoId,
-                subtipos: _subtipos,
-                apellidoCtrl: _apellidoCtrl,
-                razonSocialCtrl: _razonSocialCtrl,
-                cuitCtrl: _cuitCtrl,
-                observacionesCtrl: _observacionesCtrl,
-                fechaIngreso: _fechaIngreso,
-                esHonorario: _esHonorario,
-                puedeGestionar: puedeGestionar,
-                socioActivo: liveSocio.activo,
-                onTipoChanged: puedeGestionar
-                    ? (v) {
-                        setState(() {
-                          _tipoId = v;
-                          _subtipoId = null;
-                          _subtipos = [];
-                        });
-                        if (v != null) _cargarSubtipos(v);
-                      }
-                    : null,
-                onSubtipoChanged: puedeGestionar
-                    ? (v) => setState(() => _subtipoId = v)
-                    : null,
-                onFechaChanged: (d) => setState(() => _fechaIngreso = d),
-                onFieldChanged: () => setState(() {}),
-                onActivoChanged: (v) => context
-                    .read<SocioProvider>()
-                    .activarDesactivar(widget.socio.id, v),
+              ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                children: [
+                  _PersonaCard(
+                    esFiscal: _esFiscal,
+                    nombreCtrl: _nombreCtrl,
+                    apellidoCtrl: _apellidoCtrl,
+                    dniCtrl: _dniCtrl,
+                    telefonoCtrl: _telefonoCtrl,
+                    emailCtrl: _emailCtrl,
+                    direccionCtrl: _direccionCtrl,
+                    razonSocialCtrl: _razonSocialCtrl,
+                    cuitCtrl: _cuitCtrl,
+                    fechaNacimiento: _fechaNacimiento,
+                    puedeGestionar: puedeGestionar,
+                    onFieldChanged: () => setState(() {}),
+                    onFechaNacimientoChanged: (d) =>
+                        setState(() => _fechaNacimiento = d),
+                  ),
+                  const SizedBox(height: 12),
+                  _EditCard(
+                    tipos: tipos,
+                    tipoSocio: _tipoSocio,
+                    subtipoId: _subtipoId,
+                    subtipos: _subtipos,
+                    esFiscal: _esFiscal,
+                    observacionesCtrl: _observacionesCtrl,
+                    fechaIngreso: _fechaIngreso,
+                    puedeGestionar: puedeGestionar,
+                    socioActivo: liveSocio.activo,
+                    onTipoChanged: puedeGestionar
+                        ? (v) {
+                            setState(() {
+                              _tipoSocio = v;
+                              _subtipoId = null;
+                              _subtipos = [];
+                            });
+                            if (v != null) _cargarSubtipos(v);
+                          }
+                        : null,
+                    onSubtipoChanged: puedeGestionar
+                        ? (v) => setState(() => _subtipoId = v)
+                        : null,
+                    onFechaChanged: (d) => setState(() => _fechaIngreso = d),
+                    onFieldChanged: () => setState(() {}),
+                    onActivoChanged: (v) => context
+                        .read<SocioProvider>()
+                        .activarDesactivar(widget.socio.id, v),
+                  ),
+                  const SizedBox(height: 12),
+                  _CuotasCard(
+                      socioId: widget.socio.id,
+                      puedeGestionar: puedeGestionar),
+                  if (_hayCambios && puedeGestionar) const SizedBox(height: 72),
+                  const SizedBox(height: 20),
+                ],
               ),
-              const SizedBox(height: 12),
-              _IntegrantesCard(
-                  socioId: widget.socio.id,
-                  puedeGestionar: puedeGestionar),
-              const SizedBox(height: 12),
-              _CuotasCard(
-                  socioId: widget.socio.id,
-                  puedeGestionar: puedeGestionar),
               if (_hayCambios && puedeGestionar)
-                const SizedBox(height: 72),
-              const SizedBox(height: 20),
-            ],
-          ),
-          if (_hayCambios && puedeGestionar)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.verdeTeal,
-                        foregroundColor: Colors.white,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.verdeTeal,
+                            foregroundColor: Colors.white,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          onPressed: _saving ? null : _guardar,
+                          child: _saving
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Text('Guardar cambios'),
+                        ),
                       ),
-                      onPressed: _saving ? null : _guardar,
-                      child: _saving
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white),
-                            )
-                          : const Text('Guardar cambios'),
                     ),
                   ),
                 ),
-              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ── _PersonaCard ──────────────────────────────────────────────────────────────
+
+class _PersonaCard extends StatelessWidget {
+  const _PersonaCard({
+    required this.esFiscal,
+    required this.nombreCtrl,
+    required this.apellidoCtrl,
+    required this.dniCtrl,
+    required this.telefonoCtrl,
+    required this.emailCtrl,
+    required this.direccionCtrl,
+    required this.razonSocialCtrl,
+    required this.cuitCtrl,
+    required this.fechaNacimiento,
+    required this.puedeGestionar,
+    required this.onFieldChanged,
+    required this.onFechaNacimientoChanged,
+  });
+
+  final bool esFiscal;
+  final TextEditingController nombreCtrl;
+  final TextEditingController apellidoCtrl;
+  final TextEditingController dniCtrl;
+  final TextEditingController telefonoCtrl;
+  final TextEditingController emailCtrl;
+  final TextEditingController direccionCtrl;
+  final TextEditingController razonSocialCtrl;
+  final TextEditingController cuitCtrl;
+  final DateTime? fechaNacimiento;
+  final bool puedeGestionar;
+  final VoidCallback onFieldChanged;
+  final ValueChanged<DateTime> onFechaNacimientoChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.person_outline,
+                    size: 18, color: AppTheme.azulMedio),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    esFiscal ? 'Datos de la entidad' : 'Datos personales',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: AppTheme.textoPrincipal,
+                    ),
+                  ),
+                ),
+              ],
             ),
-        ],
+            const Divider(height: 20),
+            if (esFiscal) ...[
+              TextFormField(
+                controller: razonSocialCtrl,
+                decoration:
+                    const InputDecoration(labelText: 'Razón social'),
+                textCapitalization: TextCapitalization.words,
+                readOnly: !puedeGestionar,
+                onChanged: (_) => onFieldChanged(),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: cuitCtrl,
+                decoration: const InputDecoration(labelText: 'CUIT'),
+                keyboardType: TextInputType.number,
+                readOnly: !puedeGestionar,
+                onChanged: (_) => onFieldChanged(),
+              ),
+            ] else ...[
+              TextFormField(
+                controller: nombreCtrl,
+                decoration: const InputDecoration(labelText: 'Nombre'),
+                textCapitalization: TextCapitalization.words,
+                readOnly: !puedeGestionar,
+                onChanged: (_) => onFieldChanged(),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: apellidoCtrl,
+                decoration: const InputDecoration(labelText: 'Apellido'),
+                textCapitalization: TextCapitalization.words,
+                readOnly: !puedeGestionar,
+                onChanged: (_) => onFieldChanged(),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: dniCtrl,
+                decoration: const InputDecoration(labelText: 'DNI'),
+                keyboardType: TextInputType.number,
+                readOnly: !puedeGestionar,
+                onChanged: (_) => onFieldChanged(),
+              ),
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: puedeGestionar
+                    ? () async {
+                        final d = await showDatePicker(
+                          context: context,
+                          initialDate: fechaNacimiento ?? DateTime(2000),
+                          firstDate: DateTime(1900),
+                          lastDate: DateTime.now(),
+                        );
+                        if (d != null) onFechaNacimientoChanged(d);
+                      }
+                    : null,
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                      labelText: 'Fecha de nacimiento'),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(fechaNacimiento == null
+                          ? '—'
+                          : _fmtFecha(fechaNacimiento!)),
+                      const Icon(Icons.calendar_today_outlined,
+                          size: 18, color: AppTheme.azulMedio),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: direccionCtrl,
+                decoration: const InputDecoration(labelText: 'Dirección'),
+                readOnly: !puedeGestionar,
+                onChanged: (_) => onFieldChanged(),
+              ),
+            ],
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: telefonoCtrl,
+              decoration: const InputDecoration(labelText: 'Teléfono'),
+              keyboardType: TextInputType.phone,
+              readOnly: !puedeGestionar,
+              onChanged: (_) => onFieldChanged(),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: emailCtrl,
+              decoration: const InputDecoration(labelText: 'Email'),
+              keyboardType: TextInputType.emailAddress,
+              readOnly: !puedeGestionar,
+              onChanged: (_) => onFieldChanged(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -300,15 +543,12 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
 class _EditCard extends StatelessWidget {
   const _EditCard({
     required this.tipos,
-    required this.tipoId,
+    required this.tipoSocio,
     required this.subtipoId,
     required this.subtipos,
-    required this.apellidoCtrl,
-    required this.razonSocialCtrl,
-    required this.cuitCtrl,
+    required this.esFiscal,
     required this.observacionesCtrl,
     required this.fechaIngreso,
-    required this.esHonorario,
     required this.puedeGestionar,
     required this.socioActivo,
     required this.onTipoChanged,
@@ -319,15 +559,12 @@ class _EditCard extends StatelessWidget {
   });
 
   final List<TipoSocio> tipos;
-  final String? tipoId;
+  final String? tipoSocio;
   final String? subtipoId;
   final List<SubtipoSocio> subtipos;
-  final TextEditingController apellidoCtrl;
-  final TextEditingController razonSocialCtrl;
-  final TextEditingController cuitCtrl;
+  final bool esFiscal;
   final TextEditingController observacionesCtrl;
   final DateTime fechaIngreso;
-  final bool esHonorario;
   final bool puedeGestionar;
   final bool socioActivo;
   final ValueChanged<String?>? onTipoChanged;
@@ -344,38 +581,59 @@ class _EditCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Tipo socio
-            tipos.isEmpty
-                ? const InputDecorator(
-                    decoration:
-                        InputDecoration(labelText: 'Tipo de socio'),
-                    child: Text(
-                      'Cargando…',
-                      style:
-                          TextStyle(color: AppTheme.textoSecundario),
+            Row(
+              children: [
+                const Icon(Icons.badge_outlined,
+                    size: 18, color: AppTheme.azulMedio),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Datos de socio',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: AppTheme.textoPrincipal,
                     ),
-                  )
-                : DropdownButtonFormField<String>(
-                    key: ValueKey(tipoId),
-                    initialValue: tipoId,
-                    decoration: const InputDecoration(
-                        labelText: 'Tipo de socio'),
-                    items: tipos
-                        .map((t) => DropdownMenuItem<String>(
-                            value: t.id, child: Text(t.nombre)))
-                        .toList(),
-                    onChanged: onTipoChanged,
                   ),
-            const SizedBox(height: 12),
-            // Subtipo
-            if (tipoId != null)
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            // Tipo socio
+            esFiscal
+                ? const InputDecorator(
+                    decoration: InputDecoration(labelText: 'Tipo de socio'),
+                    child: Text('Honorario'),
+                  )
+                : (tipos.isEmpty
+                    ? const InputDecorator(
+                        decoration:
+                            InputDecoration(labelText: 'Tipo de socio'),
+                        child: Text(
+                          'Cargando…',
+                          style: TextStyle(color: AppTheme.textoSecundario),
+                        ),
+                      )
+                    : DropdownButtonFormField<String>(
+                        key: ValueKey(tipoSocio),
+                        initialValue: tipoSocio,
+                        decoration: const InputDecoration(
+                            labelText: 'Tipo de socio'),
+                        items: tipos
+                            .where((t) => t.id != 'honorario')
+                            .map((t) => DropdownMenuItem<String>(
+                                value: t.id, child: Text(t.nombre)))
+                            .toList(),
+                        onChanged: onTipoChanged,
+                      )),
+            if (!esFiscal) ...[
+              const SizedBox(height: 12),
               subtipos.isEmpty
                   ? const InputDecorator(
                       decoration: InputDecoration(labelText: 'Subtipo'),
                       child: Text(
                         'Cargando…',
-                        style:
-                            TextStyle(color: AppTheme.textoSecundario),
+                        style: TextStyle(color: AppTheme.textoSecundario),
                       ),
                     )
                   : DropdownButtonFormField<String>(
@@ -389,41 +647,8 @@ class _EditCard extends StatelessWidget {
                           .toList(),
                       onChanged: onSubtipoChanged,
                     ),
-            if (tipoId != null) ...[
-              const SizedBox(height: 12),
-              // Nombre field (conditional on tipo)
-              if (esHonorario) ...[
-                TextFormField(
-                  controller: razonSocialCtrl,
-                  decoration:
-                      const InputDecoration(labelText: 'Razón social'),
-                  textCapitalization: TextCapitalization.words,
-                  readOnly: !puedeGestionar,
-                  onChanged: (_) => onFieldChanged(),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: cuitCtrl,
-                  decoration:
-                      const InputDecoration(labelText: 'CUIT'),
-                  keyboardType: TextInputType.number,
-                  readOnly: !puedeGestionar,
-                  onChanged: (_) => onFieldChanged(),
-                ),
-              ] else
-                TextFormField(
-                  controller: apellidoCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Apellido de familia',
-                    helperText: 'Se guarda en mayúsculas',
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                  readOnly: !puedeGestionar,
-                  onChanged: (_) => onFieldChanged(),
-                ),
-              const SizedBox(height: 12),
             ],
-            // Fecha de ingreso
+            const SizedBox(height: 12),
             InkWell(
               onTap: puedeGestionar
                   ? () async {
@@ -450,7 +675,6 @@ class _EditCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            // Observaciones
             TextFormField(
               controller: observacionesCtrl,
               decoration:
@@ -473,228 +697,6 @@ class _EditCard extends StatelessWidget {
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ── _Chip ─────────────────────────────────────────────────────────────────────
-
-class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.color});
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withAlpha(25),
-        borderRadius: const BorderRadius.all(Radius.circular(8)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-// ── _IntegrantesCard ──────────────────────────────────────────────────────────
-
-class _IntegrantesCard extends StatefulWidget {
-  const _IntegrantesCard(
-      {required this.socioId, required this.puedeGestionar});
-  final String socioId;
-  final bool puedeGestionar;
-
-  @override
-  State<_IntegrantesCard> createState() => _IntegrantesCardState();
-}
-
-class _IntegrantesCardState extends State<_IntegrantesCard> {
-  final _repo = SocioRepository();
-  late final Stream<List<Integrante>> _stream;
-
-  @override
-  void initState() {
-    super.initState();
-    _stream = _repo.obtenerIntegrantes(widget.socioId);
-  }
-
-  void _abrirModal() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _ModalIntegrante(
-        socioId: widget.socioId,
-        onGuardar: (i) => _repo.agregarIntegrante(i),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.group_outlined,
-                    size: 18, color: AppTheme.azulMedio),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Integrantes',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                      color: AppTheme.textoPrincipal,
-                    ),
-                  ),
-                ),
-                if (widget.puedeGestionar)
-                  TextButton.icon(
-                    onPressed: _abrirModal,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Agregar'),
-                    style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.verdeTeal),
-                  ),
-              ],
-            ),
-            const Divider(height: 16),
-            StreamBuilder<List<Integrante>>(
-              stream: _stream,
-              builder: (_, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
-                final items = snap.data ?? [];
-                if (items.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Sin integrantes registrados.',
-                      style:
-                          TextStyle(color: AppTheme.textoSecundario),
-                    ),
-                  );
-                }
-                return Column(
-                  children: items
-                      .map((i) => _IntegranteTile(
-                            integrante: i,
-                            puedeGestionar: widget.puedeGestionar,
-                            onEliminar: () =>
-                                _repo.eliminarIntegrante(i.id),
-                          ))
-                      .toList(),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _IntegranteTile extends StatelessWidget {
-  const _IntegranteTile({
-    required this.integrante,
-    required this.puedeGestionar,
-    required this.onEliminar,
-  });
-
-  final Integrante integrante;
-  final bool puedeGestionar;
-  final VoidCallback onEliminar;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  integrante.nombre,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 14),
-                ),
-                const SizedBox(height: 2),
-                Wrap(
-                  spacing: 6,
-                  children: [
-                    _Chip(
-                      label: _tipoIntegranteLabel(integrante.tipo),
-                      color: AppTheme.azulMedio,
-                    ),
-                    if (integrante.grado != null &&
-                        integrante.grado!.isNotEmpty)
-                      _Chip(
-                        label: integrante.grado!,
-                        color: AppTheme.textoSecundario,
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          if (puedeGestionar)
-            SizedBox(
-              width: 32,
-              height: 32,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.delete_outline, size: 18),
-                color: AppTheme.rojoGasto,
-                onPressed: () async {
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Eliminar integrante'),
-                      content: Text(
-                          '¿Eliminás a ${integrante.nombre}?'),
-                      actions: [
-                        TextButton(
-                            onPressed: () =>
-                                Navigator.pop(context, false),
-                            child: const Text('Cancelar')),
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.pop(context, true),
-                          child: const Text('Eliminar',
-                              style: TextStyle(
-                                  color: AppTheme.rojoGasto)),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (ok == true) onEliminar();
-                },
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -740,7 +742,6 @@ class _CuotasCardState extends State<_CuotasCard> {
     final cuotaProv = context.watch<CuotaProvider>();
     final metodosPago =
         context.watch<MetodoPagoProvider>().metodosPago;
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -874,6 +875,13 @@ class _CuotaTile extends StatelessWidget {
                     color: AppTheme.textoSecundario,
                   ),
                 ),
+                if (cuota.usuarioId.isNotEmpty)
+                  NombreUsuarioWidget(
+                    usuarioId: cuota.usuarioId,
+                    prefijo: 'Registrado por: ',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textoSecundario),
+                  ),
                 if (cuota.observaciones != null &&
                     cuota.observaciones!.isNotEmpty)
                   Text(
@@ -903,137 +911,6 @@ class _CuotaTile extends StatelessWidget {
               },
             ),
         ],
-      ),
-    );
-  }
-}
-
-// ── _ModalIntegrante ──────────────────────────────────────────────────────────
-
-class _ModalIntegrante extends StatefulWidget {
-  const _ModalIntegrante(
-      {required this.socioId, required this.onGuardar});
-  final String socioId;
-  final Future<void> Function(Integrante) onGuardar;
-
-  @override
-  State<_ModalIntegrante> createState() => _ModalIntegranteState();
-}
-
-class _ModalIntegranteState extends State<_ModalIntegrante> {
-  final _form = GlobalKey<FormState>();
-  final _nombreCtrl = TextEditingController();
-  final _gradoCtrl = TextEditingController();
-  String _tipo = 'alumno';
-  bool _saving = false;
-
-  static const _tipos = [
-    ('alumno', 'Alumno/a'),
-    ('padre', 'Padre'),
-    ('madre', 'Madre'),
-    ('tutor', 'Tutor/a'),
-    ('otro', 'Otro'),
-  ];
-
-  @override
-  void dispose() {
-    _nombreCtrl.dispose();
-    _gradoCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _guardar() async {
-    if (!_form.currentState!.validate()) return;
-    setState(() => _saving = true);
-    try {
-      final integrante = Integrante(
-        id: '',
-        socioId: widget.socioId,
-        tipo: _tipo,
-        personaId: '',
-        nombre: _nombreCtrl.text.trim(),
-        grado: _tipo == 'alumno' && _gradoCtrl.text.trim().isNotEmpty
-            ? _gradoCtrl.text.trim()
-            : null,
-        fechaCreacion: DateTime.now(),
-      );
-      await widget.onGuardar(integrante);
-      if (mounted) Navigator.pop(context);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Form(
-        key: _form,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Agregar integrante',
-                style: TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _tipo,
-                decoration:
-                    const InputDecoration(labelText: 'Tipo *'),
-                items: _tipos
-                    .map((t) => DropdownMenuItem(
-                        value: t.$1, child: Text(t.$2)))
-                    .toList(),
-                onChanged: (v) => setState(() => _tipo = v ?? 'alumno'),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _nombreCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Nombre completo *'),
-                textCapitalization: TextCapitalization.words,
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Requerido' : null,
-              ),
-              if (_tipo == 'alumno') ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _gradoCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Grado',
-                    helperText: 'Ej: 3° "A"',
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                ),
-              ],
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _saving ? null : _guardar,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2),
-                        )
-                      : const Text('Agregar'),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1109,8 +986,9 @@ class _ModalPagoState extends State<_ModalPago> {
           .read<CuotaProvider>()
           .obtenerTarifaVigente(tipoCuotaId);
       if (mounted) {
-        _montoCtrl.text =
-            tarifa != null ? tarifa.monto.toStringAsFixed(2) : '';
+        _montoCtrl.text = tarifa != null
+            ? NumberFormat('#,##0.##', 'es_AR').format(tarifa.monto)
+            : '';
       }
     } finally {
       if (mounted) setState(() => _cargandoTarifa = false);

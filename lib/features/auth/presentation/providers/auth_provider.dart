@@ -197,6 +197,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> recargarRol() async {
+    final uid = currentUser?.uid;
+    if (uid == null) return;
+    await _cargarDatosUsuario(uid);
+  }
+
   Future<void> logout() async {
     _logoutPendiente = true;
     await _auth.signOut();

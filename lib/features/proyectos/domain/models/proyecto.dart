@@ -14,6 +14,9 @@ class Proyecto {
   final bool publico;
   final String? votacionId;
   final DateTime fechaCreacion;
+  final String usuarioId;
+  final String? ultimaModificacionPor;
+  final DateTime? ultimaModificacionFecha;
 
   const Proyecto({
     required this.id,
@@ -29,6 +32,9 @@ class Proyecto {
     required this.publico,
     this.votacionId,
     required this.fechaCreacion,
+    this.usuarioId = '',
+    this.ultimaModificacionPor,
+    this.ultimaModificacionFecha,
   });
 
   Map<String, dynamic> toMap() => {
@@ -46,6 +52,11 @@ class Proyecto {
         'publico': publico,
         'votacionId': votacionId,
         'fechaCreacion': Timestamp.fromDate(fechaCreacion),
+        'usuarioId': usuarioId,
+        'ultimaModificacionPor': ultimaModificacionPor,
+        'ultimaModificacionFecha': ultimaModificacionFecha != null
+            ? Timestamp.fromDate(ultimaModificacionFecha!)
+            : null,
       };
 
   factory Proyecto.fromMap(Map<String, dynamic> map, String id) {
@@ -68,6 +79,9 @@ class Proyecto {
       publico: map['publico'] as bool? ?? true,
       votacionId: map['votacionId'] as String?,
       fechaCreacion: ts(map['fechaCreacion']),
+      usuarioId: map['usuarioId'] as String? ?? '',
+      ultimaModificacionPor: map['ultimaModificacionPor'] as String?,
+      ultimaModificacionFecha: tsOpt(map['ultimaModificacionFecha']),
     );
   }
 
@@ -86,6 +100,8 @@ class Proyecto {
     List<String>? responsables,
     bool? publico,
     String? votacionId,
+    String? ultimaModificacionPor,
+    DateTime? ultimaModificacionFecha,
   }) =>
       Proyecto(
         id: id,
@@ -105,5 +121,10 @@ class Proyecto {
         publico: publico ?? this.publico,
         votacionId: votacionId ?? this.votacionId,
         fechaCreacion: fechaCreacion,
+        usuarioId: usuarioId,
+        ultimaModificacionPor:
+            ultimaModificacionPor ?? this.ultimaModificacionPor,
+        ultimaModificacionFecha:
+            ultimaModificacionFecha ?? this.ultimaModificacionFecha,
       );
 }

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../admin/presentation/providers/usuarios_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -112,11 +113,11 @@ void _mostrarPopupEstadoProyecto(BuildContext context, String estadoActual) {
 
 void _mostrarPopupEstadoItem(BuildContext context, String estadoActual) {
   final estados = [
-    ('⚪', 'pendiente', 'Pendiente', AppTheme.amarilloAlerta,
+    ('⚪', 'pendiente', 'Pendiente', AppTheme.textoSecundario,
         'El ítem está identificado pero aún no se comenzó a gestionar'),
     ('🔵', 'en_gestion', 'En gestión', AppTheme.azulMedio,
         'Los responsables están cotizando y buscando proveedores'),
-    ('🟡', 'presupuestos_aprobados', 'Presupuestos aprobados', AppTheme.verdeTeal,
+    ('🟡', 'presupuestos_aprobados', 'Presupuestos aprobados', AppTheme.amarilloAlerta,
         'Un presupuesto fue aprobado, listo para comprar'),
     ('🟢', 'comprado', 'Comprado', AppTheme.verdeIngreso,
         'El ítem fue adquirido y el gasto registrado'),
@@ -278,6 +279,7 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
     setState(() => _guardando = true);
     try {
       final descripcion = _descripcionCtrl.text.trim();
+      final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
       final updated = p.copyWith(
         nombre: nombre,
         descripcion: descripcion.isEmpty ? null : descripcion,
@@ -290,6 +292,8 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
         clearFechaFinEstimada: _fechaFinEstimada == null,
         publico: _publico,
         responsables: _responsables,
+        ultimaModificacionPor: uid.isNotEmpty ? uid : null,
+        ultimaModificacionFecha: DateTime.now(),
       );
       await context.read<ProyectoProvider>().actualizar(updated);
       if (mounted) setState(() => _hayCambios = false);
@@ -432,6 +436,57 @@ class _BarraGuardar extends StatelessWidget {
               Text(guardando ? 'Guardando...' : 'Guardar cambios',
                   style: const TextStyle(fontWeight: FontWeight.w600)),
         ),
+      ),
+    );
+  }
+}
+
+// ── _MetaRow ──────────────────────────────────────────────────────────────────
+
+class _MetaRow extends StatelessWidget {
+  const _MetaRow({required this.label, required this.usuarioId, this.sufijo});
+
+  final String label;
+  final String usuarioId;
+  final String? sufijo;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!context.watch<AuthProvider>().isLoggedIn) return const SizedBox.shrink();
+    if (usuarioId.isEmpty) return const SizedBox.shrink();
+
+    final prov = context.watch<UsuariosProvider>();
+    if (prov.isLoading) {
+      return const SizedBox(
+        height: 16,
+        width: 100,
+        child: LinearProgressIndicator(),
+      );
+    }
+
+    final usuario = prov.usuarios.firstWhere(
+      (u) => u['id'] == usuarioId || u['authUid'] == usuarioId,
+      orElse: () => {},
+    );
+    final nombre = usuario['nombreCompleto'] as String? ??
+        usuario['email'] as String? ??
+        usuarioId;
+
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(fontSize: 16, color: AppTheme.textoPrincipal),
+        children: [
+          TextSpan(
+            text: label,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          TextSpan(text: nombre),
+          if (sufijo != null)
+            TextSpan(
+              text: sufijo,
+              style: const TextStyle(color: AppTheme.textoSecundario),
+            ),
+        ],
       ),
     );
   }
@@ -581,6 +636,25 @@ class _InfoCard extends StatelessWidget {
               activeThumbColor: AppTheme.verdeTeal,
               onChanged: onPublicoChanged,
             ),
+            if (proyecto.usuarioId.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _MetaRow(
+                  label: 'Creado por: ',
+                  usuarioId: proyecto.usuarioId,
+                ),
+              ),
+            if (proyecto.ultimaModificacionPor != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: _MetaRow(
+                  label: 'Última modificación: ',
+                  usuarioId: proyecto.ultimaModificacionPor!,
+                  sufijo: proyecto.ultimaModificacionFecha != null
+                      ? ' · ${DateFormat('dd/MM/yyyy HH:mm').format(proyecto.ultimaModificacionFecha!)}'
+                      : null,
+                ),
+              ),
           ],
         ),
       ),
@@ -668,6 +742,25 @@ class _InfoCardReadOnly extends StatelessWidget {
               Text(proyecto.descripcion!,
                   style: const TextStyle(color: AppTheme.textoPrincipal)),
             ],
+            if (proyecto.usuarioId.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _MetaRow(
+                  label: 'Creado por: ',
+                  usuarioId: proyecto.usuarioId,
+                ),
+              ),
+            if (proyecto.ultimaModificacionPor != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: _MetaRow(
+                  label: 'Última modificación: ',
+                  usuarioId: proyecto.ultimaModificacionPor!,
+                  sufijo: proyecto.ultimaModificacionFecha != null
+                      ? ' · ${DateFormat('dd/MM/yyyy HH:mm').format(proyecto.ultimaModificacionFecha!)}'
+                      : null,
+                ),
+              ),
           ],
         ),
       ),
@@ -930,59 +1023,37 @@ class _FechasCard extends StatelessWidget {
                           fontSize: 13, color: AppTheme.textoSecundario)),
                 )
               else
-                Consumer<UsuariosProvider>(
-                  builder: (context, usuariosProvider, _) {
-                    final usuarios = usuariosProvider.usuarios;
-
-                    String displayName(String uid) {
-                      final byId = usuarios.firstWhere(
-                        (u) => u['id'] == uid,
-                        orElse: () => {},
-                      );
-                      final u = byId.isNotEmpty
-                          ? byId
-                          : usuarios.firstWhere(
-                              (u) => u['authUid'] == uid,
-                              orElse: () => {},
-                            );
-                      return u['nombre'] as String? ??
-                          u['email'] as String? ??
-                          'sin mail';
-                    }
-
-                    return Column(
-                      children: responsables
-                          .map((uid) => ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                dense: true,
-                                leading: const CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: AppTheme.celesteFondo,
-                                  child: Icon(Icons.person,
-                                      size: 16, color: AppTheme.azulMedio),
-                                ),
-                                title: Text(
-                                  displayName(uid),
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                                trailing: puedeEditar
-                                    ? IconButton(
-                                        icon: const Icon(Icons.close, size: 16),
-                                        color: AppTheme.textoSecundario,
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        tooltip: 'Quitar responsable',
-                                        onPressed: () => onResponsablesChanged(
-                                          responsables
-                                              .where((id) => id != uid)
-                                              .toList(),
-                                        ),
-                                      )
-                                    : null,
-                              ))
-                          .toList(),
-                    );
-                  },
+                Column(
+                  children: responsables
+                      .map((uid) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            leading: const CircleAvatar(
+                              radius: 14,
+                              backgroundColor: AppTheme.celesteFondo,
+                              child: Icon(Icons.person,
+                                  size: 16, color: AppTheme.azulMedio),
+                            ),
+                            title: NombreUsuarioWidget(
+                              usuarioId: uid,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            trailing: puedeEditar
+                                ? IconButton(
+                                    icon: const Icon(Icons.close, size: 16),
+                                    color: AppTheme.textoSecundario,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    tooltip: 'Quitar responsable',
+                                    onPressed: () => onResponsablesChanged(
+                                      responsables
+                                          .where((id) => id != uid)
+                                          .toList(),
+                                    ),
+                                  )
+                                : null,
+                          ))
+                      .toList(),
                 ),
             ],
           ],
@@ -1192,7 +1263,7 @@ class _ItemsCardState extends State<_ItemsCard> {
     );
   }
 
-  Future<void> _eliminarItem(BuildContext context, String id) async {
+  Future<void> _eliminarItem(String id) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1210,7 +1281,11 @@ class _ItemsCardState extends State<_ItemsCard> {
         ],
       ),
     );
-    if (confirm == true) await _repo.eliminarItem(id);
+    if (confirm == true) {
+      if (!mounted) return;
+      final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+      await _repo.eliminarItem(id, uid);
+    }
   }
 
   @override
@@ -1264,13 +1339,50 @@ class _ItemsCardState extends State<_ItemsCard> {
                             item: item,
                             puedeGestionar: puedeGestionar,
                             onEdit: () => _abrirModal(item),
-                            onDelete: () => _eliminarItem(context, item.id),
+                            onDelete: () => _eliminarItem(item.id),
                           ))
                       .toList(),
                 );
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── _ChipEstado ───────────────────────────────────────────────────────────────
+
+class _ChipEstado extends StatelessWidget {
+  const _ChipEstado({required this.estado});
+  final String estado;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, label) = switch (estado) {
+      'en_gestion' => (AppTheme.azulMedio, 'Gestión'),
+      'presupuestos_aprobados' => (AppTheme.amarilloAlerta, 'Aprobado'),
+      'comprado' => (AppTheme.verdeIngreso, 'Comprado'),
+      _ => (AppTheme.textoSecundario, 'Pendiente'),
+    };
+    return GestureDetector(
+      onTap: () => _mostrarPopupEstadoItem(context, estado),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 11, color: color, fontWeight: FontWeight.w500),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     );
@@ -1294,70 +1406,141 @@ class _ItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (estadoColor, estadoLabel) = switch (item.estado) {
-      'en_gestion' => (AppTheme.azulMedio, 'En gestión'),
-      'presupuestos_aprobados' => (AppTheme.verdeTeal, 'Pres. aprobados'),
-      'comprado' => (AppTheme.verdeIngreso, 'Comprado'),
-      _ => (AppTheme.amarilloAlerta, 'Pendiente'),
-    };
+    final auth = context.watch<AuthProvider>();
 
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(item.descripcion,
-          style:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Wrap(
-          spacing: 8,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Fila principal (tabla sin bordes) ──
+        const SizedBox(height: 4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            GestureDetector(
-              onTap: () => _mostrarPopupEstadoItem(context, item.estado),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: estadoColor.withAlpha(30),
-                  borderRadius:
-                      const BorderRadius.all(Radius.circular(8)),
+            Expanded(
+              flex: 2,
+              child: SizedBox(
+                height: 24,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    item.descripcion,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                child: Text(estadoLabel,
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: estadoColor,
-                        fontWeight: FontWeight.w600)),
               ),
             ),
-            if (item.montoEstimado > 0)
-              Text(_fmt(item.montoEstimado),
-                  style: const TextStyle(
-                      fontSize: 12, color: AppTheme.textoSecundario)),
-            if (item.cantidad != null && item.unidad != null)
-              Text('${item.cantidad} ${item.unidad}',
-                  style: const TextStyle(
-                      fontSize: 12, color: AppTheme.textoSecundario)),
+            Expanded(
+              child: SizedBox(
+                height: 24,
+                child: Center(
+                  child: Text(
+                    item.cantidad != null
+                        ? '${item.cantidad} ${item.unidad ?? ''}'.trim()
+                        : '',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textoSecundario),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: SizedBox(
+                height: 24,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    item.montoEstimado > 0 ? _fmt(item.montoEstimado) : '',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textoSecundario),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: SizedBox(
+                height: 24,
+                child: Center(child: _ChipEstado(estado: item.estado)),
+              ),
+            ),
+            if (puedeGestionar)
+              SizedBox(
+                height: 24,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 16),
+                      onPressed: onEdit,
+                      color: AppTheme.azulMedio,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                          maxWidth: 24, maxHeight: 24),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 16),
+                      onPressed: onDelete,
+                      color: AppTheme.rojoGasto,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                          maxWidth: 24, maxHeight: 24),
+                    ),
+                  ],
+                ),
+              )
+            else
+              const SizedBox.shrink(),
           ],
         ),
-      ),
-      trailing: puedeGestionar
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  onPressed: onEdit,
-                  color: AppTheme.azulMedio,
-                  visualDensity: VisualDensity.compact,
+        // ── Línea de auditoría ──
+        if (auth.isLoggedIn) ...[
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              NombreUsuarioWidget(
+                usuarioId: item.usuarioId,
+                prefijo: 'Creó: ',
+                style: const TextStyle(
+                    fontSize: 11, color: AppTheme.textoSecundario),
+              ),
+              Text(
+                ' · ${DateFormat('dd/MM/yyyy').format(item.fechaCreacion)}',
+                style: const TextStyle(
+                    fontSize: 11, color: AppTheme.textoSecundario),
+              ),
+              if (item.ultimaModificacionPor != null) ...[
+                const Text(
+                  '  |  ',
+                  style: TextStyle(
+                      fontSize: 11, color: AppTheme.textoSecundario),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  onPressed: onDelete,
-                  color: AppTheme.rojoGasto,
-                  visualDensity: VisualDensity.compact,
+                NombreUsuarioWidget(
+                  usuarioId: item.ultimaModificacionPor!,
+                  prefijo: 'Modificó: ',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppTheme.textoSecundario),
                 ),
+                if (item.ultimaModificacionFecha != null)
+                  Text(
+                    ' · ${DateFormat('dd/MM/yyyy').format(item.ultimaModificacionFecha!)}',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textoSecundario),
+                  ),
               ],
-            )
-          : null,
+            ],
+          ),
+          const SizedBox(height: 8),
+        ] else
+          const SizedBox(height: 4),
+        const Divider(color: AppTheme.celesteBorde, height: 1),
+      ],
     );
   }
 }
@@ -1409,6 +1592,7 @@ class _ModalItemState extends State<_ModalItem> {
   Future<void> _guardar() async {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
     try {
       final monto = _parseMonto(_montoCtrl.text);
       final cantidad =
@@ -1416,27 +1600,34 @@ class _ModalItemState extends State<_ModalItem> {
       final unidad = _unidadCtrl.text.trim();
 
       if (widget.item == null) {
-        await _repo.agregarItem(ItemProyecto(
-          id: '',
-          proyectoId: widget.proyectoId,
-          descripcion: _descripcionCtrl.text.trim(),
-          cantidad: cantidad,
-          unidad: unidad.isEmpty ? null : unidad,
-          montoEstimado: monto,
-          estado: _estado,
-          responsables: [],
-          fechaCreacion: DateTime.now(),
-        ));
+        await _repo.agregarItem(
+          ItemProyecto(
+            id: '',
+            proyectoId: widget.proyectoId,
+            descripcion: _descripcionCtrl.text.trim(),
+            cantidad: cantidad,
+            unidad: unidad.isEmpty ? null : unidad,
+            montoEstimado: monto,
+            estado: _estado,
+            responsables: [],
+            fechaCreacion: DateTime.now(),
+            usuarioId: uid,
+          ),
+          uid,
+        );
       } else {
-        await _repo.actualizarItem(widget.item!.copyWith(
-          descripcion: _descripcionCtrl.text.trim(),
-          cantidad: cantidad,
-          clearCantidad: cantidad == null,
-          unidad: unidad.isEmpty ? null : unidad,
-          clearUnidad: unidad.isEmpty,
-          montoEstimado: monto,
-          estado: _estado,
-        ));
+        await _repo.actualizarItem(
+          widget.item!.copyWith(
+            descripcion: _descripcionCtrl.text.trim(),
+            cantidad: cantidad,
+            clearCantidad: cantidad == null,
+            unidad: unidad.isEmpty ? null : unidad,
+            clearUnidad: unidad.isEmpty,
+            montoEstimado: monto,
+            estado: _estado,
+          ),
+          uid,
+        );
       }
       if (mounted) Navigator.pop(context);
     } finally {

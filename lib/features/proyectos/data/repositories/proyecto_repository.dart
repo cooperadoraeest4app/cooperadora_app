@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../../shared/services/log_cambio_service.dart';
 import '../../domain/models/item_proyecto.dart';
 import '../../domain/models/proyecto.dart';
 import '../../domain/models/tipo_proyecto.dart';
@@ -53,12 +54,52 @@ class ProyectoRepository {
         });
   }
 
-  Future<void> agregarItem(ItemProyecto item) => _itemsCol.add(item.toMap());
+  Future<void> agregarItem(ItemProyecto item, String usuarioId) async {
+    final itemConUid = item.copyWith(usuarioId: usuarioId);
+    final ref = await _itemsCol.add(itemConUid.toMap());
+    await LogCambioService().registrar(
+      entidadTipo: 'item_proyecto',
+      entidadId: ref.id,
+      usuarioId: usuarioId,
+      accion: 'creacion',
+      anterior: null,
+      nuevo: itemConUid.toMap(),
+    );
+  }
 
-  Future<void> actualizarItem(ItemProyecto item) =>
-      _itemsCol.doc(item.id).update(item.toMap());
+  Future<void> actualizarItem(ItemProyecto item, String usuarioId) async {
+    final snap = await _itemsCol.doc(item.id).get();
+    final anterior = snap.data();
+    final actualizado = item.copyWith(
+      ultimaModificacionPor: usuarioId,
+      ultimaModificacionFecha: DateTime.now(),
+    );
+    await _itemsCol.doc(item.id).update(actualizado.toMap());
+    await LogCambioService().registrar(
+      entidadTipo: 'item_proyecto',
+      entidadId: item.id,
+      usuarioId: usuarioId,
+      accion: 'modificacion',
+      anterior: anterior,
+      nuevo: actualizado.toMap(),
+    );
+  }
 
-  Future<void> eliminarItem(String id) => _itemsCol.doc(id).delete();
+  Future<void> eliminarItem(String id, String usuarioId) async {
+    final snap = await _itemsCol.doc(id).get();
+    final anterior = snap.data();
+    await _itemsCol.doc(id).delete();
+    if (anterior != null) {
+      await LogCambioService().registrar(
+        entidadTipo: 'item_proyecto',
+        entidadId: id,
+        usuarioId: usuarioId,
+        accion: 'eliminacion',
+        anterior: anterior,
+        nuevo: null,
+      );
+    }
+  }
 
   // ── Tipos default ──────────────────────────────────────────────────────────
 

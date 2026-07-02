@@ -4,9 +4,11 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dart';
+import '../../../inventario/presentation/screens/inventario_screen.dart';
 import '../../../socios/presentation/screens/socios_screen.dart';
 import 'categorias_screen.dart';
 import 'configuracion_screen.dart';
+import 'cursos_screen.dart';
 import 'invitaciones_screen.dart';
 import 'log_cambios_screen.dart';
 import 'metodos_pago_screen.dart';
@@ -60,8 +62,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     _OpcionPanel(
       icono: Icons.family_restroom,
       titulo: 'Socios',
-      subtitulo: 'Padrón, integrantes y cuotas',
+      subtitulo: 'Padrón y cuotas',
       esSocios: true,
+    ),
+    _OpcionPanel(
+      icono: Icons.school,
+      titulo: 'Cursos',
+      subtitulo: 'Cursos y niveles de la institución',
+      esCursos: true,
+    ),
+    _OpcionPanel(
+      icono: Icons.inventory_2,
+      titulo: 'Inventario',
+      subtitulo: 'Bienes y equipamiento de la Cooperadora',
+      esInventario: true,
     ),
     _OpcionPanel(
       icono: Icons.history,
@@ -190,6 +204,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     MaterialPageRoute(
                         builder: (_) => const SociosScreen()),
                   );
+                } else if (opcion.esCursos) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CursosScreen()),
+                  );
+                } else if (opcion.esInventario) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const InventarioScreen()),
+                  );
                 } else if (opcion.esLogCambios) {
                   Navigator.push(
                     context,
@@ -221,6 +246,8 @@ class _OpcionPanel {
   final bool esMetodosPago;
   final bool esCuentaBancaria;
   final bool esSocios;
+  final bool esCursos;
+  final bool esInventario;
   final bool esLogCambios;
 
   const _OpcionPanel({
@@ -234,6 +261,8 @@ class _OpcionPanel {
     this.esMetodosPago = false,
     this.esCuentaBancaria = false,
     this.esSocios = false,
+    this.esCursos = false,
+    this.esInventario = false,
     this.esLogCambios = false,
   });
 }

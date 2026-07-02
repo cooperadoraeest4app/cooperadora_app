@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 
 class LogCambiosScreen extends StatefulWidget {
@@ -25,6 +27,10 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
     ('gasto', 'Gastos'),
     ('cuota', 'Cuotas'),
     ('proyecto', 'Proyectos'),
+    ('item_proyecto', 'Ítem de proyecto'),
+    ('cuenta_bancaria', 'Cuenta bancaria'),
+    ('caja_chica', 'Caja chica'),
+    ('inventario', 'Inventario'),
   ];
 
   @override
@@ -167,20 +173,31 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DropdownButtonFormField<String>(
-            initialValue: _filtroTipo,
-            decoration: const InputDecoration(
-              labelText: 'Tipo de entidad',
-              isDense: true,
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: _tipos
-                .map((t) => DropdownMenuItem(value: t.$1, child: Text(t.$2)))
-                .toList(),
-            onChanged: (v) {
-              if (v != null) setState(() => _filtroTipo = v);
-            },
+          Row(
+            children: [
+              SizedBox(
+                width: 200,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: DropdownButtonFormField<String>(
+                  initialValue: _filtroTipo,
+                  decoration: const InputDecoration(
+                    labelText: 'Tipo de entidad',
+                    isDense: true,
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  items: _tipos
+                      .map((t) =>
+                          DropdownMenuItem(value: t.$1, child: Text(t.$2)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _filtroTipo = v);
+                  },
+                ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Row(
@@ -254,6 +271,11 @@ class _LogItem extends StatelessWidget {
             AppTheme.rojoGasto,
             'Eliminación'
           ),
+        'actualizacion_saldo' => (
+            AppTheme.azulMedio.withAlpha(30),
+            AppTheme.azulMedio,
+            'Act. saldo'
+          ),
         _ => (AppTheme.celesteFondo, AppTheme.textoSecundario, accion),
       };
 
@@ -279,14 +301,25 @@ class _LogItem extends StatelessWidget {
           ),
         ),
         title: Text(
-          _capitalize(entidadTipo),
+          _entidadLabel(entidadTipo),
           style: const TextStyle(
               fontWeight: FontWeight.w500, color: AppTheme.textoPrincipal),
         ),
-        subtitle: Text(
-          'Por: $usuarioId\n${_formatFechaHora(item['fecha'])}',
-          style: const TextStyle(
-              fontSize: 12, color: AppTheme.textoSecundario),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            NombreUsuarioWidget(
+              usuarioId: usuarioId,
+              prefijo: 'Por: ',
+              style: const TextStyle(
+                  fontSize: 12, color: AppTheme.textoSecundario),
+            ),
+            Text(
+              _formatFechaHora(item['fecha']),
+              style: const TextStyle(
+                  fontSize: 12, color: AppTheme.textoSecundario),
+            ),
+          ],
         ),
         isThreeLine: true,
         trailing: const Icon(Icons.chevron_right,
@@ -344,6 +377,61 @@ class _LogItem extends StatelessWidget {
 String _capitalize(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
+String _entidadLabel(String tipo) => switch (tipo) {
+      'cuenta_bancaria' => 'Cuenta bancaria',
+      'item_proyecto' => 'Ítem de proyecto',
+      'caja_chica' => 'Caja chica',
+      _ => _capitalize(tipo),
+    };
+
+const _camposAmigables = {
+  'monto': 'Monto',
+  'fecha': 'Fecha',
+  'descripcion': 'Descripción',
+  'categoriaId': 'Categoría',
+  'metodoPagoId': 'Método de pago',
+  'proyectoId': 'Proyecto',
+  'usuarioId': 'Usuario',
+  'fechaCreacion': 'Fecha de creación',
+  'comprobante': 'Comprobante',
+  'recurrente': 'Recurrente',
+  'frecuenciaId': 'Frecuencia',
+  'proximaFecha': 'Próxima fecha',
+  'donante': 'Donante',
+  'moneda': 'Moneda',
+  // Ítem de proyecto
+  'montoEstimado': 'Monto estimado',
+  'cantidad': 'Cantidad',
+  'unidad': 'Unidad',
+  'estado': 'Estado',
+  'ultimaModificacionPor': 'Modificado por',
+  'ultimaModificacionFecha': 'Última modificación',
+  // Cuenta bancaria
+  'saldo': 'Saldo',
+  'observaciones': 'Observaciones',
+  'banco': 'Banco',
+  'cbu': 'CBU',
+  'alias': 'Alias',
+  'titular': 'Titular',
+  'tipoCuenta': 'Tipo de cuenta',
+  'periodo': 'Período',
+  'archivo': 'Archivo',
+};
+
+String _formatValor(String key, dynamic valor) {
+  if (valor == null) return 'Sin valor';
+  if (valor is bool) return valor ? 'Sí' : 'No';
+  if (valor is Timestamp) return _formatFechaHora(valor);
+  if ((key == 'saldo' || key == 'montoEstimado') && valor is num) {
+    final n = valor.toDouble();
+    final fmt = n == n.truncateToDouble()
+        ? NumberFormat('#,##0', 'es_AR')
+        : NumberFormat('#,##0.##', 'es_AR');
+    return '\$${fmt.format(n)}';
+  }
+  return '$valor';
+}
+
 class _MapView extends StatelessWidget {
   const _MapView({required this.data});
   final Map data;
@@ -359,7 +447,6 @@ class _MapView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: data.entries
-            .where((e) => e.key != 'fechaCreacion')
             .map((e) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: RichText(
@@ -368,12 +455,12 @@ class _MapView extends StatelessWidget {
                           fontSize: 12, color: AppTheme.textoPrincipal),
                       children: [
                         TextSpan(
-                          text: '${e.key}: ',
+                          text: '${_camposAmigables[e.key] ?? e.key}: ',
                           style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               color: AppTheme.azulMedio),
                         ),
-                        TextSpan(text: '${e.value}'),
+                        TextSpan(text: _formatValor(e.key as String, e.value)),
                       ],
                     ),
                   ),

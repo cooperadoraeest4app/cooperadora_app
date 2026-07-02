@@ -10,6 +10,9 @@ class ItemProyecto {
   final String estado;
   final List<String> responsables;
   final DateTime fechaCreacion;
+  final String usuarioId;
+  final String? ultimaModificacionPor;
+  final DateTime? ultimaModificacionFecha;
 
   const ItemProyecto({
     required this.id,
@@ -21,6 +24,9 @@ class ItemProyecto {
     required this.estado,
     required this.responsables,
     required this.fechaCreacion,
+    this.usuarioId = '',
+    this.ultimaModificacionPor,
+    this.ultimaModificacionFecha,
   });
 
   Map<String, dynamic> toMap() => {
@@ -32,6 +38,11 @@ class ItemProyecto {
         'estado': estado,
         'responsables': responsables,
         'fechaCreacion': Timestamp.fromDate(fechaCreacion),
+        'usuarioId': usuarioId,
+        if (ultimaModificacionPor != null)
+          'ultimaModificacionPor': ultimaModificacionPor,
+        if (ultimaModificacionFecha != null)
+          'ultimaModificacionFecha': Timestamp.fromDate(ultimaModificacionFecha!),
       };
 
   factory ItemProyecto.fromMap(Map<String, dynamic> map, String id) {
@@ -48,6 +59,11 @@ class ItemProyecto {
       responsables:
           (map['responsables'] as List<dynamic>?)?.cast<String>() ?? [],
       fechaCreacion: ts(map['fechaCreacion']),
+      usuarioId: map['usuarioId'] as String? ?? '',
+      ultimaModificacionPor: map['ultimaModificacionPor'] as String?,
+      ultimaModificacionFecha: map['ultimaModificacionFecha'] != null
+          ? ts(map['ultimaModificacionFecha'])
+          : null,
     );
   }
 
@@ -61,6 +77,9 @@ class ItemProyecto {
     double? montoEstimado,
     String? estado,
     List<String>? responsables,
+    String? usuarioId,
+    String? ultimaModificacionPor,
+    DateTime? ultimaModificacionFecha,
   }) =>
       ItemProyecto(
         id: id,
@@ -72,5 +91,10 @@ class ItemProyecto {
         estado: estado ?? this.estado,
         responsables: responsables ?? this.responsables,
         fechaCreacion: fechaCreacion,
+        usuarioId: usuarioId ?? this.usuarioId,
+        ultimaModificacionPor:
+            ultimaModificacionPor ?? this.ultimaModificacionPor,
+        ultimaModificacionFecha:
+            ultimaModificacionFecha ?? this.ultimaModificacionFecha,
       );
 }

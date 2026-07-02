@@ -1,10 +1,14 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/services/storage_service.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
+import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/cuenta_bancaria.dart';
 import '../../domain/models/movimiento_bancario.dart';
@@ -15,6 +19,35 @@ String _doubleToArgentino(double v) {
       ? NumberFormat('#,##0', 'es_AR')
       : NumberFormat('#,##0.##', 'es_AR');
   return format.format(v);
+}
+
+Widget _buildSaldoWidget(double saldo) {
+  const mainStyle = TextStyle(
+    color: AppTheme.textoPrincipal,
+    fontSize: 44,
+    fontWeight: FontWeight.bold,
+    height: 1,
+  );
+  final cents = (saldo.abs() * 100).round() % 100;
+  final intFormatted =
+      '\$${NumberFormat('#,##0', 'es_AR').format(saldo.truncate())}';
+  if (cents == 0) return Text(intFormatted, style: mainStyle);
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(intFormatted, style: mainStyle),
+      Text(
+        cents.toString().padLeft(2, '0'),
+        style: const TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+          color: AppTheme.textoPrincipal,
+        ),
+      ),
+    ],
+  );
 }
 
 class _PeriodoFormatter extends TextInputFormatter {
@@ -89,7 +122,10 @@ class CuentaBancariaScreen extends StatefulWidget {
   State<CuentaBancariaScreen> createState() => _CuentaBancariaScreenState();
 }
 
-class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
+class _CuentaBancariaScreenState extends State<CuentaBancariaScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabCtrl;
+
   // Formulario de configuración
   final _setupFormKey = GlobalKey<FormState>();
   final _bancoCtrl = TextEditingController();
@@ -105,6 +141,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
   final _periodoResumenCtrl = TextEditingController();
   bool _saldoInicializado = false;
   String? _archivoNombre;
+  Uint8List? _archivoBytes;
   bool _editandoCuenta = false;
   double? _saldoExistente;
 
@@ -115,6 +152,12 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
     _cbuCtrl.text = c.cbu;
     _aliasCtrl.text = c.alias ?? '';
     _saldoExistente = c.saldoActual;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -131,6 +174,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
 
   @override
   void dispose() {
+    _tabCtrl.dispose();
     _bancoCtrl.dispose();
     _titularCtrl.dispose();
     _cbuCtrl.dispose();
@@ -144,6 +188,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
   Future<void> _configurarCuenta() async {
     if (!_setupFormKey.currentState!.validate()) return;
     final provider = context.read<CuentaBancariaProvider>();
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
     final cuenta = CuentaBancaria(
       id: 'cuenta_principal',
       banco: _bancoCtrl.text.trim(),
@@ -155,7 +200,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
       activa: true,
       fechaActualizacion: DateTime.now(),
     );
-    await provider.crearCuenta(cuenta);
+    await provider.crearCuenta(cuenta, uid);
     if (!mounted) return;
     if (provider.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -181,6 +226,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
     if (!_saldoFormKey.currentState!.validate()) return;
     final provider = context.read<CuentaBancariaProvider>();
     final auth = context.read<AuthProvider>();
+    final messenger = ScaffoldMessenger.of(context);
     final nuevoSaldo = double.tryParse(
       _saldoCtrl.text.trim().replaceAll('.', '').replaceAll(',', '.'),
     );
@@ -188,24 +234,47 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
     final obs = _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text.trim();
     final uid = auth.currentUser?.uid ?? '';
 
-    if (_archivoNombre != null) {
+    if (_archivoNombre != null && _archivoBytes != null) {
       final periodo = _periodoResumenCtrl.text.trim();
       if (!RegExp(r'^\d{2}/\d{4}$').hasMatch(periodo)) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        messenger.showSnackBar(const SnackBar(
           content: Text('Ingresá un período válido (MM/AAAA)'),
           backgroundColor: AppTheme.rojoGasto,
         ));
         return;
       }
-      await provider.actualizarSaldoConResumen(
-        nuevoSaldo, uid, periodo, _archivoNombre!, observaciones: obs);
+
+      final partes = periodo.split('/');
+      final mes = partes[0];
+      final anio = partes[1];
+
+      String? archivoUrl;
+      try {
+        archivoUrl = await StorageService().subirComprobante(
+          'resumenes_bancarios/$anio/$mes',
+          _archivoBytes!,
+          _archivoNombre!,
+        );
+      } catch (e) {
+        messenger.showSnackBar(SnackBar(
+          content: Text('No se pudo subir el PDF: $e'),
+          backgroundColor: AppTheme.rojoGasto,
+        ));
+      }
+
+      if (archivoUrl != null) {
+        await provider.actualizarSaldoConResumen(
+          nuevoSaldo, uid, periodo, archivoUrl, observaciones: obs);
+      } else {
+        await provider.actualizarSaldo(nuevoSaldo, uid, observaciones: obs);
+      }
     } else {
       await provider.actualizarSaldo(nuevoSaldo, uid, observaciones: obs);
     }
 
     if (!mounted) return;
     if (provider.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      messenger.showSnackBar(SnackBar(
         content: Text(provider.error!),
         backgroundColor: AppTheme.rojoGasto,
       ));
@@ -213,7 +282,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
       _obsCtrl.clear();
       _clearFile();
       setState(() => _saldoInicializado = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      messenger.showSnackBar(const SnackBar(
         content: Text('Saldo actualizado correctamente'),
         backgroundColor: AppTheme.verdeIngreso,
       ));
@@ -224,10 +293,14 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
+      withData: true,
     );
     if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.bytes == null || file.bytes!.isEmpty) return;
     setState(() {
-      _archivoNombre = result.files.first.name;
+      _archivoNombre = file.name;
+      _archivoBytes = file.bytes;
       if (_periodoResumenCtrl.text.isEmpty) {
         final now = DateTime.now();
         _periodoResumenCtrl.text =
@@ -238,6 +311,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
 
   void _clearFile() => setState(() {
         _archivoNombre = null;
+        _archivoBytes = null;
         _periodoResumenCtrl.clear();
       });
 
@@ -266,12 +340,37 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
         ),
         title: const Text('Cuenta Bancaria'),
         actions: const [AccionAuthWidget()],
+        bottom: TabBar(
+          controller: _tabCtrl,
+          indicatorColor: AppTheme.blanco,
+          labelColor: AppTheme.blanco,
+          unselectedLabelColor: Colors.white70,
+          tabs: const [
+            Tab(text: 'Cuenta Bancaria'),
+            Tab(text: 'Caja Chica'),
+          ],
+        ),
       ),
       body: provider.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : (cuenta == null || _editandoCuenta)
-              ? _buildSinCuenta(esAdmin, provider.isSaving)
-              : _buildConCuenta(cuenta, esAdmin, provider),
+          : TabBarView(
+              controller: _tabCtrl,
+              children: [
+                (cuenta == null || _editandoCuenta)
+                    ? _buildSinCuenta(esAdmin, provider.isSaving)
+                    : _buildConCuenta(cuenta, esAdmin, provider),
+                SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _CajaChicaSection(puedeActualizar: auth.esAdmin || auth.esEditor),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ],
+            ),
     );
   }
 
@@ -432,9 +531,11 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _InfoCuentaCard(cuenta: cuenta),
-          const SizedBox(height: 8),
+          _SaldoCard(cuenta: cuenta),
+          const SizedBox(height: 16),
+          _InfoCuentaDatosCard(cuenta: cuenta),
           if (esAdmin) ...[
+            const SizedBox(height: 8),
             OutlinedButton.icon(
               icon: const Icon(Icons.edit_outlined, size: 16),
               label: const Text('Editar datos de la cuenta'),
@@ -447,7 +548,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
                 setState(() => _editandoCuenta = true);
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             _ActualizarSaldoCard(
               formKey: _saldoFormKey,
               saldoCtrl: _saldoCtrl,
@@ -459,9 +560,9 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
               onPickFile: _pickFile,
               onClearFile: _clearFile,
             ),
-            const SizedBox(height: 16),
           ],
-          _HistorialCard(movimientos: provider.movimientos),
+          const SizedBox(height: 16),
+          _HistorialCard(movimientos: provider.movimientos, esAdmin: esAdmin),
           const SizedBox(height: 32),
         ],
       ),
@@ -469,24 +570,107 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen> {
   }
 }
 
-// ── Tarjeta info de cuenta ────────────────────────────────────────────────────
+// ── Saldo ─────────────────────────────────────────────────────────────────────
 
-class _InfoCuentaCard extends StatelessWidget {
-  const _InfoCuentaCard({required this.cuenta});
+class _SaldoCard extends StatelessWidget {
+  const _SaldoCard({required this.cuenta});
+
+  final CuentaBancaria cuenta;
+
+  String _fmtFecha(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/'
+      '${d.year}';
+
+  @override
+  Widget build(BuildContext context) {
+    final s = cuenta.saldoActual;
+    final saldoStr =
+        s == s.truncateToDouble() ? s.toInt().toString() : s.toStringAsFixed(2);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+        child: Column(
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Saldo actual',
+                  style: TextStyle(
+                    color: AppTheme.textoSecundario,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 14),
+                  color: AppTheme.textoSecundario,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Copiar saldo',
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: saldoStr));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Row(children: [
+                          Icon(Icons.check_circle,
+                              color: AppTheme.verdeIngreso, size: 18),
+                          SizedBox(width: 8),
+                          Text('Saldo copiado al portapapeles'),
+                        ]),
+                      ));
+                    }
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: saldoStr));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Row(children: [
+                      Icon(Icons.check_circle,
+                          color: AppTheme.verdeIngreso, size: 18),
+                      SizedBox(width: 8),
+                      Text('Saldo copiado al portapapeles'),
+                    ]),
+                  ));
+                }
+              },
+              child: _buildSaldoWidget(s),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Actualizado: ${_fmtFecha(cuenta.fechaActualizacion)}',
+              style: const TextStyle(
+                  color: AppTheme.textoSecundario, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Info de cuenta ────────────────────────────────────────────────────────────
+
+class _InfoCuentaDatosCard extends StatelessWidget {
+  const _InfoCuentaDatosCard({required this.cuenta});
 
   final CuentaBancaria cuenta;
 
   @override
   Widget build(BuildContext context) {
-    final saldo = cuenta.saldoActual;
-    final saldoFormat = saldo == saldo.truncateToDouble()
-        ? NumberFormat('#,##0', 'es_AR')
-        : NumberFormat('#,##0.##', 'es_AR');
-
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -494,7 +678,7 @@ class _InfoCuentaCard extends StatelessWidget {
                 const Text(
                   'Datos de la cuenta',
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textoPrincipal,
                   ),
@@ -520,53 +704,30 @@ class _InfoCuentaCard extends StatelessWidget {
                     await Clipboard.setData(
                         ClipboardData(text: buf.toString().trimRight()));
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Row(
-                            children: [
-                              Icon(Icons.check_circle,
-                                  color: AppTheme.verdeIngreso, size: 18),
-                              SizedBox(width: 8),
-                              Text('Datos de la cuenta copiados'),
-                            ],
-                          ),
-                        ),
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Row(children: [
+                          Icon(Icons.check_circle,
+                              color: AppTheme.verdeIngreso, size: 18),
+                          SizedBox(width: 8),
+                          Text('Datos de la cuenta copiados'),
+                        ]),
+                      ));
                     }
                   },
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            const Icon(Icons.account_balance,
-                size: 36, color: AppTheme.azulMedio),
-            const SizedBox(height: 12),
-            Text(
-              cuenta.banco,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textoPrincipal,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              cuenta.tipoCuenta,
-              style: const TextStyle(
-                  color: AppTheme.textoSecundario, fontSize: 13),
-            ),
+            _InfoRow(label: 'Banco', valor: cuenta.banco),
             if (cuenta.titular != null && cuenta.titular!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                cuenta.titular!,
-                style: const TextStyle(
-                    color: AppTheme.textoSecundario, fontSize: 13),
-              ),
+              const SizedBox(height: 6),
+              _InfoRow(label: 'Titular', valor: cuenta.titular!),
             ],
-            const SizedBox(height: 12),
-            const Divider(),
-            const SizedBox(height: 12),
-            _CopiableRow(label: 'CBU', valor: cuenta.cbu, snackMsg: 'CBU copiado'),
+            const SizedBox(height: 6),
+            _InfoRow(label: 'Tipo', valor: cuenta.tipoCuenta),
+            const SizedBox(height: 6),
+            _CopiableRow(
+                label: 'CBU', valor: cuenta.cbu, snackMsg: 'CBU copiado'),
             if (cuenta.alias != null && cuenta.alias!.isNotEmpty) ...[
               const SizedBox(height: 6),
               _CopiableRow(
@@ -575,95 +736,40 @@ class _InfoCuentaCard extends StatelessWidget {
                 snackMsg: 'Alias copiado: ${cuenta.alias!}',
               ),
             ],
-            const SizedBox(height: 20),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Saldo actual',
-                  style: TextStyle(
-                    color: AppTheme.textoSecundario,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(width: 2),
-                IconButton(
-                  icon: const Icon(Icons.copy, size: 14),
-                  color: AppTheme.textoSecundario,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  tooltip: 'Copiar saldo',
-                  onPressed: () async {
-                    final saldoStr = saldo == saldo.truncateToDouble()
-                        ? saldo.toInt().toString()
-                        : saldo.toStringAsFixed(2);
-                    await Clipboard.setData(ClipboardData(text: saldoStr));
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Row(
-                            children: [
-                              Icon(Icons.check_circle,
-                                  color: AppTheme.verdeIngreso, size: 18),
-                              SizedBox(width: 8),
-                              Text('Saldo copiado al portapapeles'),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            GestureDetector(
-              onTap: () async {
-                final saldoStr = saldo == saldo.truncateToDouble()
-                    ? saldo.toInt().toString()
-                    : saldo.toStringAsFixed(2);
-                await Clipboard.setData(ClipboardData(text: saldoStr));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Row(
-                        children: [
-                          Icon(Icons.check_circle,
-                              color: AppTheme.verdeIngreso, size: 18),
-                          SizedBox(width: 8),
-                          Text('Saldo copiado al portapapeles'),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: Text(
-                '\$${saldoFormat.format(saldo)}',
-                style: TextStyle(
-                  fontSize: 38,
-                  fontWeight: FontWeight.w700,
-                  color: saldo >= 0 ? AppTheme.verdeIngreso : AppTheme.rojoGasto,
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Actualizado: ${_fmtFecha(cuenta.fechaActualizacion)}',
-              style: const TextStyle(
-                  color: AppTheme.textoSecundario, fontSize: 11),
-            ),
           ],
         ),
       ),
     );
   }
+}
 
-  String _fmtFecha(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/'
-      '${d.month.toString().padLeft(2, '0')}/'
-      '${d.year}';
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.label, required this.valor});
+
+  final String label;
+  final String valor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text('$label: ',
+            style: const TextStyle(
+                color: AppTheme.textoSecundario, fontSize: 13)),
+        Expanded(
+          child: Text(
+            valor,
+            style: const TextStyle(
+              color: AppTheme.textoPrincipal,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ── Fila copiable (CBU, alias, titular) ──────────────────────────────────────
@@ -891,9 +997,10 @@ const _mesesEs = [
 ];
 
 class _HistorialCard extends StatefulWidget {
-  const _HistorialCard({required this.movimientos});
+  const _HistorialCard({required this.movimientos, required this.esAdmin});
 
   final List<MovimientoBancario> movimientos;
+  final bool esAdmin;
 
   @override
   State<_HistorialCard> createState() => _HistorialCardState();
@@ -1046,7 +1153,8 @@ class _HistorialCardState extends State<_HistorialCard> {
           physics: const NeverScrollableScrollPhysics(),
           itemCount: ultimos.length,
           separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (_, i) => _MovimientoTile(movimiento: ultimos[i]),
+          itemBuilder: (_, i) => _MovimientoTile(
+              movimiento: ultimos[i], esAdmin: widget.esAdmin),
         ),
         if (widget.movimientos.length > 6) ...[
           const SizedBox(height: 8),
@@ -1141,19 +1249,55 @@ class _HistorialCardState extends State<_HistorialCard> {
                       children: [
                         const Icon(Icons.picture_as_pdf,
                             size: 18, color: AppTheme.azulMedio),
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () =>
-                              ScaffoldMessenger.of(ctx).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Descarga disponible cuando se configure Firebase Storage',
-                              ),
-                            ),
+                        if (resumen.archivo != null &&
+                            resumen.archivo!.startsWith('http')) ...[
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () =>
+                                launchUrl(Uri.parse(resumen.archivo!)),
+                            child: const Icon(Icons.download,
+                                size: 18, color: AppTheme.azulMedio),
                           ),
-                          child: const Icon(Icons.download,
-                              size: 18, color: AppTheme.azulMedio),
-                        ),
+                        ],
+                        if (widget.esAdmin) ...[
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () async {
+                              final ok = await showDialog<bool>(
+                                context: ctx,
+                                builder: (_) => AlertDialog(
+                                  title: const Text('Eliminar resumen'),
+                                  content: Text(
+                                      '¿Eliminar el resumen de ${_mesesEs[mes - 1]} $_anioSeleccionado?'),
+                                  actions: [
+                                    TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, false),
+                                        child: const Text('Cancelar')),
+                                    TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, true),
+                                        child: const Text('Eliminar',
+                                            style: TextStyle(
+                                                color: AppTheme.rojoGasto))),
+                                  ],
+                                ),
+                              );
+                              if (ok == true && ctx.mounted) {
+                                final uid = ctx
+                                    .read<AuthProvider>()
+                                    .currentUser
+                                    ?.uid ??
+                                    '';
+                                await ctx
+                                    .read<CuentaBancariaProvider>()
+                                    .eliminarMovimiento(resumen.id, uid);
+                              }
+                            },
+                            child: const Icon(Icons.delete_outline,
+                                size: 18, color: AppTheme.rojoGasto),
+                          ),
+                        ],
                       ],
                     )
                   : Container(
@@ -1254,8 +1398,8 @@ class _HistorialCardState extends State<_HistorialCard> {
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: pagina.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (_, i) =>
-                    _MovimientoTile(movimiento: pagina[i]),
+                itemBuilder: (_, i) => _MovimientoTile(
+                    movimiento: pagina[i], esAdmin: widget.esAdmin),
               ),
               if (totalPaginas > 1) ...[
                 const SizedBox(height: 8),
@@ -1333,10 +1477,361 @@ class _DatePickerButton extends StatelessWidget {
   }
 }
 
+// ── Caja Chica ────────────────────────────────────────────────────────────────
+
+class _CajaChicaSection extends StatefulWidget {
+  const _CajaChicaSection({required this.puedeActualizar});
+  final bool puedeActualizar;
+
+  @override
+  State<_CajaChicaSection> createState() => _CajaChicaSectionState();
+}
+
+class _CajaChicaSectionState extends State<_CajaChicaSection> {
+  final _formKey = GlobalKey<FormState>();
+  final _saldoCtrl = TextEditingController();
+  final _obsCtrl = TextEditingController();
+  bool _saldoInicializado = false;
+
+  @override
+  void dispose() {
+    _saldoCtrl.dispose();
+    _obsCtrl.dispose();
+    super.dispose();
+  }
+
+  String _fmtFecha(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/'
+      '${d.year}';
+
+  void _mostrarDepositoBancario(double saldoCaja) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _ModalDepositoBancario(saldoCajaChica: saldoCaja),
+    );
+  }
+
+  Future<void> _actualizar() async {
+    if (!_formKey.currentState!.validate()) return;
+    final provider = context.read<CuentaBancariaProvider>();
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+    final nuevoSaldo = double.tryParse(
+      _saldoCtrl.text.trim().replaceAll('.', '').replaceAll(',', '.'),
+    );
+    if (nuevoSaldo == null) return;
+    final obs = _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text.trim();
+    await provider.actualizarCajaChica(nuevoSaldo, uid, observaciones: obs);
+    if (!mounted) return;
+    if (provider.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(provider.error!),
+        backgroundColor: AppTheme.rojoGasto,
+      ));
+    } else {
+      _obsCtrl.clear();
+      setState(() => _saldoInicializado = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Caja chica actualizada correctamente'),
+        backgroundColor: AppTheme.verdeIngreso,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<CuentaBancariaProvider>();
+    final cajaChica = provider.cajaChica;
+    final saldo = (cajaChica?['saldoActual'] as num? ?? 0).toDouble();
+    final fechaTs = cajaChica?['fechaActualizacion'];
+    final fecha = fechaTs is Timestamp ? fechaTs.toDate() : null;
+
+    if (!_saldoInicializado && !provider.isLoading) {
+      _saldoCtrl.text = _doubleToArgentino(saldo);
+      _saldoInicializado = true;
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.wallet, size: 20, color: AppTheme.verdeTeal),
+                const SizedBox(width: 8),
+                const Text(
+                  'Caja Chica',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textoPrincipal,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Center(child: _buildSaldoWidget(saldo)),
+            const SizedBox(height: 4),
+            if (fecha != null)
+              Center(
+                child: Text(
+                  'Actualizado: ${_fmtFecha(fecha)}',
+                  style: const TextStyle(
+                      color: AppTheme.textoSecundario, fontSize: 11),
+                ),
+              ),
+            if (widget.puedeActualizar) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => _mostrarDepositoBancario(saldo),
+                icon: const Icon(Icons.account_balance, size: 18),
+                label: const Text('Depositar al banco'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.azulMedio,
+                  side: const BorderSide(color: AppTheme.azulMedio),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Actualizar caja chica',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textoPrincipal,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _saldoCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [_MontoArgentinoFormatter()],
+                      decoration: const InputDecoration(
+                        labelText: 'Nuevo saldo *',
+                        prefixText: '\$ ',
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Ingresá el saldo';
+                        final parsed = double.tryParse(
+                            v.replaceAll('.', '').replaceAll(',', '.'));
+                        if (parsed == null) return 'Ingresá un valor válido';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _obsCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Observaciones (opcional)',
+                      ),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: provider.isSaving ? null : _actualizar,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.verdeTeal,
+                        foregroundColor: AppTheme.blanco,
+                      ),
+                      child: provider.isSaving
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: AppTheme.blanco),
+                            )
+                          : const Text('Actualizar'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            if (provider.movimientosCajaChica.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: Text(
+                    'Sin movimientos registrados',
+                    style: TextStyle(
+                        color: AppTheme.textoSecundario, fontSize: 13),
+                  ),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: provider.movimientosCajaChica.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (_, i) => _MovimientoCajaChicaTile(
+                    movimiento: provider.movimientosCajaChica[i]),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MovimientoCajaChicaTile extends StatefulWidget {
+  const _MovimientoCajaChicaTile({required this.movimiento});
+  final Map<String, dynamic> movimiento;
+
+  @override
+  State<_MovimientoCajaChicaTile> createState() =>
+      _MovimientoCajaChicaTileState();
+}
+
+class _MovimientoCajaChicaTileState extends State<_MovimientoCajaChicaTile> {
+  bool _expandido = false;
+
+  String _fmt(dynamic v) {
+    if (v == null) return '-';
+    return '\$${_doubleToArgentino((v as num).toDouble())}';
+  }
+
+  String _fmtFecha(dynamic ts) {
+    if (ts == null) return '-';
+    final d = ts is Timestamp ? ts.toDate() : ts as DateTime;
+    return '${d.day.toString().padLeft(2, '0')}/'
+        '${d.month.toString().padLeft(2, '0')}/'
+        '${d.year} '
+        '${d.hour.toString().padLeft(2, '0')}:'
+        '${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mov = widget.movimiento;
+    final obs = mov['observaciones'] as String?;
+    final tieneObs = obs != null && obs.isNotEmpty;
+    final usuarioId = mov['usuarioId'] as String? ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(right: 12, top: 2),
+                child: Icon(Icons.wallet_outlined,
+                    size: 20, color: AppTheme.verdeTeal),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Actualización de caja chica',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: AppTheme.textoPrincipal,
+                            ),
+                          ),
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_fmt(mov['saldoAnterior']),
+                                style: const TextStyle(
+                                    color: AppTheme.textoSecundario,
+                                    fontSize: 12)),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4),
+                              child: Icon(Icons.arrow_forward,
+                                  size: 12, color: AppTheme.verdeTeal),
+                            ),
+                            Text(_fmt(mov['saldoNuevo']),
+                                style: const TextStyle(
+                                  color: AppTheme.textoPrincipal,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                )),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Text(
+                      _fmtFecha(mov['fechaCreacion']),
+                      style: const TextStyle(
+                          color: AppTheme.textoSecundario, fontSize: 11),
+                    ),
+                    if (usuarioId.isNotEmpty)
+                      NombreUsuarioWidget(
+                        usuarioId: usuarioId,
+                        prefijo: 'Por: ',
+                        style: const TextStyle(
+                            color: AppTheme.textoSecundario, fontSize: 11),
+                      ),
+                  ],
+                ),
+              ),
+              if (tieneObs)
+                GestureDetector(
+                  onTap: () => setState(() => _expandido = !_expandido),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4, top: 2),
+                    child: Icon(
+                      _expandido ? Icons.expand_less : Icons.expand_more,
+                      size: 18,
+                      color: AppTheme.textoSecundario,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (tieneObs && _expandido)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 32),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.celesteFondo,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  obs,
+                  style: const TextStyle(
+                      color: AppTheme.textoSecundario, fontSize: 12),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MovimientoTile extends StatefulWidget {
-  const _MovimientoTile({required this.movimiento});
+  const _MovimientoTile(
+      {required this.movimiento, required this.esAdmin});
 
   final MovimientoBancario movimiento;
+  final bool esAdmin;
 
   @override
   State<_MovimientoTile> createState() => _MovimientoTileState();
@@ -1354,12 +1849,38 @@ class _MovimientoTileState extends State<_MovimientoTile> {
       '${d.hour.toString().padLeft(2, '0')}:'
       '${d.minute.toString().padLeft(2, '0')}';
 
+  Future<void> _confirmarEliminar(BuildContext context) async {
+    final mov = widget.movimiento;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Eliminar movimiento'),
+        content: Text(mov.tipo == 'resumen_mensual'
+            ? '¿Eliminar el resumen ${mov.periodo ?? ''}?'
+            : '¿Eliminar esta actualización de saldo?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Eliminar',
+                  style: TextStyle(color: AppTheme.rojoGasto))),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) {
+      final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+      await context.read<CuentaBancariaProvider>().eliminarMovimiento(mov.id, uid);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final mov = widget.movimiento;
     final esResumen = mov.tipo == 'resumen_mensual';
     final tieneDescarga =
-        esResumen || (mov.archivo != null && mov.archivo!.isNotEmpty);
+        mov.archivo != null && mov.archivo!.startsWith('http');
     final tieneObs =
         mov.observaciones != null && mov.observaciones!.isNotEmpty;
 
@@ -1430,18 +1951,19 @@ class _MovimientoTileState extends State<_MovimientoTile> {
                       style: const TextStyle(
                           color: AppTheme.textoSecundario, fontSize: 11),
                     ),
+                    if (mov.usuarioId.isNotEmpty)
+                      NombreUsuarioWidget(
+                        usuarioId: mov.usuarioId,
+                        prefijo: 'Por: ',
+                        style: const TextStyle(
+                            color: AppTheme.textoSecundario, fontSize: 11),
+                      ),
                   ],
                 ),
               ),
               if (tieneDescarga)
                 GestureDetector(
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Descarga disponible cuando se configure Firebase Storage',
-                      ),
-                    ),
-                  ),
+                  onTap: () => launchUrl(Uri.parse(mov.archivo!)),
                   child: const Padding(
                     padding: EdgeInsets.only(left: 8, top: 2),
                     child: Icon(Icons.download,
@@ -1458,6 +1980,15 @@ class _MovimientoTileState extends State<_MovimientoTile> {
                       size: 18,
                       color: AppTheme.textoSecundario,
                     ),
+                  ),
+                ),
+              if (widget.esAdmin)
+                GestureDetector(
+                  onTap: () => _confirmarEliminar(context),
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 4, top: 2),
+                    child: Icon(Icons.delete_outline,
+                        size: 18, color: AppTheme.rojoGasto),
                   ),
                 ),
             ],
@@ -1482,6 +2013,226 @@ class _MovimientoTileState extends State<_MovimientoTile> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Modal: Depositar al banco ─────────────────────────────────────────────────
+
+class _ModalDepositoBancario extends StatefulWidget {
+  const _ModalDepositoBancario({required this.saldoCajaChica});
+  final double saldoCajaChica;
+
+  @override
+  State<_ModalDepositoBancario> createState() => _ModalDepositoBancarioState();
+}
+
+class _ModalDepositoBancarioState extends State<_ModalDepositoBancario> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _montoCtrl;
+  final _obsCtrl = TextEditingController();
+  String? _archivoNombre;
+  Uint8List? _archivoBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _montoCtrl = TextEditingController(
+        text: _doubleToArgentino(widget.saldoCajaChica));
+  }
+
+  @override
+  void dispose() {
+    _montoCtrl.dispose();
+    _obsCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.bytes == null || file.bytes!.isEmpty) return;
+    setState(() {
+      _archivoNombre = file.name;
+      _archivoBytes = file.bytes;
+    });
+  }
+
+  Future<void> _confirmar() async {
+    if (!_formKey.currentState!.validate()) return;
+    final provider = context.read<CuentaBancariaProvider>();
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+    final messenger = ScaffoldMessenger.of(context);
+    final archivoBytes = _archivoBytes;
+    final archivoNombre = _archivoNombre;
+
+    final monto = double.tryParse(
+      _montoCtrl.text.trim().replaceAll('.', '').replaceAll(',', '.'),
+    );
+    if (monto == null || monto <= 0) return;
+    final obs = _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text.trim();
+
+    String? comprobanteUrl;
+    if (archivoBytes != null && archivoNombre != null) {
+      final now = DateTime.now();
+      try {
+        comprobanteUrl = await StorageService().subirComprobante(
+          'depositos_banco/${now.year}/${now.month.toString().padLeft(2, '0')}',
+          archivoBytes,
+          archivoNombre,
+        );
+      } catch (_) {}
+    }
+
+    final obsFinal = comprobanteUrl != null
+        ? '${obs ?? 'Depósito desde Caja Chica'} [comprobante adjunto]'
+        : obs;
+
+    await provider.depositarACuentaBancaria(monto, uid, observaciones: obsFinal);
+
+    if (!mounted) return;
+    if (provider.error != null) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(provider.error!),
+        backgroundColor: AppTheme.rojoGasto,
+      ));
+    } else {
+      Navigator.pop(context);
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Depósito realizado correctamente'),
+        backgroundColor: AppTheme.verdeIngreso,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<CuentaBancariaProvider>();
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          16, 24, 16, MediaQuery.of(context).viewInsets.bottom + 24),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.account_balance, color: AppTheme.azulMedio),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Depositar al banco',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textoPrincipal,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _montoCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [_MontoArgentinoFormatter()],
+              decoration: const InputDecoration(
+                labelText: 'Monto a depositar *',
+                prefixText: '\$ ',
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Ingresá el monto';
+                final parsed = double.tryParse(
+                    v.replaceAll('.', '').replaceAll(',', '.'));
+                if (parsed == null || parsed <= 0) {
+                  return 'Ingresá un monto válido';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _obsCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Observaciones (opcional)',
+                hintText: 'ej: Depósito de recaudación de kermés',
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            if (_archivoNombre != null) ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppTheme.celesteFondo,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.celesteBorde),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.insert_drive_file_outlined,
+                        size: 18, color: AppTheme.azulMedio),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_archivoNombre!,
+                          style: const TextStyle(fontSize: 13),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(
+                          () => _archivoNombre = _archivoBytes = null),
+                      child: const Icon(Icons.close,
+                          size: 18, color: AppTheme.textoSecundario),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            OutlinedButton.icon(
+              onPressed: _pickFile,
+              icon: const Icon(Icons.attach_file, size: 18),
+              label: const Text('Adjuntar comprobante (opcional)'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.azulMedio,
+                side: const BorderSide(color: AppTheme.azulMedio),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.verdeTeal,
+                foregroundColor: AppTheme.blanco,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: provider.isSaving ? null : _confirmar,
+              child: provider.isSaving
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppTheme.blanco),
+                    )
+                  : const Text('Confirmar depósito',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
       ),
     );
   }

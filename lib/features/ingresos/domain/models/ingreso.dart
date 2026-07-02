@@ -22,6 +22,8 @@ class Ingreso {
   final String usuarioId;
   final String? comprobante;
   final DateTime fechaCreacion;
+  final String? ultimaModificacionPor;
+  final DateTime? ultimaModificacionFecha;
 
   const Ingreso({
     required this.id,
@@ -43,6 +45,8 @@ class Ingreso {
     required this.usuarioId,
     this.comprobante,
     required this.fechaCreacion,
+    this.ultimaModificacionPor,
+    this.ultimaModificacionFecha,
   });
 
   Map<String, dynamic> toMap() {
@@ -66,6 +70,10 @@ class Ingreso {
       'usuarioId': usuarioId,
       'comprobante': comprobante,
       'fechaCreacion': Timestamp.fromDate(fechaCreacion),
+      'ultimaModificacionPor': ultimaModificacionPor,
+      'ultimaModificacionFecha': ultimaModificacionFecha != null
+          ? Timestamp.fromDate(ultimaModificacionFecha!)
+          : null,
     };
   }
 
@@ -92,6 +100,10 @@ class Ingreso {
       usuarioId: map['usuarioId'] as String,
       comprobante: map['comprobante'] as String?,
       fechaCreacion: (map['fechaCreacion'] as Timestamp).toDate(),
+      ultimaModificacionPor: map['ultimaModificacionPor'] as String?,
+      ultimaModificacionFecha: map['ultimaModificacionFecha'] != null
+          ? (map['ultimaModificacionFecha'] as Timestamp).toDate()
+          : null,
     );
   }
 
@@ -115,6 +127,8 @@ class Ingreso {
     String? usuarioId,
     Object? comprobante = _unset,
     DateTime? fechaCreacion,
+    Object? ultimaModificacionPor = _unset,
+    Object? ultimaModificacionFecha = _unset,
   }) {
     return Ingreso(
       id: id ?? this.id,
@@ -149,6 +163,12 @@ class Ingreso {
       comprobante:
           comprobante == _unset ? this.comprobante : comprobante as String?,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
+      ultimaModificacionPor: ultimaModificacionPor == _unset
+          ? this.ultimaModificacionPor
+          : ultimaModificacionPor as String?,
+      ultimaModificacionFecha: ultimaModificacionFecha == _unset
+          ? this.ultimaModificacionFecha
+          : ultimaModificacionFecha as DateTime?,
     );
   }
 }

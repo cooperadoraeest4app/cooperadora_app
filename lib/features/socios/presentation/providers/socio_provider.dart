@@ -65,28 +65,37 @@ class SocioProvider extends ChangeNotifier {
     }
   }
 
+  Socio? porId(String id) {
+    try {
+      return todos.firstWhere((s) => s.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
   SocioRepository get repo => _repo;
 
-  Future<void> agregar(Socio socio) async {
+  Future<String?> agregar(Socio socio) async {
     isSaving = true;
     error = null;
     notifyListeners();
     try {
-      await _repo.agregar(socio);
+      return await _repo.agregar(socio);
     } catch (e) {
       error = e.toString();
+      return null;
     } finally {
       isSaving = false;
       notifyListeners();
     }
   }
 
-  Future<void> actualizar(Socio socio) async {
+  Future<void> actualizar(Socio socio, String usuarioId) async {
     isSaving = true;
     error = null;
     notifyListeners();
     try {
-      await _repo.actualizar(socio);
+      await _repo.actualizar(socio, usuarioId);
     } catch (e) {
       error = e.toString();
     } finally {

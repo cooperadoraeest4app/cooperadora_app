@@ -1,102 +1,92 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Socio {
+  static const _unset = Object();
+
   final String id;
-  final String tipoSocioId;
-  final String subtipoSocioId;
-  final String? apellidoFamilia;
-  final String? razonSocial;
-  final String? cuit;
-  final String? personaContactoId;
+  final int numeroSocio;
+  final String personaId;
+  final String tipoSocio; // activo / honorario / adherente
   final bool activo;
   final DateTime fechaIngreso;
   final String? observaciones;
-  final DateTime fechaCreacion;
+  final String? usuarioId;
+  final String? ultimaModificacionPor;
+  final DateTime? ultimaModificacionFecha;
 
   const Socio({
     required this.id,
-    required this.tipoSocioId,
-    required this.subtipoSocioId,
-    this.apellidoFamilia,
-    this.razonSocial,
-    this.cuit,
-    this.personaContactoId,
+    required this.numeroSocio,
+    required this.personaId,
+    required this.tipoSocio,
     required this.activo,
     required this.fechaIngreso,
     this.observaciones,
-    required this.fechaCreacion,
+    this.usuarioId,
+    this.ultimaModificacionPor,
+    this.ultimaModificacionFecha,
   });
 
-  String get nombreDisplay =>
-      apellidoFamilia?.isNotEmpty == true
-          ? apellidoFamilia!
-          : (razonSocial ?? '(sin nombre)');
-
   Map<String, dynamic> toMap() => {
-        'tipoSocioId': tipoSocioId,
-        'subtipoSocioId': subtipoSocioId,
-        'apellidoFamilia': apellidoFamilia,
-        'razonSocial': razonSocial,
-        'cuit': cuit,
-        'personaContactoId': personaContactoId,
+        'numeroSocio': numeroSocio,
+        'personaId': personaId,
+        'tipoSocio': tipoSocio,
         'activo': activo,
         'fechaIngreso': Timestamp.fromDate(fechaIngreso),
-        'observaciones': observaciones,
-        'fechaCreacion': Timestamp.fromDate(fechaCreacion),
+        if (observaciones != null) 'observaciones': observaciones,
+        if (usuarioId != null) 'usuarioId': usuarioId,
+        if (ultimaModificacionPor != null)
+          'ultimaModificacionPor': ultimaModificacionPor,
+        if (ultimaModificacionFecha != null)
+          'ultimaModificacionFecha':
+              Timestamp.fromDate(ultimaModificacionFecha!),
       };
 
   factory Socio.fromMap(Map<String, dynamic> map, String id) {
-    DateTime ts(dynamic v) =>
-        v is Timestamp ? v.toDate() : DateTime.now();
+    DateTime ts(dynamic v) => v is Timestamp ? v.toDate() : DateTime.now();
+    DateTime? tsN(dynamic v) => v is Timestamp ? v.toDate() : null;
     return Socio(
       id: id,
-      tipoSocioId: map['tipoSocioId'] as String? ?? '',
-      subtipoSocioId: map['subtipoSocioId'] as String? ?? '',
-      apellidoFamilia: map['apellidoFamilia'] as String?,
-      razonSocial: map['razonSocial'] as String?,
-      cuit: map['cuit'] as String?,
-      personaContactoId: map['personaContactoId'] as String?,
+      numeroSocio: (map['numeroSocio'] as num? ?? 0).toInt(),
+      personaId: map['personaId'] as String? ?? '',
+      tipoSocio: map['tipoSocio'] as String? ?? 'activo',
       activo: map['activo'] as bool? ?? true,
       fechaIngreso: ts(map['fechaIngreso']),
       observaciones: map['observaciones'] as String?,
-      fechaCreacion: ts(map['fechaCreacion']),
+      usuarioId: map['usuarioId'] as String?,
+      ultimaModificacionPor: map['ultimaModificacionPor'] as String?,
+      ultimaModificacionFecha: tsN(map['ultimaModificacionFecha']),
     );
   }
 
   Socio copyWith({
-    String? tipoSocioId,
-    String? subtipoSocioId,
-    String? apellidoFamilia,
-    bool clearApellidoFamilia = false,
-    String? razonSocial,
-    bool clearRazonSocial = false,
-    String? cuit,
-    bool clearCuit = false,
-    String? personaContactoId,
-    bool clearPersonaContactoId = false,
+    int? numeroSocio,
+    String? personaId,
+    String? tipoSocio,
     bool? activo,
     DateTime? fechaIngreso,
-    String? observaciones,
-    bool clearObservaciones = false,
-  }) =>
-      Socio(
-        id: id,
-        tipoSocioId: tipoSocioId ?? this.tipoSocioId,
-        subtipoSocioId: subtipoSocioId ?? this.subtipoSocioId,
-        apellidoFamilia: clearApellidoFamilia
-            ? null
-            : (apellidoFamilia ?? this.apellidoFamilia),
-        razonSocial:
-            clearRazonSocial ? null : (razonSocial ?? this.razonSocial),
-        cuit: clearCuit ? null : (cuit ?? this.cuit),
-        personaContactoId: clearPersonaContactoId
-            ? null
-            : (personaContactoId ?? this.personaContactoId),
-        activo: activo ?? this.activo,
-        fechaIngreso: fechaIngreso ?? this.fechaIngreso,
-        observaciones: clearObservaciones
-            ? null
-            : (observaciones ?? this.observaciones),
-        fechaCreacion: fechaCreacion,
-      );
+    Object? observaciones = _unset,
+    Object? usuarioId = _unset,
+    Object? ultimaModificacionPor = _unset,
+    Object? ultimaModificacionFecha = _unset,
+  }) {
+    return Socio(
+      id: id,
+      numeroSocio: numeroSocio ?? this.numeroSocio,
+      personaId: personaId ?? this.personaId,
+      tipoSocio: tipoSocio ?? this.tipoSocio,
+      activo: activo ?? this.activo,
+      fechaIngreso: fechaIngreso ?? this.fechaIngreso,
+      observaciones: observaciones == _unset
+          ? this.observaciones
+          : observaciones as String?,
+      usuarioId: usuarioId == _unset ? this.usuarioId : usuarioId as String?,
+      ultimaModificacionPor: ultimaModificacionPor == _unset
+          ? this.ultimaModificacionPor
+          : ultimaModificacionPor as String?,
+      ultimaModificacionFecha: ultimaModificacionFecha == _unset
+          ? this.ultimaModificacionFecha
+          : ultimaModificacionFecha as DateTime?,
+    );
+  }
 }

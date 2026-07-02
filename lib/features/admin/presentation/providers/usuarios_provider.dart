@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 class UsuariosProvider extends ChangeNotifier {
   StreamSubscription? _usuariosSub;
+  int _generacion = 0;
 
   List<Map<String, dynamic>> _usuarios = [];
   bool isLoading = false;
@@ -17,7 +18,6 @@ class UsuariosProvider extends ChangeNotifier {
                 snap.docs.map((d) => {...d.data(), 'id': d.id}).toList(),
           );
 
-  // Llamado desde ProxyProvider cuando hay usuario autenticado.
   void iniciarSiNecesario() {
     if (_usuariosSub != null) return;
     isLoading = true;
@@ -26,9 +26,9 @@ class UsuariosProvider extends ChangeNotifier {
         .snapshots()
         .listen(
       (snap) {
-        _usuarios = snap.docs.map((d) => {...d.data(), 'id': d.id}).toList();
-        isLoading = false;
-        notifyListeners();
+        final rawUsers =
+            snap.docs.map((d) => {...d.data(), 'id': d.id}).toList();
+        _enriquecerUsuarios(rawUsers, ++_generacion);
       },
       onError: (e) {
         error = 'Error al cargar usuarios.';
@@ -38,8 +38,53 @@ class UsuariosProvider extends ChangeNotifier {
     );
   }
 
-  // Llamado desde ProxyProvider cuando se cierra sesión.
+  Future<void> _enriquecerUsuarios(
+      List<Map<String, dynamic>> rawUsers, int gen) async {
+    final personaIds = rawUsers
+        .map((u) => u['personaId'] as String?)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final personaMap = <String, Map<String, dynamic>>{};
+    if (personaIds.isNotEmpty) {
+      final snaps = await Future.wait(
+        personaIds.map((id) =>
+            FirebaseFirestore.instance.collection('personas').doc(id).get()),
+      );
+      for (final snap in snaps) {
+        if (snap.exists && snap.data() != null) {
+          personaMap[snap.id] = snap.data()!;
+        }
+      }
+    }
+
+    if (gen != _generacion) return;
+
+    _usuarios = rawUsers.map((u) {
+      final personaId = u['personaId'] as String?;
+      String nombreCompleto = '';
+      if (personaId != null &&
+          personaId.isNotEmpty &&
+          personaMap.containsKey(personaId)) {
+        final p = personaMap[personaId]!;
+        final n =
+            '${p['nombre'] ?? ''} ${p['apellido'] ?? ''}'.trim();
+        if (n.isNotEmpty) nombreCompleto = n;
+      }
+      if (nombreCompleto.isEmpty) {
+        nombreCompleto = u['email'] as String? ?? u['id'] as String? ?? '';
+      }
+      return {...u, 'nombreCompleto': nombreCompleto};
+    }).toList();
+
+    isLoading = false;
+    notifyListeners();
+  }
+
   void limpiar() {
+    _generacion++;
     _usuariosSub?.cancel();
     _usuariosSub = null;
     _usuarios = [];
@@ -49,6 +94,7 @@ class UsuariosProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _generacion++;
     _usuariosSub?.cancel();
     super.dispose();
   }

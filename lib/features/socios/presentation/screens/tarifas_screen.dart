@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../domain/models/tarifa_cuota.dart';
 import '../../domain/models/tipo_cuota.dart';
 import '../providers/cuota_provider.dart';
@@ -74,15 +75,23 @@ class TarifasScreen extends StatelessWidget {
 
 // ── _TarifaTipoCard ───────────────────────────────────────────────────────────
 
-class _TarifaTipoCard extends StatelessWidget {
+class _TarifaTipoCard extends StatefulWidget {
   const _TarifaTipoCard({required this.tipo, required this.tarifas});
   final TipoCuota tipo;
   final List<TarifaCuota> tarifas;
 
   @override
+  State<_TarifaTipoCard> createState() => _TarifaTipoCardState();
+}
+
+class _TarifaTipoCardState extends State<_TarifaTipoCard> {
+  bool _historialExpandido = false;
+
+  @override
   Widget build(BuildContext context) {
-    final vigente = tarifas.isNotEmpty ? tarifas.first : null;
-    final historial = tarifas.length > 1 ? tarifas.sublist(1) : <TarifaCuota>[];
+    final vigente = widget.tarifas.isNotEmpty ? widget.tarifas.first : null;
+    final historial =
+        widget.tarifas.length > 1 ? widget.tarifas.sublist(1) : <TarifaCuota>[];
 
     return Card(
       child: Padding(
@@ -91,7 +100,7 @@ class _TarifaTipoCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              tipo.nombre,
+              widget.tipo.nombre,
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -99,26 +108,46 @@ class _TarifaTipoCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            // Tarifa vigente
             vigente == null
                 ? const Text(
                     'Sin tarifa registrada',
                     style: TextStyle(color: AppTheme.textoSecundario),
                   )
                 : _TarifaRow(tarifa: vigente, esVigente: true),
-            // Historial
             if (historial.isNotEmpty) ...[
               const SizedBox(height: 8),
-              const Text(
-                'Historial',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textoSecundario,
+              InkWell(
+                onTap: () =>
+                    setState(() => _historialExpandido = !_historialExpandido),
+                borderRadius: const BorderRadius.all(Radius.circular(4)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      const Text(
+                        'Historial',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textoSecundario,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        _historialExpandido
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        size: 16,
+                        color: AppTheme.textoSecundario,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              ...historial.map((t) => _TarifaRow(tarifa: t, esVigente: false)),
+              if (_historialExpandido) ...[
+                const SizedBox(height: 4),
+                ...historial.map((t) => _TarifaHistorialItem(tarifa: t)),
+              ],
             ],
           ],
         ),
@@ -159,6 +188,48 @@ class _TarifaRow extends StatelessWidget {
                   ? AppTheme.textoPrincipal
                   : AppTheme.textoSecundario,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── _TarifaHistorialItem ──────────────────────────────────────────────────────
+
+class _TarifaHistorialItem extends StatelessWidget {
+  const _TarifaHistorialItem({required this.tarifa});
+  final TarifaCuota tarifa;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _fmtMonto(tarifa.monto),
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppTheme.textoSecundario,
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'Desde ${_fmtFecha(tarifa.vigenciaDesde)}',
+                style: const TextStyle(
+                    fontSize: 12, color: AppTheme.textoSecundario),
+              ),
+              NombreUsuarioWidget(
+                usuarioId: tarifa.usuarioId,
+                style: const TextStyle(
+                    fontSize: 12, color: AppTheme.textoSecundario),
+              ),
+            ],
           ),
         ],
       ),

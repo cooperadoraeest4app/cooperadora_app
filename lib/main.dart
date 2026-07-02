@@ -4,15 +4,18 @@ import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'features/admin/presentation/providers/categoria_provider.dart';
+import 'features/admin/presentation/providers/curso_provider.dart';
 import 'features/cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
 import 'features/admin/presentation/providers/configuracion_provider.dart';
 import 'features/admin/presentation/providers/invitacion_provider.dart';
 import 'features/admin/presentation/providers/metodo_pago_provider.dart';
+import 'features/admin/presentation/providers/persona_provider.dart';
 import 'features/admin/presentation/providers/usuarios_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/ingresos/presentation/providers/frecuencia_provider.dart';
 import 'features/ingresos/presentation/providers/movimientos_provider.dart';
 import 'features/proyectos/presentation/providers/proyecto_provider.dart';
+import 'features/inventario/presentation/providers/inventario_provider.dart';
 import 'features/socios/presentation/providers/cuota_provider.dart';
 import 'features/socios/presentation/providers/socio_provider.dart';
 import 'core/navigation/app_navigator.dart';
@@ -48,13 +51,26 @@ class MyApp extends StatelessWidget {
             return usuarios;
           },
         ),
+        ChangeNotifierProxyProvider<AuthProvider, PersonaProvider>(
+          create: (_) => PersonaProvider(),
+          update: (_, auth, personas) {
+            if (auth.currentUser != null) {
+              personas!.iniciarSiNecesario();
+            } else {
+              personas!.limpiar();
+            }
+            return personas;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => CategoriaProvider()),
+        ChangeNotifierProvider(create: (_) => CursoProvider()),
         ChangeNotifierProvider(create: (_) => MetodoPagoProvider()),
         ChangeNotifierProvider(create: (_) => CuentaBancariaProvider()),
         ChangeNotifierProvider(create: (_) => ProyectoProvider()),
         ChangeNotifierProvider(create: (_) => SocioProvider()),
         ChangeNotifierProvider(create: (_) => CuotaProvider()),
         ChangeNotifierProvider(create: (_) => FrecuenciaProvider()),
+        ChangeNotifierProvider(create: (_) => InventarioProvider()),
       ],
       child: MaterialApp(
         navigatorKey: navigatorKey,

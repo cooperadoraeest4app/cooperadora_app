@@ -480,6 +480,7 @@ class _ModalProyectoState extends State<_ModalProyecto> {
             _presupuestoCtrl.text.replaceAll('.', '').replaceAll(',', '.')) ??
         0;
 
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
     final nuevo = Proyecto(
       id: widget.proyecto?.id ?? '',
       nombre: _nombreCtrl.text.trim(),
@@ -495,6 +496,11 @@ class _ModalProyectoState extends State<_ModalProyecto> {
       responsables: widget.proyecto?.responsables ?? [],
       publico: _publico,
       fechaCreacion: widget.proyecto?.fechaCreacion ?? DateTime.now(),
+      usuarioId: widget.proyecto?.usuarioId.isNotEmpty == true
+          ? widget.proyecto!.usuarioId
+          : uid,
+      ultimaModificacionPor: _esEdicion && uid.isNotEmpty ? uid : null,
+      ultimaModificacionFecha: _esEdicion ? DateTime.now() : null,
     );
 
     if (_esEdicion) {
