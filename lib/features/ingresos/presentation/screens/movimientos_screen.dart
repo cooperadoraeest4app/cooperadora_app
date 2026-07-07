@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -18,6 +19,7 @@ import '../providers/movimientos_provider.dart';
 import '../../../proyectos/presentation/providers/proyecto_provider.dart';
 import '../../../proyectos/presentation/screens/proyecto_detalle_screen.dart';
 import 'agregar_movimiento_screen.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 String _formatMonto(double monto) {
   final format = monto == monto.truncateToDouble()
@@ -48,6 +50,7 @@ class _MovimientoUnificado {
   final String usuarioId;
   final DateTime fechaCreacion;
   final String? comprobante;
+  final String? nroComprobante;
   final bool recurrente;
   final String? frecuenciaId;
   final DateTime? proximaFecha;
@@ -69,6 +72,7 @@ class _MovimientoUnificado {
     required this.usuarioId,
     required this.fechaCreacion,
     this.comprobante,
+    this.nroComprobante,
     this.recurrente = false,
     this.frecuenciaId,
     this.proximaFecha,
@@ -92,6 +96,7 @@ class _MovimientoUnificado {
         usuarioId: i.usuarioId,
         fechaCreacion: i.fechaCreacion,
         comprobante: i.comprobante,
+        nroComprobante: i.nroComprobante,
         recurrente: i.recurrente,
         frecuenciaId: i.frecuenciaId,
         proximaFecha: i.proximaFecha,
@@ -113,6 +118,7 @@ class _MovimientoUnificado {
         usuarioId: g.usuarioId,
         fechaCreacion: g.fechaCreacion,
         comprobante: g.comprobante,
+        nroComprobante: g.nroComprobante,
         recurrente: g.recurrente,
         frecuenciaId: g.frecuenciaId,
         proximaFecha: g.proximaFecha,
@@ -124,9 +130,10 @@ class _MovimientoUnificado {
 }
 
 class MovimientosScreen extends StatefulWidget {
-  const MovimientosScreen({super.key, this.proyectoId});
+  const MovimientosScreen({super.key, this.proyectoId, this.filtroId});
 
   final String? proyectoId;
+  final String? filtroId;
 
   @override
   State<MovimientosScreen> createState() => _MovimientosScreenState();
@@ -203,11 +210,47 @@ class _MovimientosScreenState extends State<MovimientosScreen> {
     final puedeAgregar = auth.esEditor;
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
-        title: Text(widget.proyectoId != null
-            ? 'Movimientos del proyecto'
-            : 'Movimientos'),
-        actions: const [AccionAuthWidget()],
+        backgroundColor: AppTheme.azulOscuro,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        titleSpacing: 0,
+        title: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                ),
+              ),
+            ),
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                widget.proyectoId != null
+                    ? 'Movimientos del proyecto'
+                    : 'Movimientos',
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [AccionAuthWidget()],
       ),
       body: StreamBuilder<List<Ingreso>>(
         stream: provider.ingresos,
@@ -439,7 +482,8 @@ class _MovimientosScreenState extends State<MovimientosScreen> {
                                       const Divider(height: 1, indent: 72),
                                   itemBuilder: (context, index) =>
                                       _MovimientoTile(
-                                          item: movimientos[index]),
+                                          item: movimientos[index],
+                                          initiallyExpanded: movimientos[index].id == widget.filtroId),
                                 ),
                               ),
                   ),
@@ -558,15 +602,16 @@ class _TarjetaResumen extends StatelessWidget {
 }
 
 class _MovimientoTile extends StatefulWidget {
-  const _MovimientoTile({required this.item});
+  const _MovimientoTile({required this.item, this.initiallyExpanded = false});
   final _MovimientoUnificado item;
+  final bool initiallyExpanded;
 
   @override
   State<_MovimientoTile> createState() => _MovimientoTileState();
 }
 
 class _MovimientoTileState extends State<_MovimientoTile> {
-  bool _expanded = false;
+  late bool _expanded = widget.initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -717,6 +762,20 @@ class _MovimientoTileState extends State<_MovimientoTile> {
             ),
           ],
           if (item.recurrente) _buildRecurrencia(context, item),
+          if (item.nroComprobante != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.tag, size: 16, color: AppTheme.textoSecundario),
+                const SizedBox(width: 6),
+                Text(
+                  'Comprobante N°: ${item.nroComprobante}',
+                  style: const TextStyle(
+                      color: AppTheme.textoSecundario, fontSize: 13),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 4),
           Row(
             children: [

@@ -1,4 +1,4 @@
-import 'package:file_picker/file_picker.dart';
+﻿import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -21,6 +21,8 @@ import '../../../socios/presentation/providers/cuota_provider.dart';
 import '../../../socios/presentation/providers/socio_provider.dart';
 import '../providers/frecuencia_provider.dart';
 import '../providers/movimientos_provider.dart';
+import '../../../../shared/widgets/numero_cheque_widget.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 const _categoriasInventariables = {
   'Equipamiento',
@@ -147,6 +149,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   final _ubicacionBienCtrl = TextEditingController();
 
   final _montoController = TextEditingController();
+  final _nroComprobanteController = TextEditingController();
+  final _nroChequeController = TextEditingController();
   final _descripcionController = TextEditingController();
   final _fechaController = TextEditingController();
   final _donanteController = TextEditingController();
@@ -197,6 +201,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _metodoPago = i.metodoPagoId;
     _categoria = i.categoriaId;
     _comprobanteUrl = i.comprobante;
+    _nroComprobanteController.text = i.nroComprobante ?? '';
+    _nroChequeController.text = i.nroCheque ?? '';
     _recurrente = i.recurrente;
     _frecuenciaId = i.frecuenciaId;
     _proyectoId = i.proyectoId;
@@ -221,6 +227,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _metodoPago = g.metodoPagoId;
     _categoria = g.categoriaId;
     _comprobanteUrl = g.comprobante;
+    _nroComprobanteController.text = g.nroComprobante ?? '';
+    _nroChequeController.text = g.nroCheque ?? '';
     _recurrente = g.recurrente;
     _frecuenciaId = g.frecuenciaId;
     _proyectoId = g.proyectoId;
@@ -229,6 +237,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   @override
   void dispose() {
     _montoController.dispose();
+    _nroComprobanteController.dispose();
+    _nroChequeController.dispose();
     _descripcionController.dispose();
     _fechaController.dispose();
     _donanteController.dispose();
@@ -363,6 +373,12 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           categoriaId: _categoria!,
           proyectoId: _proyectoId,
           comprobante: comprobanteResultante,
+          nroComprobante: _nroComprobanteController.text.trim().isEmpty
+              ? null
+              : _nroComprobanteController.text.trim(),
+          nroCheque: _nroChequeController.text.trim().isEmpty
+              ? null
+              : _nroChequeController.text.trim(),
           recurrente: _recurrente,
           frecuenciaId: _recurrente ? _frecuenciaId : null,
           proximaFecha: _recurrente ? _calcularProximaFecha() : null,
@@ -392,6 +408,12 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           categoriaId: _categoria!,
           proyectoId: _proyectoId,
           comprobante: comprobanteResultante,
+          nroComprobante: _nroComprobanteController.text.trim().isEmpty
+              ? null
+              : _nroComprobanteController.text.trim(),
+          nroCheque: _nroChequeController.text.trim().isEmpty
+              ? null
+              : _nroChequeController.text.trim(),
           recurrente: _recurrente,
           frecuenciaId: _recurrente ? _frecuenciaId : null,
           proximaFecha: _recurrente ? _calcularProximaFecha() : null,
@@ -413,6 +435,12 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           usuarioId: uid,
           fechaCreacion: now,
           comprobante: comprobanteResultante,
+          nroComprobante: _nroComprobanteController.text.trim().isEmpty
+              ? null
+              : _nroComprobanteController.text.trim(),
+          nroCheque: _nroChequeController.text.trim().isEmpty
+              ? null
+              : _nroChequeController.text.trim(),
           recurrente: _recurrente,
           frecuenciaId: _recurrente ? _frecuenciaId : null,
           proximaFecha: _recurrente ? _calcularProximaFecha() : null,
@@ -430,10 +458,12 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           donanteUsuarioId:
               _esYoDonante ? uid : _donanteMiembroSeleccionado,
         );
-        await provider.agregarIngreso(ingreso);
+        final ingresoId = await provider.agregarIngreso(ingreso);
         if (_metodoPago == 'Efectivo' && provider.error == null) {
           await cuentaProvider.sumarACajaChica(
-              monto, uid, descripcion ?? catNombreSeleccionada);
+            monto, uid, descripcion ?? catNombreSeleccionada,
+            ingresoId: ingresoId,
+          );
         }
         if (esCuotaSocial && socioSeleccionado != null && provider.error == null) {
           await cuotaProvider.registrarPago(Cuota(
@@ -481,11 +511,17 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           usuarioId: uid,
           fechaCreacion: now,
           comprobante: comprobanteResultante,
+          nroComprobante: _nroComprobanteController.text.trim().isEmpty
+              ? null
+              : _nroComprobanteController.text.trim(),
+          nroCheque: _nroChequeController.text.trim().isEmpty
+              ? null
+              : _nroChequeController.text.trim(),
           recurrente: _recurrente,
           frecuenciaId: _recurrente ? _frecuenciaId : null,
           proximaFecha: _recurrente ? _calcularProximaFecha() : null,
         );
-        await provider.agregarGasto(gasto);
+        final gastoId = await provider.agregarGasto(gasto);
 
         if (_metodoPago == 'Caja Chica' && provider.error == null) {
           final cats = catProvider.obtenerActivas(_tipo);
@@ -493,7 +529,10 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
               .firstWhere((c) => c['id'] == _categoria,
                   orElse: () => {'nombre': 'Gasto'})['nombre'] as String;
           final observacion = descripcion ?? catNombre;
-          await cuentaProvider.descontarDeCajaChica(monto, uid, observacion);
+          await cuentaProvider.descontarDeCajaChica(
+            monto, uid, observacion,
+            gastoId: gastoId,
+          );
         }
         if (_registrarEnInventario && provider.error == null) {
           await inventarioProvider.agregar(BienInventario(
@@ -545,6 +584,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         context.watch<MovimientosProvider>().isLoading || _subiendo;
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: _colorActivo,
         foregroundColor: AppTheme.blanco,
@@ -745,6 +785,10 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
               onChanged: (v) => setState(() => _metodoPago = v),
               validator: (v) =>
                   v == null ? 'Seleccioná un método de pago' : null,
+            ),
+            NumeroChequeWidget(
+              metodoPago: _metodoPago,
+              controller: _nroChequeController,
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
@@ -1012,12 +1056,15 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         const SizedBox(height: 20),
         const Divider(),
         const SizedBox(height: 8),
-        const Text(
-          'Comprobante (opcional)',
-          style: TextStyle(
-            color: AppTheme.textoSecundario,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 4),
+          child: Text(
+            'Comprobante (opcional)',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textoPrincipal,
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -1086,6 +1133,16 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           ),
           const SizedBox(height: 12),
         ],
+        TextFormField(
+          controller: _nroComprobanteController,
+          decoration: InputDecoration(
+            labelText: 'Número de comprobante (opcional)',
+            hintText: 'Ej: 0001-00012345',
+            prefixIcon: Icon(Icons.tag, color: AppTheme.azulMedio),
+          ),
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(

@@ -21,6 +21,8 @@ class Ingreso {
   final DateTime? proximaFecha;
   final String usuarioId;
   final String? comprobante;
+  final String? nroComprobante;
+  final String? nroCheque;
   final DateTime fechaCreacion;
   final String? ultimaModificacionPor;
   final DateTime? ultimaModificacionFecha;
@@ -44,6 +46,8 @@ class Ingreso {
     this.proximaFecha,
     required this.usuarioId,
     this.comprobante,
+    this.nroComprobante,
+    this.nroCheque,
     required this.fechaCreacion,
     this.ultimaModificacionPor,
     this.ultimaModificacionFecha,
@@ -69,6 +73,8 @@ class Ingreso {
           proximaFecha != null ? Timestamp.fromDate(proximaFecha!) : null,
       'usuarioId': usuarioId,
       'comprobante': comprobante,
+      'nroComprobante': nroComprobante,
+      'nroCheque': nroCheque,
       'fechaCreacion': Timestamp.fromDate(fechaCreacion),
       'ultimaModificacionPor': ultimaModificacionPor,
       'ultimaModificacionFecha': ultimaModificacionFecha != null
@@ -99,6 +105,8 @@ class Ingreso {
           : null,
       usuarioId: map['usuarioId'] as String,
       comprobante: map['comprobante'] as String?,
+      nroComprobante: map['nroComprobante'] as String?,
+      nroCheque: map['nroCheque'] as String?,
       fechaCreacion: (map['fechaCreacion'] as Timestamp).toDate(),
       ultimaModificacionPor: map['ultimaModificacionPor'] as String?,
       ultimaModificacionFecha: map['ultimaModificacionFecha'] != null
@@ -126,6 +134,8 @@ class Ingreso {
     Object? proximaFecha = _unset,
     String? usuarioId,
     Object? comprobante = _unset,
+    Object? nroComprobante = _unset,
+    Object? nroCheque = _unset,
     DateTime? fechaCreacion,
     Object? ultimaModificacionPor = _unset,
     Object? ultimaModificacionFecha = _unset,
@@ -162,6 +172,10 @@ class Ingreso {
       usuarioId: usuarioId ?? this.usuarioId,
       comprobante:
           comprobante == _unset ? this.comprobante : comprobante as String?,
+      nroComprobante: nroComprobante == _unset
+          ? this.nroComprobante
+          : nroComprobante as String?,
+      nroCheque: nroCheque == _unset ? this.nroCheque : nroCheque as String?,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
       ultimaModificacionPor: ultimaModificacionPor == _unset
           ? this.ultimaModificacionPor

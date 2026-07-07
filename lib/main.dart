@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
+import 'features/admin/presentation/providers/cargo_provider.dart';
 import 'features/admin/presentation/providers/categoria_provider.dart';
 import 'features/admin/presentation/providers/curso_provider.dart';
 import 'features/cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
@@ -62,6 +63,7 @@ class MyApp extends StatelessWidget {
             return personas;
           },
         ),
+        ChangeNotifierProvider(create: (_) => CargoProvider()),
         ChangeNotifierProvider(create: (_) => CategoriaProvider()),
         ChangeNotifierProvider(create: (_) => CursoProvider()),
         ChangeNotifierProvider(create: (_) => MetodoPagoProvider()),

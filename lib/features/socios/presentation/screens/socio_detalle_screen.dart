@@ -1,10 +1,16 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../admin/presentation/screens/usuario_detalle_screen.dart';
 import '../../../../shared/services/storage_service.dart';
 import '../../../../shared/utils/metodo_pago_icon.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -14,6 +20,7 @@ import '../../../admin/presentation/providers/metodo_pago_provider.dart';
 import '../../../admin/presentation/providers/persona_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/widgets/nombre_usuario_widget.dart';
+import '../../../../shared/widgets/numero_cheque_widget.dart';
 import '../../data/repositories/cuota_repository.dart';
 import '../../data/repositories/socio_repository.dart';
 import '../../domain/models/cuota.dart';
@@ -22,6 +29,7 @@ import '../../domain/models/subtipo_socio.dart';
 import '../../domain/models/tipo_socio.dart';
 import '../providers/cuota_provider.dart';
 import '../providers/socio_provider.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -69,6 +77,10 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
   List<SubtipoSocio> _subtipos = [];
   StreamSubscription<List<SubtipoSocio>>? _subtiposSub;
 
+  StreamSubscription? _usuarioSub;
+  Map<String, dynamic>? _linkedUsuario;
+  bool _creatingAcceso = false;
+  bool _subiendoFoto = false;
   bool _saving = false;
 
   bool get _esFiscal => _personaOriginal?.tipoPersona == 'fiscal';
@@ -134,6 +146,17 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
 
     _personaFuture = _personaRepo.obtenerPorId(widget.socio.personaId);
     _cargarSubtipos(widget.socio.tipoSocio);
+
+    _usuarioSub = FirebaseFirestore.instance
+        .collection('usuarios')
+        .where('personaId', isEqualTo: widget.socio.personaId)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      setState(() => _linkedUsuario = snap.docs.isNotEmpty
+          ? {...snap.docs.first.data(), 'id': snap.docs.first.id}
+          : null);
+    });
   }
 
   void _initPersona(Persona p) {
@@ -167,6 +190,7 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
 
   @override
   void dispose() {
+    _usuarioSub?.cancel();
     _subtiposSub?.cancel();
     _nombreCtrl.dispose();
     _apellidoCtrl.dispose();
@@ -178,6 +202,134 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
     _cuitCtrl.dispose();
     _observacionesCtrl.dispose();
     super.dispose();
+  }
+
+  String _generarPasswordProvisoria() {
+    const chars =
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = Random.secure();
+    return List.generate(10, (_) => chars[random.nextInt(chars.length)]).join();
+  }
+
+  Future<void> _crearAcceso() async {
+    final persona = _personaOriginal;
+    if (persona == null) return;
+    final email = persona.email;
+    if (email == null || email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Se requiere un email para crear acceso a la app'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _creatingAcceso = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: _generarPasswordProvisoria(),
+      );
+      await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(cred.user!.uid)
+          .set({
+        'authUid': cred.user!.uid,
+        'personaId': persona.id,
+        'rol': 'consultante',
+        'activo': true,
+        'fechaCreacion': FieldValue.serverTimestamp(),
+      });
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      messenger.showSnackBar(SnackBar(
+        content: Text('Acceso creado. Email enviado a $email'),
+        backgroundColor: AppTheme.verdeTeal,
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Error: $e'),
+        backgroundColor: AppTheme.rojoGasto,
+      ));
+    } finally {
+      if (mounted) setState(() => _creatingAcceso = false);
+    }
+  }
+
+  Future<void> _cambiarFoto() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await FilePicker.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.bytes == null) return;
+
+    setState(() => _subiendoFoto = true);
+    try {
+      final personaId = _personaOriginal!.id;
+      final ext = file.extension ?? 'jpg';
+      final ref =
+          FirebaseStorage.instance.ref('perfiles/$personaId/foto.$ext');
+      await ref.putData(file.bytes!);
+      final url = await ref.getDownloadURL();
+
+      await FirebaseFirestore.instance
+          .collection('personas')
+          .doc(personaId)
+          .update({'fotoUrl': url});
+
+      setState(() {
+        _personaOriginal = _personaOriginal!.copyWith(fotoUrl: url);
+      });
+
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Foto actualizada'),
+        backgroundColor: AppTheme.verdeTeal,
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Error: $e'),
+        backgroundColor: AppTheme.rojoGasto,
+      ));
+    } finally {
+      if (mounted) setState(() => _subiendoFoto = false);
+    }
+  }
+
+  Future<void> _navegarA(BuildContext context, Widget destino) async {
+    if (_hayCambios) {
+      final accion = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Cambios sin guardar'),
+          content: const Text('Tenés cambios sin guardar. ¿Qué querés hacer?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancelar'),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'descartar'),
+              child: const Text(
+                'Descartar',
+                style: TextStyle(color: AppTheme.rojoGasto),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, 'guardar'),
+              child: const Text('Guardar primero'),
+            ),
+          ],
+        ),
+      );
+      if (accion == 'guardar') await _guardar();
+      if (accion == 'cancelar') return;
+    }
+    if (context.mounted) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => destino));
+    }
   }
 
   Future<void> _guardar() async {
@@ -260,12 +412,95 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
     final auth = context.watch<AuthProvider>();
     final puedeGestionar = auth.esAdmin || auth.esEditor;
     final tipos = context.watch<SocioProvider>().tipos;
+    final authUid = auth.currentUser?.uid;
+    final linkedAuthUid = _linkedUsuario?['authUid'] as String?;
+    final puedeEditarFoto = auth.esAdmin ||
+        (authUid != null && linkedAuthUid != null && authUid == linkedAuthUid);
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: AppTheme.azulOscuro,
-        foregroundColor: Colors.white,
-        title: Text(_personaOriginal?.nombreCompleto ?? 'Socio'),
+    return PopScope(
+      canPop: !_hayCambios,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final accion = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Cambios sin guardar'),
+            content: const Text('Tenés cambios sin guardar. ¿Qué querés hacer?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cancelar'),
+                child: const Text('Seguir editando'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'descartar'),
+                child: const Text('Descartar',
+                    style: TextStyle(color: AppTheme.rojoGasto)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, 'guardar'),
+                child: const Text('Guardar y salir'),
+              ),
+            ],
+          ),
+        );
+        if (accion == 'guardar') await _guardar();
+        if (accion != 'cancelar' && accion != null && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        drawer: const AppDrawer(),
+        appBar: AppBar(
+          backgroundColor: AppTheme.azulOscuro,
+          leading: Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          ),
+          titleSpacing: 0,
+          title: Row(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: IconButton(
+                  icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                  padding: EdgeInsets.zero,
+                  onPressed: () => Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                    (route) => false,
+                  ),
+                ),
+              ),
+              Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _personaOriginal?.nombreCompleto ?? 'Socio',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        actions: [
+          if (auth.esAdmin && _linkedUsuario != null)
+            IconButton(
+              icon: const Icon(Icons.manage_accounts),
+              tooltip: 'Ver usuario',
+              onPressed: () => _navegarA(
+                context,
+                UsuarioDetalleScreen(
+                  usuarioId: _linkedUsuario!['id'] as String,
+                ),
+              ),
+            ),
+        ],
       ),
       body: FutureBuilder<Persona?>(
         future: _personaFuture,
@@ -301,9 +536,14 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
                     onFieldChanged: () => setState(() {}),
                     onFechaNacimientoChanged: (d) =>
                         setState(() => _fechaNacimiento = d),
+                    fotoUrl: _personaOriginal?.fotoUrl,
+                    puedeEditarFoto: puedeEditarFoto,
+                    subiendoFoto: _subiendoFoto,
+                    onCambiarFoto: _cambiarFoto,
                   ),
                   const SizedBox(height: 12),
                   _EditCard(
+                    numeroSocio: liveSocio.numeroSocio,
                     tipos: tipos,
                     tipoSocio: _tipoSocio,
                     subtipoId: _subtipoId,
@@ -333,6 +573,23 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
                         .activarDesactivar(widget.socio.id, v),
                   ),
                   const SizedBox(height: 12),
+                  if (auth.esAdmin)
+                    _AccesoAppCard(
+                      linkedUsuario: _linkedUsuario,
+                      personaEmail: _personaOriginal?.email,
+                      creatingAcceso: _creatingAcceso,
+                      onCrearAcceso: _crearAcceso,
+                      onVerUsuario: _linkedUsuario != null
+                          ? () => _navegarA(
+                                context,
+                                UsuarioDetalleScreen(
+                                  usuarioId:
+                                      _linkedUsuario!['id'] as String,
+                                ),
+                              )
+                          : null,
+                    ),
+                  if (auth.esAdmin) const SizedBox(height: 12),
                   _CuotasCard(
                       socioId: widget.socio.id,
                       puedeGestionar: puedeGestionar),
@@ -375,6 +632,7 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
           );
         },
       ),
+      ),
     );
   }
 }
@@ -396,6 +654,10 @@ class _PersonaCard extends StatelessWidget {
     required this.puedeGestionar,
     required this.onFieldChanged,
     required this.onFechaNacimientoChanged,
+    this.fotoUrl,
+    this.puedeEditarFoto = false,
+    this.subiendoFoto = false,
+    this.onCambiarFoto,
   });
 
   final bool esFiscal;
@@ -411,6 +673,10 @@ class _PersonaCard extends StatelessWidget {
   final bool puedeGestionar;
   final VoidCallback onFieldChanged;
   final ValueChanged<DateTime> onFechaNacimientoChanged;
+  final String? fotoUrl;
+  final bool puedeEditarFoto;
+  final bool subiendoFoto;
+  final VoidCallback? onCambiarFoto;
 
   @override
   Widget build(BuildContext context) {
@@ -438,6 +704,57 @@ class _PersonaCard extends StatelessWidget {
               ],
             ),
             const Divider(height: 20),
+            Center(
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: AppTheme.celesteAccento,
+                    backgroundImage: (!subiendoFoto && fotoUrl != null)
+                        ? NetworkImage(fotoUrl!)
+                        : null,
+                    child: subiendoFoto
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : fotoUrl == null
+                            ? Text(
+                                esFiscal
+                                    ? (razonSocialCtrl.text.isNotEmpty
+                                        ? razonSocialCtrl.text[0].toUpperCase()
+                                        : '?')
+                                    : (nombreCtrl.text.isNotEmpty
+                                        ? nombreCtrl.text[0].toUpperCase()
+                                        : '?'),
+                                style: const TextStyle(
+                                  fontSize: 36,
+                                  color: AppTheme.azulOscuro,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
+                  ),
+                  if (puedeEditarFoto)
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: onCambiarFoto,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppTheme.azulMedio,
+                            shape: BoxShape.circle,
+                            border:
+                                Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Icon(Icons.camera_alt,
+                              size: 16, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             if (esFiscal) ...[
               TextFormField(
                 controller: razonSocialCtrl,
@@ -542,6 +859,7 @@ class _PersonaCard extends StatelessWidget {
 
 class _EditCard extends StatelessWidget {
   const _EditCard({
+    required this.numeroSocio,
     required this.tipos,
     required this.tipoSocio,
     required this.subtipoId,
@@ -558,6 +876,7 @@ class _EditCard extends StatelessWidget {
     required this.onActivoChanged,
   });
 
+  final int numeroSocio;
   final List<TipoSocio> tipos;
   final String? tipoSocio;
   final String? subtipoId;
@@ -582,17 +901,38 @@ class _EditCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(Icons.badge_outlined,
-                    size: 18, color: AppTheme.azulMedio),
-                const SizedBox(width: 8),
-                const Expanded(
+                const Row(
+                  children: [
+                    Icon(Icons.badge_outlined,
+                        size: 18, color: AppTheme.azulMedio),
+                    SizedBox(width: 8),
+                    Text(
+                      'Datos de socio',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: AppTheme.textoPrincipal,
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: AppTheme.textoSecundario, width: 1),
+                  ),
                   child: Text(
-                    'Datos de socio',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
+                    'N° ${numeroSocio.toString().padLeft(3, '0')}',
+                    style: const TextStyle(
                       fontSize: 15,
                       color: AppTheme.textoPrincipal,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -696,6 +1036,164 @@ class _EditCard extends StatelessWidget {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── _AccesoAppCard ────────────────────────────────────────────────────────────
+
+class _AccesoAppCard extends StatelessWidget {
+  const _AccesoAppCard({
+    required this.linkedUsuario,
+    required this.personaEmail,
+    required this.creatingAcceso,
+    required this.onCrearAcceso,
+    this.onVerUsuario,
+  });
+
+  final Map<String, dynamic>? linkedUsuario;
+  final String? personaEmail;
+  final bool creatingAcceso;
+  final VoidCallback onCrearAcceso;
+  final VoidCallback? onVerUsuario;
+
+  @override
+  Widget build(BuildContext context) {
+    final tieneAcceso = linkedUsuario != null;
+    final rol = tieneAcceso ? linkedUsuario!['rol'] as String? ?? '' : '';
+    final activo = tieneAcceso ? linkedUsuario!['activo'] as bool? ?? false : false;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  tieneAcceso ? Icons.lock_open_outlined : Icons.lock_outline,
+                  size: 18,
+                  color: tieneAcceso ? AppTheme.verdeTeal : AppTheme.textoSecundario,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Acceso a la app',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: AppTheme.textoPrincipal,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            if (tieneAcceso) ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.manage_accounts,
+                    color: AppTheme.azulMedio),
+                title: const Text('Ver usuario'),
+                subtitle: Row(
+                  children: [
+                    _RolChip(rol: rol),
+                    const SizedBox(width: 8),
+                    if (!activo)
+                      const Text(
+                        'Inactivo',
+                        style: TextStyle(
+                            fontSize: 12, color: AppTheme.rojoGasto),
+                      ),
+                  ],
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onVerUsuario,
+              ),
+            ] else ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  Icons.person_add_outlined,
+                  color: personaEmail?.isNotEmpty == true
+                      ? AppTheme.verdeTeal
+                      : AppTheme.textoSecundario,
+                ),
+                title: const Text('Crear acceso a la app'),
+                subtitle: Text(
+                  personaEmail?.isNotEmpty == true
+                      ? 'Se enviará un email a $personaEmail'
+                      : 'Se requiere un email para crear acceso',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                trailing: creatingAcceso
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        personaEmail?.isNotEmpty == true
+                            ? Icons.chevron_right
+                            : Icons.warning_amber_outlined,
+                        color: personaEmail?.isNotEmpty == true
+                            ? null
+                            : AppTheme.amarilloAlerta,
+                      ),
+                onTap: personaEmail?.isNotEmpty == true && !creatingAcceso
+                    ? onCrearAcceso
+                    : null,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── _RolChip (local) ──────────────────────────────────────────────────────────
+
+class _RolChip extends StatelessWidget {
+  const _RolChip({required this.rol});
+  final String rol;
+
+  static (Color bg, Color fg) _colores(String rol) => switch (rol) {
+        'admin' => (AppTheme.azulOscuro, AppTheme.blanco),
+        'editor' => (AppTheme.verdeTeal, AppTheme.blanco),
+        'auditor' => (AppTheme.azulMedio, AppTheme.blanco),
+        'solo_lectura' => (const Color(0xFFE0E0E0), AppTheme.textoSecundario),
+        'consultante' => (const Color(0xFFFFE0B2), const Color(0xFFE65100)),
+        _ => (const Color(0xFFE0E0E0), AppTheme.textoSecundario),
+      };
+
+  static String _label(String rol) => switch (rol) {
+        'admin' => 'Admin',
+        'editor' => 'Editor',
+        'auditor' => 'Auditor',
+        'solo_lectura' => 'Solo lectura',
+        'consultante' => 'Consultante',
+        _ => rol,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final (bg, fg) = _colores(rol);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
+      ),
+      child: Text(
+        _label(rol),
+        style: TextStyle(
+          color: fg,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -932,6 +1430,7 @@ class _ModalPagoState extends State<_ModalPago> {
   final _montoCtrl = TextEditingController();
   final _periodoCtrl = TextEditingController();
   final _observacionesCtrl = TextEditingController();
+  final _nroChequeCtrl = TextEditingController();
 
   String? _tipoCuotaId;
   String? _metodoPagoId;
@@ -955,6 +1454,7 @@ class _ModalPagoState extends State<_ModalPago> {
     _montoCtrl.dispose();
     _periodoCtrl.dispose();
     _observacionesCtrl.dispose();
+    _nroChequeCtrl.dispose();
     super.dispose();
   }
 
@@ -1043,6 +1543,9 @@ class _ModalPagoState extends State<_ModalPago> {
                 ? null
                 : _observacionesCtrl.text.trim(),
         comprobante: comprobanteUrl,
+        nroCheque: _nroChequeCtrl.text.trim().isEmpty
+            ? null
+            : _nroChequeCtrl.text.trim(),
         monto: monto,
         fechaPago: _fechaPago,
         fechaCreacion: DateTime.now(),
@@ -1059,6 +1562,11 @@ class _ModalPagoState extends State<_ModalPago> {
     final tiposCuota = context.watch<CuotaProvider>().tiposCuota;
     final metodos =
         context.watch<MetodoPagoProvider>().obtenerActivos();
+    final metodoPagoNombre = _metodoPagoId != null
+        ? metodos.firstWhere(
+            (m) => m['id'] == _metodoPagoId,
+            orElse: () => <String, dynamic>{})['nombre'] as String?
+        : null;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -1154,6 +1662,10 @@ class _ModalPagoState extends State<_ModalPago> {
                     .toList(),
                 onChanged: (v) => setState(() => _metodoPagoId = v),
                 validator: (v) => v == null ? 'Requerido' : null,
+              ),
+              NumeroChequeWidget(
+                metodoPago: metodoPagoNombre,
+                controller: _nroChequeCtrl,
               ),
               const SizedBox(height: 12),
               InkWell(

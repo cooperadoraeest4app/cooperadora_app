@@ -136,6 +136,10 @@ class AuthProvider extends ChangeNotifier {
   Future<void> actualizarPerfil({
     String? nombre,
     String? apellido,
+    String? dni,
+    DateTime? fechaNacimiento,
+    String? razonSocial,
+    String? cuit,
     String? telefono,
     String? direccion,
     String? fotoUrl,
@@ -149,6 +153,12 @@ class AuthProvider extends ChangeNotifier {
     final updates = <String, dynamic>{};
     if (nombre != null) updates['nombre'] = nombre;
     if (apellido != null) updates['apellido'] = apellido;
+    if (dni != null) updates['dni'] = dni;
+    if (fechaNacimiento != null) {
+      updates['fechaNacimiento'] = Timestamp.fromDate(fechaNacimiento);
+    }
+    if (razonSocial != null) updates['razonSocial'] = razonSocial;
+    if (cuit != null) updates['cuit'] = cuit;
     if (telefono != null) updates['telefono'] = telefono;
     if (direccion != null) updates['direccion'] = direccion;
     if (fotoUrl != null) updates['fotoUrl'] = fotoUrl;
@@ -160,8 +170,11 @@ class AuthProvider extends ChangeNotifier {
       await personaRef.set({
         'nombre': nombre ?? '',
         'apellido': apellido ?? '',
+        'dni': dni ?? '',
         'telefono': telefono ?? '',
         'direccion': direccion ?? '',
+        'razonSocial': razonSocial ?? '',
+        'cuit': cuit ?? '',
         'email': currentUser?.email ?? '',
         'activo': true,
         'fechaCreacion': FieldValue.serverTimestamp(),

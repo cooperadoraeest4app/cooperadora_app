@@ -12,6 +12,7 @@ import '../../../inventario/presentation/screens/inventario_screen.dart';
 import '../../../cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
@@ -88,6 +89,7 @@ class _Movimiento {
   final String? descripcion;
   final String categoriaId;
   final String? comprobante;
+  final String? nroComprobante;
   final bool recurrente;
   final String? frecuenciaId;
 
@@ -98,6 +100,7 @@ class _Movimiento {
     this.descripcion,
     required this.categoriaId,
     this.comprobante,
+    this.nroComprobante,
     this.recurrente = false,
     this.frecuenciaId,
   });
@@ -109,6 +112,7 @@ class _Movimiento {
       descripcion: i.descripcion,
       categoriaId: i.categoriaId,
       comprobante: i.comprobante,
+      nroComprobante: i.nroComprobante,
       recurrente: i.recurrente,
       frecuenciaId: i.frecuenciaId);
 
@@ -119,6 +123,7 @@ class _Movimiento {
       descripcion: g.descripcion,
       categoriaId: g.categoriaId,
       comprobante: g.comprobante,
+      nroComprobante: g.nroComprobante,
       recurrente: g.recurrente,
       frecuenciaId: g.frecuenciaId);
 }
@@ -148,8 +153,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: null,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
+        ),
         actions: const [AccionAuthWidget()],
       ),
+      drawer: const AppDrawer(esInicio: true),
       body: StreamBuilder<List<Ingreso>>(
         stream: provider.ingresos,
         builder: (context, ingresoSnap) {
@@ -985,6 +997,20 @@ class _MovimientoTile extends StatelessWidget {
               onTap: () => launchUrl(Uri.parse(item.comprobante!)),
               child: const Icon(Icons.receipt,
                   size: 16, color: AppTheme.azulMedio),
+            ),
+          if (item.nroComprobante != null)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.tag,
+                    size: 14, color: AppTheme.textoSecundario),
+                const SizedBox(width: 2),
+                Text(
+                  item.nroComprobante!,
+                  style: const TextStyle(
+                      color: AppTheme.textoSecundario, fontSize: 11),
+                ),
+              ],
             ),
         ],
       ),

@@ -10,6 +10,7 @@ class Cuota {
   final String metodoPagoId;
   final String? observaciones;
   final String? comprobante;
+  final String? nroCheque;
   final String usuarioId;
   final DateTime fechaPago;
   final DateTime fechaCreacion;
@@ -24,6 +25,7 @@ class Cuota {
     required this.metodoPagoId,
     this.observaciones,
     this.comprobante,
+    this.nroCheque,
     required this.usuarioId,
     required this.fechaPago,
     required this.fechaCreacion,
@@ -38,6 +40,7 @@ class Cuota {
         'metodoPagoId': metodoPagoId,
         'observaciones': observaciones,
         'comprobante': comprobante,
+        'nroCheque': nroCheque,
         'usuarioId': usuarioId,
         'fechaPago': Timestamp.fromDate(fechaPago),
         'fechaCreacion': Timestamp.fromDate(fechaCreacion),
@@ -56,6 +59,7 @@ class Cuota {
       metodoPagoId: map['metodoPagoId'] as String? ?? '',
       observaciones: map['observaciones'] as String?,
       comprobante: map['comprobante'] as String?,
+      nroCheque: map['nroCheque'] as String?,
       usuarioId: map['usuarioId'] as String? ?? '',
       fechaPago: ts(map['fechaPago']),
       fechaCreacion: ts(map['fechaCreacion']),

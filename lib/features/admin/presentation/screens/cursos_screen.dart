@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../domain/models/curso.dart';
 import '../providers/curso_provider.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 class CursosScreen extends StatefulWidget {
   const CursosScreen({super.key});
@@ -27,6 +28,7 @@ class _CursosScreenState extends State<CursosScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
         foregroundColor: AppTheme.blanco,

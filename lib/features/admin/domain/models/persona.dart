@@ -13,7 +13,6 @@ class Persona {
   final String? email;
   final String? direccion;
   final String? fotoUrl;
-  final String? cargoId;
   final List<String> habilidades;
   final String? razonSocial;
   final String? cuit;
@@ -35,7 +34,6 @@ class Persona {
     this.email,
     this.direccion,
     this.fotoUrl,
-    this.cargoId,
     this.habilidades = const [],
     this.razonSocial,
     this.cuit,
@@ -62,7 +60,6 @@ class Persona {
         if (email != null) 'email': email,
         if (direccion != null) 'direccion': direccion,
         if (fotoUrl != null) 'fotoUrl': fotoUrl,
-        if (cargoId != null) 'cargoId': cargoId,
         'habilidades': habilidades,
         if (razonSocial != null) 'razonSocial': razonSocial,
         if (cuit != null) 'cuit': cuit,
@@ -88,7 +85,6 @@ class Persona {
       email: map['email'] as String?,
       direccion: map['direccion'] as String?,
       fotoUrl: map['fotoUrl'] as String?,
-      cargoId: map['cargoId'] as String?,
       habilidades:
           (map['habilidades'] as List<dynamic>?)?.cast<String>() ?? [],
       razonSocial: map['razonSocial'] as String?,
@@ -112,7 +108,6 @@ class Persona {
     Object? email = _unset,
     Object? direccion = _unset,
     Object? fotoUrl = _unset,
-    Object? cargoId = _unset,
     List<String>? habilidades,
     Object? razonSocial = _unset,
     Object? cuit = _unset,
@@ -136,7 +131,6 @@ class Persona {
       email: email == _unset ? this.email : email as String?,
       direccion: direccion == _unset ? this.direccion : direccion as String?,
       fotoUrl: fotoUrl == _unset ? this.fotoUrl : fotoUrl as String?,
-      cargoId: cargoId == _unset ? this.cargoId : cargoId as String?,
       habilidades: habilidades ?? this.habilidades,
       razonSocial:
           razonSocial == _unset ? this.razonSocial : razonSocial as String?,

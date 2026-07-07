@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 class LogCambiosScreen extends StatefulWidget {
   const LogCambiosScreen({super.key});
@@ -95,17 +97,45 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
-        foregroundColor: AppTheme.blanco,
-        iconTheme: const IconThemeData(color: AppTheme.blanco),
-        titleTextStyle: const TextStyle(
-          color: AppTheme.blanco,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
         ),
-        title: const Text('Log de cambios'),
-        actions: const [AccionAuthWidget()],
+        titleSpacing: 0,
+        title: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                ),
+              ),
+            ),
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Log de cambios',
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [AccionAuthWidget()],
       ),
       body: Column(
         children: [

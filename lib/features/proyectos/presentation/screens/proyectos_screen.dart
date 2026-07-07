@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +9,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/proyecto.dart';
 import '../providers/proyecto_provider.dart';
 import 'proyecto_detalle_screen.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -120,9 +122,10 @@ class _ProyectosScreenState extends State<ProyectosScreen>
     super.dispose();
   }
 
-  Tab _buildTab(String label, int count) {
+  Tab _buildTab(String label, int count, IconData icon) {
     final hasItems = count > 0;
     return Tab(
+      icon: Icon(icon),
       child: Text(
         hasItems ? '$label ($count)' : label,
         style: TextStyle(
@@ -140,18 +143,55 @@ class _ProyectosScreenState extends State<ProyectosScreen>
     final provider = context.watch<ProyectoProvider>();
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
-        title: const Text('Proyectos'),
-        actions: const [AccionAuthWidget()],
+        backgroundColor: AppTheme.azulOscuro,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        titleSpacing: 0,
+        title: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                ),
+              ),
+            ),
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Proyectos',
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [AccionAuthWidget()],
         bottom: TabBar(
           controller: _tabController,
-          labelColor: AppTheme.blanco,
-          unselectedLabelColor: AppTheme.celesteAccento,
-          indicatorColor: AppTheme.celesteAccento,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white,
+          indicatorColor: const Color(0xFF00BCD4),
+          indicatorWeight: 3,
           tabs: [
-            _buildTab('En curso', provider.enCurso.length),
-            _buildTab('Planificados', provider.planificados.length),
-            _buildTab('Finalizados', provider.finalizados.length),
+            _buildTab('En curso', provider.enCurso.length, Icons.play_circle),
+            _buildTab('Planificados', provider.planificados.length, Icons.pending),
+            _buildTab('Finalizados', provider.finalizados.length, Icons.check_circle),
           ],
         ),
       ),

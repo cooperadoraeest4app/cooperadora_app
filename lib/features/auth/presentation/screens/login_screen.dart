@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart' as ap;
 import 'registro_screen.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -50,6 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final isLoading = context.watch<ap.AuthProvider>().isLoading;
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: const Text('Cooperadora App'),

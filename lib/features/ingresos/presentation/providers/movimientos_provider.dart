@@ -14,23 +14,25 @@ class MovimientosProvider extends ChangeNotifier {
   Stream<List<Ingreso>> get ingresos => _ingresoRepo.obtenerTodos();
   Stream<List<Gasto>> get gastos => _gastoRepo.obtenerTodos();
 
-  Future<void> agregarIngreso(Ingreso ingreso) async {
+  Future<String?> agregarIngreso(Ingreso ingreso) async {
     _setLoading(true);
     try {
-      await _ingresoRepo.agregar(ingreso);
+      return await _ingresoRepo.agregar(ingreso);
     } catch (e) {
       error = e.toString();
+      return null;
     } finally {
       _setLoading(false);
     }
   }
 
-  Future<void> agregarGasto(Gasto gasto) async {
+  Future<String?> agregarGasto(Gasto gasto) async {
     _setLoading(true);
     try {
-      await _gastoRepo.agregar(gasto);
+      return await _gastoRepo.agregar(gasto);
     } catch (e) {
       error = e.toString();
+      return null;
     } finally {
       _setLoading(false);
     }

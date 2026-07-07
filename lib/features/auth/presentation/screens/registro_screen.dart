@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +7,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../admin/data/repositories/invitacion_repository.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../providers/auth_provider.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 class RegistroScreen extends StatefulWidget {
   const RegistroScreen({super.key});
@@ -196,6 +197,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
         foregroundColor: AppTheme.blanco,

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +14,8 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/cuenta_bancaria.dart';
 import '../../domain/models/movimiento_bancario.dart';
 import '../providers/cuenta_bancaria_provider.dart';
+import '../../../../shared/widgets/app_drawer.dart';
+import '../../../ingresos/presentation/screens/movimientos_screen.dart';
 
 String _doubleToArgentino(double v) {
   final format = v == v.truncateToDouble()
@@ -329,25 +332,54 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen>
     }
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
-        foregroundColor: AppTheme.blanco,
-        iconTheme: const IconThemeData(color: AppTheme.blanco),
-        titleTextStyle: const TextStyle(
-          color: AppTheme.blanco,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
         ),
-        title: const Text('Cuenta Bancaria'),
-        actions: const [AccionAuthWidget()],
+        titleSpacing: 0,
+        title: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                ),
+              ),
+            ),
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Cuenta Bancaria',
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [AccionAuthWidget()],
         bottom: TabBar(
           controller: _tabCtrl,
-          indicatorColor: AppTheme.blanco,
-          labelColor: AppTheme.blanco,
-          unselectedLabelColor: Colors.white70,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white,
+          indicatorColor: const Color(0xFF00BCD4),
+          indicatorWeight: 3,
           tabs: const [
-            Tab(text: 'Cuenta Bancaria'),
-            Tab(text: 'Caja Chica'),
+            Tab(icon: Icon(Icons.account_balance), text: 'Cuenta Bancaria'),
+            Tab(icon: Icon(Icons.point_of_sale), text: 'Caja Chica'),
           ],
         ),
       ),
@@ -1721,6 +1753,10 @@ class _MovimientoCajaChicaTileState extends State<_MovimientoCajaChicaTile> {
     final mov = widget.movimiento;
     final obs = mov['observaciones'] as String?;
     final tieneObs = obs != null && obs.isNotEmpty;
+    final gastoId = mov['gastoId'] as String?;
+    final ingresoId = mov['ingresoId'] as String?;
+    final tieneRef = gastoId != null || ingresoId != null;
+    final tieneDetalle = tieneObs || tieneRef;
     final usuarioId = mov['usuarioId'] as String? ?? '';
 
     return Padding(
@@ -1789,7 +1825,7 @@ class _MovimientoCajaChicaTileState extends State<_MovimientoCajaChicaTile> {
                   ],
                 ),
               ),
-              if (tieneObs)
+              if (tieneDetalle)
                 GestureDetector(
                   onTap: () => setState(() => _expandido = !_expandido),
                   child: Padding(
@@ -1803,21 +1839,53 @@ class _MovimientoCajaChicaTileState extends State<_MovimientoCajaChicaTile> {
                 ),
             ],
           ),
-          if (tieneObs && _expandido)
+          if (tieneDetalle && _expandido)
             Padding(
               padding: const EdgeInsets.only(top: 8, left: 32),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.celesteFondo,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  obs,
-                  style: const TextStyle(
-                      color: AppTheme.textoSecundario, fontSize: 12),
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (tieneObs)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.celesteFondo,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        obs,
+                        style: const TextStyle(
+                            color: AppTheme.textoSecundario, fontSize: 12),
+                      ),
+                    ),
+                  if (tieneRef)
+                    TextButton.icon(
+                      icon: const Icon(Icons.open_in_new,
+                          size: 16, color: AppTheme.azulMedio),
+                      label: Text(
+                        gastoId != null
+                            ? 'Ver gasto asociado'
+                            : 'Ver ingreso asociado',
+                        style: const TextStyle(
+                            color: AppTheme.azulMedio, fontSize: 13),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 0, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MovimientosScreen(
+                            filtroId: gastoId ?? ingresoId,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
         ],

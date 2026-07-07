@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:math';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -7,6 +11,7 @@ import '../../../admin/domain/models/persona.dart';
 import '../../../admin/presentation/providers/metodo_pago_provider.dart';
 import '../../../admin/presentation/providers/persona_provider.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
+import '../../../../shared/widgets/numero_cheque_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/repositories/cuota_repository.dart';
 import '../../domain/models/cuota.dart';
@@ -17,6 +22,7 @@ import '../providers/socio_provider.dart';
 import 'socio_detalle_screen.dart';
 import 'tarifas_screen.dart';
 import '../../../../shared/utils/metodo_pago_icon.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -68,11 +74,45 @@ class _SociosScreenState extends State<SociosScreen>
     final puedeGestionar = auth.esAdmin || auth.esEditor;
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
-        foregroundColor: Colors.white,
-        title: const Text('Socios'),
-        actions: const [AccionAuthWidget()],
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        titleSpacing: 0,
+        title: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                ),
+              ),
+            ),
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Socios',
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [AccionAuthWidget()],
         bottom: TabBar(
           controller: _tabCtrl,
           indicatorColor: Colors.white,
@@ -771,6 +811,7 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
   final _montoCtrl = TextEditingController();
   final _periodoCtrl = TextEditingController();
   final _observacionesCtrl = TextEditingController();
+  final _nroChequeCtrl = TextEditingController();
 
   String? _tipoCuotaId;
   String? _metodoPagoId;
@@ -790,6 +831,7 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
     _montoCtrl.dispose();
     _periodoCtrl.dispose();
     _observacionesCtrl.dispose();
+    _nroChequeCtrl.dispose();
     super.dispose();
   }
 
@@ -842,6 +884,9 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
             ? null
             : _observacionesCtrl.text.trim(),
         comprobante: null,
+        nroCheque: _nroChequeCtrl.text.trim().isEmpty
+            ? null
+            : _nroChequeCtrl.text.trim(),
         monto: monto,
         fechaPago: DateTime.now(),
         fechaCreacion: DateTime.now(),
@@ -858,6 +903,11 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
     final tiposCuota = context.watch<CuotaProvider>().tiposCuota;
     final metodos =
         context.watch<MetodoPagoProvider>().obtenerActivos();
+    final metodoPagoNombre = _metodoPagoId != null
+        ? metodos.firstWhere(
+            (m) => m['id'] == _metodoPagoId,
+            orElse: () => <String, dynamic>{})['nombre'] as String?
+        : null;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -958,6 +1008,10 @@ class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
                 onChanged: (v) => setState(() => _metodoPagoId = v),
                 validator: (v) => v == null ? 'Requerido' : null,
               ),
+              NumeroChequeWidget(
+                metodoPago: metodoPagoNombre,
+                controller: _nroChequeCtrl,
+              ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _observacionesCtrl,
@@ -1031,6 +1085,9 @@ class _ModalSocioState extends State<_ModalSocio> {
   DateTime _fechaIngreso = DateTime.now();
   final _observacionesCtrl = TextEditingController();
 
+  bool _crearAcceso = false;
+  String _rolSeleccionado = 'consultante';
+
   bool _saving = false;
 
   String get _tipoPersonaEfectivo =>
@@ -1074,31 +1131,83 @@ class _ModalSocioState extends State<_ModalSocio> {
     super.dispose();
   }
 
+  List<Map<String, String>> _rolesDisponibles() {
+    final esAdmin = context.read<AuthProvider>().esAdmin;
+    final roles = [
+      {'value': 'consultante', 'label': 'Consultante'},
+      {'value': 'solo_lectura', 'label': 'Solo lectura'},
+    ];
+    if (esAdmin) {
+      roles.addAll([
+        {'value': 'auditor', 'label': 'Auditor'},
+        {'value': 'editor', 'label': 'Editor'},
+      ]);
+    }
+    return roles;
+  }
+
+  IconData _iconoRol(String rol) => switch (rol) {
+        'consultante' => Icons.visibility,
+        'solo_lectura' => Icons.lock_outline,
+        'auditor' => Icons.manage_search,
+        'editor' => Icons.edit,
+        _ => Icons.person_outline,
+      };
+
+  Color _colorRol(String rol) => switch (rol) {
+        'consultante' => AppTheme.azulMedio,
+        'solo_lectura' => AppTheme.textoSecundario,
+        'auditor' => const Color(0xFF8E44AD),
+        'editor' => AppTheme.verdeIngreso,
+        _ => AppTheme.textoSecundario,
+      };
+
+  String _generarPasswordProvisoria() {
+    const chars =
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = Random.secure();
+    return List.generate(10, (_) => chars[random.nextInt(chars.length)]).join();
+  }
+
   Future<void> _guardar() async {
-    if (_personaSeleccionada == null && !_form.currentState!.validate()) {
-      return;
-    }
-    if (_personaSeleccionada == null && _personaNueva) {
-      if (!_form.currentState!.validate()) return;
-    }
     if (_personaSeleccionada == null && !_personaNueva) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Seleccioná o creá una persona')),
       );
       return;
     }
+    if (!_form.currentState!.validate()) return;
+
+    // Validación extra: acceso sin email
+    if (_personaNueva && _crearAcceso && _emailCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content:
+                Text('Se requiere un email para crear acceso a la app')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
-    try {
-      final personaProvider = context.read<PersonaProvider>();
-      final socioProvider = context.read<SocioProvider>();
-      final uid = context.read<AuthProvider>().currentUser?.uid;
+    // Capturar refs antes de gaps asíncronos
+    final personaProvider = context.read<PersonaProvider>();
+    final socioProvider = context.read<SocioProvider>();
+    final uid = context.read<AuthProvider>().currentUser?.uid;
+    final messenger = ScaffoldMessenger.of(context);
 
+    try {
       String personaId;
+      String? emailPersona;
+
       if (_personaSeleccionada != null) {
         personaId = _personaSeleccionada!.id;
+        emailPersona = _personaSeleccionada!.email;
       } else {
         final esFisica = _tipoPersonaNueva == 'fisica';
+        emailPersona = _emailCtrl.text.trim().isEmpty
+            ? null
+            : _emailCtrl.text.trim();
+
         final nuevaPersona = Persona(
           id: '',
           tipoPersona: _tipoPersonaNueva,
@@ -1111,9 +1220,7 @@ class _ModalSocioState extends State<_ModalSocio> {
           telefono: _telefonoCtrl.text.trim().isEmpty
               ? null
               : _telefonoCtrl.text.trim(),
-          email: _emailCtrl.text.trim().isEmpty
-              ? null
-              : _emailCtrl.text.trim(),
+          email: emailPersona,
           direccion: esFisica && _direccionCtrl.text.trim().isNotEmpty
               ? _direccionCtrl.text.trim()
               : null,
@@ -1127,6 +1234,31 @@ class _ModalSocioState extends State<_ModalSocio> {
           fechaCreacion: DateTime.now(),
         );
         personaId = await personaProvider.agregar(nuevaPersona);
+
+        if (_crearAcceso && emailPersona != null) {
+          final cred = await FirebaseAuth.instance
+              .createUserWithEmailAndPassword(
+            email: emailPersona,
+            password: _generarPasswordProvisoria(),
+          );
+          await FirebaseFirestore.instance
+              .collection('usuarios')
+              .doc(cred.user!.uid)
+              .set({
+            'authUid': cred.user!.uid,
+            'personaId': personaId,
+            'rol': _rolSeleccionado,
+            'activo': true,
+            'fechaCreacion': FieldValue.serverTimestamp(),
+          });
+          await FirebaseAuth.instance
+              .sendPasswordResetEmail(email: emailPersona);
+          messenger.showSnackBar(SnackBar(
+            content: Text(
+                'Persona creada. Se envió un email a $emailPersona para establecer la contraseña.'),
+            backgroundColor: AppTheme.verdeTeal,
+          ));
+        }
       }
 
       final socio = Socio(
@@ -1143,6 +1275,11 @@ class _ModalSocioState extends State<_ModalSocio> {
       );
       await socioProvider.agregar(socio);
       if (mounted) Navigator.pop(context);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Error: $e'),
+        backgroundColor: AppTheme.rojoGasto,
+      ));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1534,6 +1671,52 @@ class _ModalSocioState extends State<_ModalSocio> {
                 maxLines: 2,
                 textCapitalization: TextCapitalization.sentences,
               ),
+              // Acceso a la app (solo al crear persona nueva)
+              if (_personaNueva) ...[
+                const SizedBox(height: 8),
+                const Divider(),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Crear acceso a la app'),
+                  secondary: Icon(
+                    Icons.lock_open_outlined,
+                    color: _crearAcceso
+                        ? AppTheme.azulMedio
+                        : AppTheme.textoSecundario,
+                  ),
+                  value: _crearAcceso,
+                  onChanged: (v) => setState(() => _crearAcceso = v),
+                ),
+                if (_crearAcceso) ...[
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _rolSeleccionado,
+                    decoration: const InputDecoration(labelText: 'Rol'),
+                    items: _rolesDisponibles()
+                        .map((r) => DropdownMenuItem(
+                              value: r['value'],
+                              child: Row(
+                                children: [
+                                  Icon(_iconoRol(r['value']!),
+                                      size: 18,
+                                      color: _colorRol(r['value']!)),
+                                  const SizedBox(width: 8),
+                                  Text(r['label']!),
+                                ],
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => _rolSeleccionado = v!),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Se enviará un email para que el usuario establezca su contraseña.',
+                    style: TextStyle(
+                        fontSize: 12, color: AppTheme.textoSecundario),
+                  ),
+                ],
+              ],
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,

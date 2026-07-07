@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
@@ -13,6 +14,8 @@ import 'invitaciones_screen.dart';
 import 'log_cambios_screen.dart';
 import 'metodos_pago_screen.dart';
 import 'usuarios_screen.dart';
+import '../../../comision/presentation/screens/comision_directiva_admin_screen.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({super.key});
@@ -78,6 +81,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       esInventario: true,
     ),
     _OpcionPanel(
+      icono: Icons.groups,
+      titulo: 'Comisión Directiva',
+      subtitulo: 'Cargos y personas asignadas',
+      esComision: true,
+    ),
+    _OpcionPanel(
       icono: Icons.history,
       titulo: 'Log de cambios',
       subtitulo: 'Auditoría de modificaciones',
@@ -117,17 +126,45 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     final auth = context.watch<AuthProvider>();
     final opciones = auth.esAdmin ? _opcionesAdmin : _opcionesAuditor;
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
-        foregroundColor: AppTheme.blanco,
-        iconTheme: const IconThemeData(color: AppTheme.blanco),
-        titleTextStyle: const TextStyle(
-          color: AppTheme.blanco,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
         ),
-        title: const Text('Panel de Administración'),
-        actions: const [AccionAuthWidget()],
+        titleSpacing: 0,
+        title: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                ),
+              ),
+            ),
+            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Panel de Administración',
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [AccionAuthWidget()],
       ),
       body: ListView.separated(
         padding: const EdgeInsets.all(16),
@@ -215,6 +252,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     MaterialPageRoute(
                         builder: (_) => const InventarioScreen()),
                   );
+                } else if (opcion.esComision) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) =>
+                            const ComisionDirectivaAdminScreen()),
+                  );
                 } else if (opcion.esLogCambios) {
                   Navigator.push(
                     context,
@@ -248,6 +292,7 @@ class _OpcionPanel {
   final bool esSocios;
   final bool esCursos;
   final bool esInventario;
+  final bool esComision;
   final bool esLogCambios;
 
   const _OpcionPanel({
@@ -263,6 +308,7 @@ class _OpcionPanel {
     this.esSocios = false,
     this.esCursos = false,
     this.esInventario = false,
+    this.esComision = false,
     this.esLogCambios = false,
   });
 }

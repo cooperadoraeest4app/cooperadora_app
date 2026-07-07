@@ -182,13 +182,15 @@ class CuentaBancariaProvider extends ChangeNotifier {
   Future<void> sumarACajaChica(
     double monto,
     String usuarioId,
-    String descripcion,
-  ) async {
+    String descripcion, {
+    String? ingresoId,
+  }) async {
     isSaving = true;
     error = null;
     notifyListeners();
     try {
-      await _repo.sumarACajaChica(monto, usuarioId, descripcion);
+      await _repo.sumarACajaChica(monto, usuarioId, descripcion,
+          ingresoId: ingresoId);
     } catch (e) {
       error = e.toString();
     } finally {
@@ -200,13 +202,15 @@ class CuentaBancariaProvider extends ChangeNotifier {
   Future<void> descontarDeCajaChica(
     double monto,
     String usuarioId,
-    String descripcion,
-  ) async {
+    String descripcion, {
+    String? gastoId,
+  }) async {
     isSaving = true;
     error = null;
     notifyListeners();
     try {
-      await _repo.descontarDeCajaChica(monto, usuarioId, descripcion);
+      await _repo.descontarDeCajaChica(monto, usuarioId, descripcion,
+          gastoId: gastoId);
     } catch (e) {
       error = e.toString();
     } finally {

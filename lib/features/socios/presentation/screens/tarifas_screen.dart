@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -7,6 +7,7 @@ import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../domain/models/tarifa_cuota.dart';
 import '../../domain/models/tipo_cuota.dart';
 import '../providers/cuota_provider.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ class TarifasScreen extends StatelessWidget {
     }
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
         foregroundColor: Colors.white,

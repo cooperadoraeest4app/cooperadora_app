@@ -3,9 +3,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import '../../../home/presentation/screens/home_screen.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
+import '../../../admin/presentation/providers/cargo_provider.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
+import '../../../../shared/widgets/app_drawer.dart';
 
 class PerfilScreen extends StatefulWidget {
   const PerfilScreen({super.key});
@@ -15,31 +20,63 @@ class PerfilScreen extends StatefulWidget {
 }
 
 class _PerfilScreenState extends State<PerfilScreen> {
+  // Persona física
   final _nombreCtrl = TextEditingController();
   final _apellidoCtrl = TextEditingController();
+  final _dniCtrl = TextEditingController();
+  // Persona fiscal
+  final _razonSocialCtrl = TextEditingController();
+  final _cuitCtrl = TextEditingController();
+  // Ambos tipos
   final _telefonoCtrl = TextEditingController();
   final _direccionCtrl = TextEditingController();
 
+  // Originales para detección de cambios
   String _nombreOrig = '';
   String _apellidoOrig = '';
+  String _dniOrig = '';
+  String _razonSocialOrig = '';
+  String _cuitOrig = '';
   String _telefonoOrig = '';
   String _direccionOrig = '';
+  DateTime? _fechaNacimientoOrig;
 
-  String? _cargoNombre;
+  DateTime? _fechaNacimiento;
+  bool _esFiscal = false;
+  String? _subtipo;
   bool _subiendo = false;
   bool _guardando = false;
   bool _initialized = false;
 
-  bool get _hayCambios =>
-      _nombreCtrl.text.trim() != _nombreOrig ||
-      _apellidoCtrl.text.trim() != _apellidoOrig ||
-      _telefonoCtrl.text.trim() != _telefonoOrig ||
-      _direccionCtrl.text.trim() != _direccionOrig;
+  static bool _sameDia(DateTime? a, DateTime? b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  bool get _hayCambios {
+    if (_esFiscal) {
+      return _razonSocialCtrl.text.trim() != _razonSocialOrig ||
+          _cuitCtrl.text.trim() != _cuitOrig ||
+          _telefonoCtrl.text.trim() != _telefonoOrig ||
+          _direccionCtrl.text.trim() != _direccionOrig;
+    }
+    return _nombreCtrl.text.trim() != _nombreOrig ||
+        _apellidoCtrl.text.trim() != _apellidoOrig ||
+        _dniCtrl.text.trim() != _dniOrig ||
+        !_sameDia(_fechaNacimiento, _fechaNacimientoOrig) ||
+        _telefonoCtrl.text.trim() != _telefonoOrig ||
+        _direccionCtrl.text.trim() != _direccionOrig;
+  }
 
   @override
   void initState() {
     super.initState();
-    for (final c in [_nombreCtrl, _apellidoCtrl, _telefonoCtrl, _direccionCtrl]) {
+    for (final c in [
+      _nombreCtrl, _apellidoCtrl, _dniCtrl,
+      _razonSocialCtrl, _cuitCtrl,
+      _telefonoCtrl, _direccionCtrl,
+    ]) {
       c.addListener(() => setState(() {}));
     }
   }
@@ -57,31 +94,30 @@ class _PerfilScreenState extends State<PerfilScreen> {
   }
 
   void _poblarCampos(Map<String, dynamic> persona) {
+    _esFiscal = persona['tipoPersona'] == 'fiscal';
+    _subtipo = persona['subtipo'] as String?;
+
     _nombreOrig = persona['nombre'] as String? ?? '';
     _apellidoOrig = persona['apellido'] as String? ?? '';
+    _dniOrig = persona['dni'] as String? ?? '';
+    _razonSocialOrig = persona['razonSocial'] as String? ?? '';
+    _cuitOrig = persona['cuit'] as String? ?? '';
     _telefonoOrig = persona['telefono'] as String? ?? '';
     _direccionOrig = persona['direccion'] as String? ?? '';
 
+    final rawFecha = persona['fechaNacimiento'];
+    _fechaNacimientoOrig =
+        rawFecha is Timestamp ? rawFecha.toDate() : null;
+    _fechaNacimiento = _fechaNacimientoOrig;
+
     _nombreCtrl.text = _nombreOrig;
     _apellidoCtrl.text = _apellidoOrig;
+    _dniCtrl.text = _dniOrig;
+    _razonSocialCtrl.text = _razonSocialOrig;
+    _cuitCtrl.text = _cuitOrig;
     _telefonoCtrl.text = _telefonoOrig;
     _direccionCtrl.text = _direccionOrig;
 
-    final cargoId = persona['cargoId'] as String?;
-    if (cargoId != null && cargoId.isNotEmpty) {
-      _cargarCargo(cargoId);
-    }
-  }
-
-  Future<void> _cargarCargo(String cargoId) async {
-    try {
-      final doc = await FirebaseFirestore.instance.collection('cargos').doc(cargoId).get();
-      if (doc.exists && mounted) {
-        setState(() => _cargoNombre = doc.data()?['nombre'] as String? ?? cargoId);
-      }
-    } catch (_) {
-      if (mounted) setState(() => _cargoNombre = cargoId);
-    }
   }
 
   Future<void> _cambiarFoto() async {
@@ -103,7 +139,9 @@ class _PerfilScreenState extends State<PerfilScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al subir foto: $e'), backgroundColor: AppTheme.rojoGasto),
+          SnackBar(
+              content: Text('Error al subir foto: $e'),
+              backgroundColor: AppTheme.rojoGasto),
         );
       }
     } finally {
@@ -118,13 +156,16 @@ class _PerfilScreenState extends State<PerfilScreen> {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Te enviamos un email para cambiar tu contraseña')),
+          const SnackBar(
+              content: Text('Te enviamos un email para cambiar tu contraseña')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.rojoGasto),
+          SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: AppTheme.rojoGasto),
         );
       }
     }
@@ -134,13 +175,24 @@ class _PerfilScreenState extends State<PerfilScreen> {
     setState(() => _guardando = true);
     try {
       await context.read<AuthProvider>().actualizarPerfil(
-            nombre: _nombreCtrl.text.trim(),
-            apellido: _apellidoCtrl.text.trim(),
+            nombre: _esFiscal ? null : _nombreCtrl.text.trim(),
+            apellido: _esFiscal ? null : _apellidoCtrl.text.trim(),
+            dni: _esFiscal ? null : _dniCtrl.text.trim(),
+            fechaNacimiento: _esFiscal ? null : _fechaNacimiento,
+            razonSocial: _esFiscal ? _razonSocialCtrl.text.trim() : null,
+            cuit: _esFiscal ? _cuitCtrl.text.trim() : null,
             telefono: _telefonoCtrl.text.trim(),
             direccion: _direccionCtrl.text.trim(),
           );
-      _nombreOrig = _nombreCtrl.text.trim();
-      _apellidoOrig = _apellidoCtrl.text.trim();
+      if (_esFiscal) {
+        _razonSocialOrig = _razonSocialCtrl.text.trim();
+        _cuitOrig = _cuitCtrl.text.trim();
+      } else {
+        _nombreOrig = _nombreCtrl.text.trim();
+        _apellidoOrig = _apellidoCtrl.text.trim();
+        _dniOrig = _dniCtrl.text.trim();
+        _fechaNacimientoOrig = _fechaNacimiento;
+      }
       _telefonoOrig = _telefonoCtrl.text.trim();
       _direccionOrig = _direccionCtrl.text.trim();
       if (mounted) {
@@ -155,7 +207,9 @@ class _PerfilScreenState extends State<PerfilScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar: $e'), backgroundColor: AppTheme.rojoGasto),
+          SnackBar(
+              content: Text('Error al guardar: $e'),
+              backgroundColor: AppTheme.rojoGasto),
         );
       }
     } finally {
@@ -167,16 +221,27 @@ class _PerfilScreenState extends State<PerfilScreen> {
   void dispose() {
     _nombreCtrl.dispose();
     _apellidoCtrl.dispose();
+    _dniCtrl.dispose();
+    _razonSocialCtrl.dispose();
+    _cuitCtrl.dispose();
     _telefonoCtrl.dispose();
     _direccionCtrl.dispose();
     super.dispose();
   }
 
+  static String _nombreRol(String rol) => switch (rol) {
+        'admin' => 'Administrador',
+        'editor' => 'Editor',
+        'auditor' => 'Auditor',
+        'solo_lectura' => 'Solo lectura',
+        'consultante' => 'Consultante',
+        _ => 'Sin rol',
+      };
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
-    // Initialize once persona loads (in case it wasn't ready during didChangeDependencies)
     if (!_initialized && auth.datosPersona != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_initialized && mounted) {
@@ -186,229 +251,371 @@ class _PerfilScreenState extends State<PerfilScreen> {
       });
     }
 
-    final persona = auth.datosPersona;
     final email = auth.currentUser?.email ?? '';
     final inicial = email.isNotEmpty ? email[0].toUpperCase() : '?';
-    final fotoUrl = persona?['fotoUrl'] as String?;
+    final fotoUrl = auth.datosPersona?['fotoUrl'] as String?;
     final rol = auth.rol ?? '';
+    final personaId = auth.datosPersona?['id'] as String? ?? '';
+    final cargos = context.watch<CargoProvider>().cargos;
+    final cargo = cargos.firstWhere((c) => c['personaId'] == personaId, orElse: () => {});
+    final cargoTexto = cargo['nombre'] as String?;
 
-    final (chipColor, chipLabel) = switch (rol) {
-      'admin' => (AppTheme.azulOscuro, 'Administrador'),
-      'editor' => (AppTheme.verdeTeal, 'Editor'),
-      'auditor' => (AppTheme.amarilloAlerta, 'Auditor'),
-      'solo_lectura' => (AppTheme.textoSecundario, 'Solo lectura'),
-      'consultante' => (AppTheme.azulMedio, 'Consultante'),
-      _ => (AppTheme.textoSecundario, 'Sin rol'),
-    };
-
-    final cargoId = persona?['cargoId'] as String?;
-    final cargoTexto = _cargoNombre ?? cargoId;
-
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: AppTheme.azulOscuro,
-        foregroundColor: Colors.white,
-        title: const Text('Mi perfil'),
-      ),
-      body: Stack(
-        children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 24, 16, 120),
+    return PopScope(
+      canPop: !_hayCambios,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final accion = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Cambios sin guardar'),
+            content:
+                const Text('Tenés cambios sin guardar. ¿Qué querés hacer?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cancelar'),
+                child: const Text('Seguir editando'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'descartar'),
+                child: const Text('Descartar',
+                    style: TextStyle(color: AppTheme.rojoGasto)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, 'guardar'),
+                child: const Text('Guardar y salir'),
+              ),
+            ],
+          ),
+        );
+        if (accion == 'guardar') await _guardar();
+        if (accion != 'cancelar' && accion != null && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        drawer: const AppDrawer(),
+        appBar: AppBar(
+          backgroundColor: AppTheme.azulOscuro,
+          leading: Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          ),
+          titleSpacing: 0,
+          title: Row(
+            mainAxisSize: MainAxisSize.max,
             children: [
-              // Foto de perfil
-              Center(
-                child: Column(
-                  children: [
-                    Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        CircleAvatar(
-                          radius: 50,
-                          backgroundColor: AppTheme.celesteAccento,
-                          backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
-                          child: fotoUrl == null
-                              ? Text(
-                                  inicial,
-                                  style: const TextStyle(
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.azulOscuro,
-                                  ),
-                                )
-                              : null,
-                        ),
-                        if (_subiendo)
-                          const Positioned.fill(
-                            child: CircleAvatar(
-                              backgroundColor: Colors.black38,
-                              child: SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    TextButton.icon(
-                      icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                      label: const Text('Cambiar foto'),
-                      onPressed: _subiendo ? null : _cambiarFoto,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Datos personales
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Datos personales',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _nombreCtrl,
-                        decoration: const InputDecoration(labelText: 'Nombre'),
-                        textCapitalization: TextCapitalization.words,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _apellidoCtrl,
-                        decoration: const InputDecoration(labelText: 'Apellido'),
-                        textCapitalization: TextCapitalization.words,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _telefonoCtrl,
-                        decoration: const InputDecoration(labelText: 'Teléfono'),
-                        keyboardType: TextInputType.phone,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _direccionCtrl,
-                        decoration: const InputDecoration(labelText: 'Dirección'),
-                        textCapitalization: TextCapitalization.sentences,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        initialValue: email,
-                        readOnly: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                          helperText: 'No editable',
-                        ),
-                        style: const TextStyle(color: AppTheme.textoSecundario),
-                      ),
-                      if (cargoTexto != null && cargoTexto.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          initialValue: cargoTexto,
-                          readOnly: true,
-                          decoration: const InputDecoration(labelText: 'Cargo institucional'),
-                          style: const TextStyle(color: AppTheme.textoSecundario),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          const Text(
-                            'Rol:',
-                            style: TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
-                          ),
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: chipColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              chipLabel,
-                              style: TextStyle(
-                                color: chipColor,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+              Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: IconButton(
+                  icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                  padding: EdgeInsets.zero,
+                  onPressed: () => Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                    (route) => false,
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Seguridad
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Seguridad',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.lock_outline, size: 18),
-                          label: const Text('Cambiar contraseña'),
-                          onPressed: _cambiarContrasena,
-                        ),
-                      ),
-                    ],
-                  ),
+              Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Mi perfil',
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-
-          // Botón fijo inferior — solo visible cuando hay cambios
-          if (_hayCambios)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Container(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.verdeTeal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: _guardando ? null : _guardar,
-                  child: _guardando
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+          actions: [AccionAuthWidget()],
+        ),
+        body: Stack(
+          children: [
+            ListView(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 120),
+              children: [
+                // Foto de perfil
+                Center(
+                  child: Column(
+                    children: [
+                      Stack(
+                        alignment: Alignment.bottomRight,
+                        children: [
+                          CircleAvatar(
+                            radius: 50,
+                            backgroundColor: AppTheme.celesteAccento,
+                            backgroundImage:
+                                fotoUrl != null ? NetworkImage(fotoUrl) : null,
+                            child: fotoUrl == null
+                                ? Text(
+                                    inicial,
+                                    style: const TextStyle(
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.azulOscuro,
+                                    ),
+                                  )
+                                : null,
                           ),
-                        )
-                      : const Text(
-                          'Guardar cambios',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                          if (_subiendo)
+                            const Positioned.fill(
+                              child: CircleAvatar(
+                                backgroundColor: Colors.black38,
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      TextButton.icon(
+                        icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                        label: const Text('Cambiar foto'),
+                        onPressed: _subiendo ? null : _cambiarFoto,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Mis datos
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Mis datos',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15),
                         ),
+                        const SizedBox(height: 16),
+                        if (_esFiscal) ...[
+                          TextFormField(
+                            controller: _razonSocialCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Razón social'),
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _cuitCtrl,
+                            decoration: const InputDecoration(labelText: 'CUIT'),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                          ),
+                        ] else ...[
+                          TextFormField(
+                            controller: _nombreCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Nombre'),
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _apellidoCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Apellido'),
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _dniCtrl,
+                            decoration: const InputDecoration(labelText: 'DNI'),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          _CampoFecha(
+                            label: 'Fecha de nacimiento',
+                            fecha: _fechaNacimiento,
+                            onChanged: (f) =>
+                                setState(() => _fechaNacimiento = f),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _telefonoCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Teléfono'),
+                          keyboardType: TextInputType.phone,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _direccionCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Dirección'),
+                          textCapitalization: TextCapitalization.sentences,
+                        ),
+                        const SizedBox(height: 12),
+                        _CampoSoloLectura(label: 'Email', valor: email),
+                        if (_subtipo != null && _subtipo!.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          _CampoSoloLectura(label: 'Tipo', valor: _subtipo!),
+                        ],
+                        if (cargoTexto != null && cargoTexto.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          _CampoSoloLectura(
+                              label: 'Cargo institucional', valor: cargoTexto),
+                        ],
+                        const SizedBox(height: 12),
+                        _CampoSoloLectura(
+                            label: 'Rol en la app',
+                            valor: _nombreRol(rol)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Seguridad
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Seguridad',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.lock_outline, size: 18),
+                            label: const Text('Cambiar contraseña'),
+                            onPressed: _cambiarContrasena,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // Botón fijo inferior
+            if (_hayCambios)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.verdeTeal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: _guardando ? null : _guardar,
+                    child: _guardando
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Guardar cambios',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
+                  ),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Widgets auxiliares ────────────────────────────────────────────────────────
+
+class _CampoSoloLectura extends StatelessWidget {
+  const _CampoSoloLectura({required this.label, required this.valor});
+  final String label;
+  final String valor;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      initialValue: valor,
+      readOnly: true,
+      decoration: InputDecoration(
+        labelText: label,
+        helperText: 'No editable',
+      ),
+      style: const TextStyle(color: AppTheme.textoSecundario),
+    );
+  }
+}
+
+class _CampoFecha extends StatelessWidget {
+  const _CampoFecha({
+    required this.label,
+    required this.fecha,
+    required this.onChanged,
+  });
+  final String label;
+  final DateTime? fecha;
+  final ValueChanged<DateTime> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final texto = fecha != null
+        ? '${fecha!.day.toString().padLeft(2, '0')}/'
+            '${fecha!.month.toString().padLeft(2, '0')}/'
+            '${fecha!.year}'
+        : '';
+    return InkWell(
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: fecha ?? DateTime(2000),
+          firstDate: DateTime(1920),
+          lastDate: DateTime.now(),
+        );
+        if (picked != null) onChanged(picked);
+      },
+      child: InputDecorator(
+        decoration: InputDecoration(labelText: label),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              texto.isEmpty ? 'Seleccionar' : texto,
+              style: TextStyle(
+                color: texto.isEmpty
+                    ? AppTheme.textoSecundario
+                    : AppTheme.textoPrincipal,
+              ),
             ),
-        ],
+            const Icon(Icons.calendar_today_outlined,
+                size: 18, color: AppTheme.azulMedio),
+          ],
+        ),
       ),
     );
   }

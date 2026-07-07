@@ -157,6 +157,8 @@ class CuentaBancariaRepository {
     String usuarioId,
     String? observaciones, {
     String accion = 'actualizacion_saldo',
+    String? gastoId,
+    String? ingresoId,
   }) async {
     final snap = await _col.doc(_cajaChicaId).get();
     final saldoAnterior =
@@ -178,6 +180,8 @@ class CuentaBancariaRepository {
       'observaciones': ?observaciones,
       'usuarioId': usuarioId,
       'fechaCreacion': FieldValue.serverTimestamp(),
+      'gastoId': ?gastoId,
+      'ingresoId': ?ingresoId,
     });
     await batch.commit();
 
@@ -197,24 +201,36 @@ class CuentaBancariaRepository {
   Future<void> sumarACajaChica(
     double monto,
     String usuarioId,
-    String descripcion,
-  ) async {
+    String descripcion, {
+    String? ingresoId,
+  }) async {
     final snap = await _col.doc(_cajaChicaId).get();
     final saldoActual =
         (snap.data()?['saldoActual'] as num? ?? 0).toDouble();
-    await actualizarCajaChica(saldoActual + monto, usuarioId, descripcion,
-        accion: 'ingreso_efectivo');
+    await actualizarCajaChica(
+      saldoActual + monto,
+      usuarioId,
+      descripcion,
+      accion: 'ingreso_efectivo',
+      ingresoId: ingresoId,
+    );
   }
 
   Future<void> descontarDeCajaChica(
     double monto,
     String usuarioId,
-    String descripcion,
-  ) async {
+    String descripcion, {
+    String? gastoId,
+  }) async {
     final snap = await _col.doc(_cajaChicaId).get();
     final saldoActual =
         (snap.data()?['saldoActual'] as num? ?? 0).toDouble();
-    await actualizarCajaChica(saldoActual - monto, usuarioId, descripcion);
+    await actualizarCajaChica(
+      saldoActual - monto,
+      usuarioId,
+      descripcion,
+      gastoId: gastoId,
+    );
   }
 
   Future<void> depositarACuentaBancaria(

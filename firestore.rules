@@ -173,5 +173,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if esEditor() && estaActivo();
     }
+
+    match /cargos/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
   }
 }
