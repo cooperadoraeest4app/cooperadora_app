@@ -4,18 +4,17 @@ import '../../data/repositories/cargo_repository.dart';
 class CargoProvider extends ChangeNotifier {
   final _repo = CargoRepository();
 
+  // Lista mantenida por suscripción interna — usada por pantallas que
+  // hacen context.watch<CargoProvider>().cargos (ej. perfil_screen).
   List<Map<String, dynamic>> cargos = [];
   bool isLoading = true;
 
-  // Stream cacheado: se crea una sola vez. Si fuera un getter sin late final,
-  // cada rebuild crearía un objeto Stream distinto y el StreamBuilder reiniciaría.
-  late final Stream<List<Map<String, dynamic>>> cargoStream =
-      _repo.obtenerTodos();
+  // Getter: crea un Stream fresco en cada acceso. El StreamBuilder que lo
+  // reciba reiniciará la suscripción si el widget se reconstruye, lo que
+  // permite el patrón "retry via setState()" sin estado adicional.
+  Stream<List<Map<String, dynamic>>> get cargosStream => _repo.obtenerTodos();
 
   CargoProvider() {
-    // Solo escucha el stream. NO llama a inicializarDatosDefault() aquí
-    // porque el provider se crea antes de que Firebase Auth esté listo,
-    // por lo que la escritura fallará con permission-denied.
     _repo.obtenerTodos().listen(
       (lista) {
         cargos = lista;
@@ -29,7 +28,6 @@ class CargoProvider extends ChangeNotifier {
     );
   }
 
-  // Llamar desde pantallas donde el usuario YA está autenticado como admin.
   Future<void> inicializarSiVacio() async {
     try {
       await _repo.inicializarDatosDefault();

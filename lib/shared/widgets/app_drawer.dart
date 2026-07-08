@@ -11,6 +11,7 @@ import '../../features/cuenta_bancaria/presentation/screens/cuenta_bancaria_scre
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/inventario/presentation/screens/inventario_screen.dart';
 import '../../features/ingresos/presentation/screens/movimientos_screen.dart';
+import '../../features/informes/presentation/screens/informes_screen.dart';
 import '../../features/proyectos/presentation/screens/proyectos_screen.dart';
 
 class AppDrawer extends StatelessWidget {
@@ -164,6 +165,19 @@ class AppDrawer extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const InventarioScreen()),
+                );
+              },
+            ),
+          if (auth.isLoggedIn)
+            ListTile(
+              leading: const Icon(Icons.assessment_outlined,
+                  color: AppTheme.azulMedio),
+              title: const Text('Informes'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const InformesScreen()),
                 );
               },
             ),

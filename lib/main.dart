@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
@@ -16,6 +17,8 @@ import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/ingresos/presentation/providers/frecuencia_provider.dart';
 import 'features/ingresos/presentation/providers/movimientos_provider.dart';
 import 'features/proyectos/presentation/providers/proyecto_provider.dart';
+import 'features/admin/presentation/providers/rubro_provider.dart';
+import 'features/informes/presentation/providers/informes_provider.dart';
 import 'features/inventario/presentation/providers/inventario_provider.dart';
 import 'features/socios/presentation/providers/cuota_provider.dart';
 import 'features/socios/presentation/providers/socio_provider.dart';
@@ -24,6 +27,7 @@ import 'features/home/presentation/screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('es', null);
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -73,6 +77,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CuotaProvider()),
         ChangeNotifierProvider(create: (_) => FrecuenciaProvider()),
         ChangeNotifierProvider(create: (_) => InventarioProvider()),
+        ChangeNotifierProvider(create: (_) => RubroProvider()),
+        ChangeNotifierProvider(create: (_) => InformesProvider()),
       ],
       child: MaterialApp(
         navigatorKey: navigatorKey,

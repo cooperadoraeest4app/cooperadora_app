@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "balance_snapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fechaDesde", "order": "ASCENDING" },
+        { "fieldPath": "fechaHasta", "order": "ASCENDING" },
+        { "fieldPath": "version", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

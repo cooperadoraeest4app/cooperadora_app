@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../providers/categoria_provider.dart';
+import '../providers/rubro_provider.dart';
+import '../../domain/models/rubro.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 const _kIconos = <(String, IconData)>[
@@ -22,6 +24,13 @@ const _kIconos = <(String, IconData)>[
   ('home_repair_service', Icons.home_repair_service),
   ('water_drop', Icons.water_drop),
   ('local_gas_station', Icons.local_gas_station),
+  ('confirmation_number', Icons.confirmation_number),
+  ('storefront', Icons.storefront),
+  ('checkroom', Icons.checkroom),
+  ('directions_bus', Icons.directions_bus),
+  ('star', Icons.star),
+  ('school', Icons.school),
+  ('print', Icons.print),
 ];
 
 const _kColoresPaleta = <Color>[
@@ -66,7 +75,9 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<CategoriaProvider>().inicializarDatosDefault();
+      if (!mounted) return;
+      context.read<RubroProvider>().inicializarSiVacio();
+      context.read<CategoriaProvider>().inicializarDatosDefault();
     });
   }
 
@@ -228,8 +239,14 @@ class _CategoriaCard extends StatelessWidget {
     final iconoNombre = categoria['icono'] as String? ?? 'label';
     final colorHex = categoria['color'] as String? ?? '#6B7A99';
     final activa = categoria['activa'] as bool? ?? true;
+    final rubroId = categoria['rubroId'] as String?;
     final icono = _iconFromNombre(iconoNombre);
     final color = _colorFromHex(colorHex);
+
+    final rubros = context.watch<RubroProvider>().rubros;
+    final rubroNombre = rubroId != null
+        ? rubros.where((r) => r.id == rubroId).map((r) => r.nombre).firstOrNull
+        : null;
 
     return Card(
       child: Padding(
@@ -242,12 +259,13 @@ class _CategoriaCard extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                nombre,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.textoPrincipal,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(nombre, style: const TextStyle(fontWeight: FontWeight.w500, color: AppTheme.textoPrincipal)),
+                  if (rubroNombre != null)
+                    Text(rubroNombre, style: const TextStyle(fontSize: 11, color: AppTheme.textoSecundario)),
+                ],
               ),
             ),
             Switch(
@@ -286,6 +304,7 @@ class _CategoriaSheetState extends State<_CategoriaSheet> {
   late String _tipo;
   late String _colorHex;
   late String _iconoNombre;
+  String? _rubroId;
 
   @override
   void initState() {
@@ -296,6 +315,7 @@ class _CategoriaSheetState extends State<_CategoriaSheet> {
     _colorHex =
         cat?['color'] as String? ?? _colorToHex(_kColoresPaleta.first);
     _iconoNombre = cat?['icono'] as String? ?? _kIconos.first.$1;
+    _rubroId = cat?['rubroId'] as String?;
   }
 
   @override
@@ -307,12 +327,13 @@ class _CategoriaSheetState extends State<_CategoriaSheet> {
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
     final provider = context.read<CategoriaProvider>();
-    final datos = {
+    final datos = <String, dynamic>{
       'nombre': _nombreCtrl.text.trim(),
       'tipo': _tipo,
       'color': _colorHex,
       'icono': _iconoNombre,
       'activa': true,
+      if (_rubroId != null) 'rubroId': _rubroId,
     };
     if (widget.categoria != null) {
       await provider.actualizar(widget.categoria!['id'] as String, datos);
@@ -335,6 +356,7 @@ class _CategoriaSheetState extends State<_CategoriaSheet> {
   @override
   Widget build(BuildContext context) {
     final isSaving = context.watch<CategoriaProvider>().isSaving;
+    final rubros = context.watch<RubroProvider>().obtenerActivosPorTipo(_tipo);
     final esEdicion = widget.categoria != null;
     final colorSeleccionado = _colorFromHex(_colorHex);
 
@@ -397,7 +419,7 @@ class _CategoriaSheetState extends State<_CategoriaSheet> {
                         label: 'Ingreso',
                         seleccionado: _tipo == 'ingreso',
                         color: AppTheme.verdeIngreso,
-                        onTap: () => setState(() => _tipo = 'ingreso'),
+                        onTap: () => setState(() { _tipo = 'ingreso'; _rubroId = null; }),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -406,13 +428,26 @@ class _CategoriaSheetState extends State<_CategoriaSheet> {
                         label: 'Gasto',
                         seleccionado: _tipo == 'gasto',
                         color: AppTheme.rojoGasto,
-                        onTap: () => setState(() => _tipo = 'gasto'),
+                        onTap: () => setState(() { _tipo = 'gasto'; _rubroId = null; }),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
               ],
+
+              // Rubro
+              DropdownButtonFormField<String?>(
+                key: ValueKey('rubro_${_rubroId}_$_tipo'),
+                initialValue: rubros.any((r) => r.id == _rubroId) ? _rubroId : null,
+                decoration: const InputDecoration(labelText: 'Rubro (opcional)'),
+                items: [
+                  const DropdownMenuItem<String?>(value: null, child: Text('Sin rubro')),
+                  ...rubros.map((r) => DropdownMenuItem<String?>(value: r.id, child: Text(r.nombre))),
+                ],
+                onChanged: (v) => setState(() => _rubroId = v),
+              ),
+              const SizedBox(height: 16),
 
               // Color
               const Text(

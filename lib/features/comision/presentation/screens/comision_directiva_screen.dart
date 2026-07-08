@@ -1,60 +1,44 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../../../home/presentation/screens/home_screen.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
-import '../../../admin/presentation/providers/cargo_provider.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import '../../../admin/presentation/providers/cargo_provider.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 
 class ComisionDirectivaScreen extends StatefulWidget {
   const ComisionDirectivaScreen({super.key});
 
   @override
-  State<ComisionDirectivaScreen> createState() =>
-      _ComisionDirectivaScreenState();
+  State<ComisionDirectivaScreen> createState() => _ComisionDirectivaScreenState();
 }
 
+// StatefulWidget para que el botón "Reintentar" pueda llamar setState(),
+// lo que fuerza una reconstrucción y pasa un Stream nuevo al StreamBuilder.
 class _ComisionDirectivaScreenState extends State<ComisionDirectivaScreen> {
   @override
-  void initState() {
-    super.initState();
-    // Si el usuario es admin, aprovechamos para crear los cargos default
-    // si la colección está vacía. Así no depende solo de la pantalla admin.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final auth = context.read<AuthProvider>();
-      if (auth.esAdmin) {
-        context.read<CargoProvider>().inicializarSiVacio();
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final provider = context.read<CargoProvider>();
-
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
         leading: Builder(
-          builder: (context) => IconButton(
+          builder: (ctx) => IconButton(
             icon: const Icon(Icons.menu, color: Colors.white),
-            onPressed: () => Scaffold.of(context).openDrawer(),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
         titleSpacing: 0,
         title: Row(
           mainAxisSize: MainAxisSize.max,
           children: [
-            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.3)),
             SizedBox(
               width: 48,
               height: 48,
               child: IconButton(
-                icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                icon: const Icon(Icons.home, color: Colors.white, size: 20),
                 padding: EdgeInsets.zero,
                 onPressed: () => Navigator.pushAndRemoveUntil(
                   context,
@@ -63,12 +47,12 @@ class _ComisionDirectivaScreenState extends State<ComisionDirectivaScreen> {
                 ),
               ),
             ),
-            Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+            Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.3)),
             const SizedBox(width: 12),
-            Expanded(
+            const Expanded(
               child: Text(
                 'Comisión Directiva',
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -77,25 +61,43 @@ class _ComisionDirectivaScreenState extends State<ComisionDirectivaScreen> {
         actions: [AccionAuthWidget()],
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: provider.cargoStream,
+        stream: context.read<CargoProvider>().cargosStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
             return Center(
-              child: Text('Error: ${snapshot.error}',
-                  style: const TextStyle(color: AppTheme.rojoGasto)),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline,
+                        color: AppTheme.rojoGasto, size: 48),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Error al cargar: ${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppTheme.rojoGasto),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => setState(() {}),
+                      child: const Text('Reintentar'),
+                    ),
+                  ],
+                ),
+              ),
             );
           }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          final cargos = snapshot.data ?? [];
+          if (cargos.isEmpty) {
             return const Center(
-              child: Text('Sin cargos configurados',
+              child: Text('Sin cargos registrados',
                   style: TextStyle(color: AppTheme.textoSecundario)),
             );
           }
-
-          final cargos = snapshot.data!;
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: cargos.length,
@@ -142,13 +144,11 @@ class _CardVacante extends StatelessWidget {
       leading: const CircleAvatar(
         radius: 22,
         backgroundColor: AppTheme.celesteFondo,
-        child: Icon(Icons.person_outline,
-            color: AppTheme.textoSecundario, size: 22),
+        child: Icon(Icons.person_outline, color: AppTheme.textoSecundario, size: 22),
       ),
       title: Text(
         nombreCargo,
-        style: const TextStyle(
-            fontWeight: FontWeight.w600, color: AppTheme.textoPrincipal),
+        style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textoPrincipal),
       ),
       subtitle: const Text('Vacante',
           style: TextStyle(color: AppTheme.textoSecundario, fontSize: 13)),
@@ -157,8 +157,7 @@ class _CardVacante extends StatelessWidget {
 }
 
 class _CardConPersona extends StatefulWidget {
-  const _CardConPersona(
-      {required this.nombreCargo, required this.personaId});
+  const _CardConPersona({required this.nombreCargo, required this.personaId});
   final String nombreCargo;
   final String personaId;
 
@@ -203,10 +202,7 @@ class _CardConPersonaState extends State<_CardConPersona> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const ListTile(
-        leading: CircleAvatar(
-          radius: 22,
-          backgroundColor: AppTheme.celesteFondo,
-        ),
+        leading: CircleAvatar(radius: 22, backgroundColor: AppTheme.celesteFondo),
         title: LinearProgressIndicator(),
       );
     }
@@ -215,8 +211,7 @@ class _CardConPersonaState extends State<_CardConPersona> {
         ? '${_persona!['nombre'] ?? ''} ${_persona!['apellido'] ?? ''}'.trim()
         : '';
     final fotoUrl = _persona?['fotoUrl'] as String?;
-    final inicial =
-        nombre.isNotEmpty ? nombre[0].toUpperCase() : '?';
+    final inicial = nombre.isNotEmpty ? nombre[0].toUpperCase() : '?';
 
     return ListTile(
       leading: CircleAvatar(
@@ -235,13 +230,11 @@ class _CardConPersonaState extends State<_CardConPersona> {
       ),
       title: Text(
         widget.nombreCargo,
-        style: const TextStyle(
-            fontWeight: FontWeight.w600, color: AppTheme.textoPrincipal),
+        style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textoPrincipal),
       ),
       subtitle: Text(
         nombre.isNotEmpty ? nombre : 'Persona no encontrada',
-        style: const TextStyle(
-            color: AppTheme.textoSecundario, fontSize: 13),
+        style: const TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
       ),
     );
   }

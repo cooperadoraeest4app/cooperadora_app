@@ -8,6 +8,7 @@ import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dar
 import '../../../inventario/presentation/screens/inventario_screen.dart';
 import '../../../socios/presentation/screens/socios_screen.dart';
 import 'categorias_screen.dart';
+import 'rubros_screen.dart';
 import 'configuracion_screen.dart';
 import 'cursos_screen.dart';
 import 'invitaciones_screen.dart';
@@ -43,6 +44,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       titulo: 'Invitaciones',
       subtitulo: 'Crear y gestionar invitaciones',
       esInvitaciones: true,
+    ),
+    _OpcionPanel(
+      icono: Icons.folder_copy_outlined,
+      titulo: 'Rubros',
+      subtitulo: 'Agrupación de categorías para informes',
+      esRubros: true,
     ),
     _OpcionPanel(
       icono: Icons.label,
@@ -217,6 +224,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     MaterialPageRoute(
                         builder: (_) => const InvitacionesScreen()),
                   );
+                } else if (opcion.esRubros) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RubrosScreen()),
+                  );
                 } else if (opcion.esCategorias) {
                   Navigator.push(
                     context,
@@ -286,6 +298,7 @@ class _OpcionPanel {
   final bool esConfiguracion;
   final bool esUsuarios;
   final bool esInvitaciones;
+  final bool esRubros;
   final bool esCategorias;
   final bool esMetodosPago;
   final bool esCuentaBancaria;
@@ -302,6 +315,7 @@ class _OpcionPanel {
     this.esConfiguracion = false,
     this.esUsuarios = false,
     this.esInvitaciones = false,
+    this.esRubros = false,
     this.esCategorias = false,
     this.esMetodosPago = false,
     this.esCuentaBancaria = false,

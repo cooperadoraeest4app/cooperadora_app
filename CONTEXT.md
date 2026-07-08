@@ -620,3 +620,85 @@ Resultado vinculante: solo votos de Socios Activos. Por separado: Opinion de la 
 
 ### Migracion de datos pendiente
 Los Socios existentes (grupo familiar con apellidoFamilia) deben convertirse en Socios individuales vinculados a una Persona. Los Integrantes existentes deben revisarse uno por uno. Reasignar numeroSocio correlativo.
+
+---
+
+## 18. Actualizaciones de Navegación y UI
+
+### Drawer lateral (AppDrawer)
+Widget compartido `lib/shared/widgets/app_drawer.dart`. Estructura:
+- Header con logo, nombre Cooperadora y escuela (desde ConfiguracionProvider)
+- "Volver" (solo si hay pantalla anterior, con fondo gris sutil) + Divider
+- "Inicio" (siempre visible)
+- Divider
+- Secciones según seccionesPublicas y login: Comisión Directiva (solo logueados), Proyectos, Movimientos, Cuenta Bancaria, Inventario
+- Divider
+- Si logueado: Mi perfil, Panel Admin (esAdmin||esAuditor), Cerrar sesión
+- Si no logueado: Ingresar
+
+Disponible en TODAS las pantallas. Parámetro `esInicio: true` en HomeScreen para ocultar "Volver".
+
+### AppBar pantallas secundarias
+Patrón estándar en todas las pantallas que no son HomeScreen:
+```
+[☰ Menú] | [🏠 Casita] | [Título]  [Avatar]
+```
+- `titleSpacing: 0` para eliminar spacing automático
+- Separadores verticales `Container(width:1, height:20, color: white.withOpacity(0.3))`
+- Casita con `IconButton` de 48x48 igual que hamburguesa
+- Casita navega a HomeScreen con `pushAndRemoveUntil`
+
+### Solapas con íconos
+- Cuenta Bancaria: tab Cuenta Bancaria (`Icons.account_balance`) + Caja Chica (`Icons.point_of_sale`)
+- Proyectos: En curso (`Icons.play_circle`) + Planificados (`Icons.pending`) + Finalizados (`Icons.check_circle`)
+- TabBar: `labelColor: Colors.white`, `unselectedLabelColor: Colors.white`, `indicatorColor: Color(0xFF00BCD4)` (cyan)
+
+### PopScope — cambios pendientes
+Implementado en pantallas con edición inline. Al navegar con cambios sin guardar, muestra dialog con opciones: "Seguir editando", "Descartar cambios", "Guardar y salir".
+
+---
+
+## 19. Rediseño Persona-Socio-Curso (CAMBIO ESTRUCTURAL)
+
+### Cambios en Persona
+Nuevos campos: `tipoPersona` (fisica/fiscal), `fechaNacimiento` (timestamp, nullable), `razonSocial` (nullable), `cuit` (nullable), `personaContactoId` (nullable), `subtipo`, `cursoId` (nullable, solo alumnos), `hijosIds` (array, opcional, informativo).
+
+Campo eliminado: `cargoId` — reemplazado por `Cargo.personaId` para evitar redundancia.
+
+### Nueva entidad: Curso
+Colección `cursos`. Campos: id, nombre, nivel (opcional), orden (opcional — si no existe, dropdown ordena alfabéticamente), activo. Gestionable desde panel Admin.
+
+### Socio — modelo simplificado
+Campo `personaId` reemplaza `apellidoFamilia`. Nuevo campo `numeroSocio` (correlativo único, obligatorio por ley, formato N°001). Eliminada entidad Integrante completamente.
+
+### Cargo — relación unificada
+Solo existe `Cargo.personaId`. Eliminado `Persona.cargoId` (era redundante). Para obtener el cargo de una Persona: buscar en CargoProvider donde `cargo['personaId'] == persona.id`.
+
+### Comisión Directiva
+Colección `cargos` con 11 documentos fijos ordenados por `orden`. Pantalla pública `ComisionDirectivaScreen` (solo para logueados desde el drawer). Pantalla de admin `ComisionDirectivaAdminScreen` para asignar Personas a cargos con Autocomplete.
+
+---
+
+## 20. Mejoras en Formularios
+
+### Número de comprobante
+Campo `nroComprobante` String nullable agregado a Ingreso y Gasto. Campo de texto opcional en formulario antes de los botones de adjuntar archivo.
+
+### Número de cheque
+Campo `nroCheque` String nullable en Ingreso, Gasto y Cuota. Widget compartido `lib/shared/widgets/numero_cheque_widget.dart` — aparece automáticamente cuando método de pago contiene "cheque", obligatorio. Aplicado en formulario de movimientos, modal de cuota de socio y pago rápido.
+
+### Creación de Persona con acceso a la app
+Toggle "Crear acceso a la app" (activo por defecto) en formulario de alta de Persona. Rol por defecto: Consultante. Restricciones por rol del que crea:
+- Editor: puede asignar Consultante o Solo lectura
+- Admin: puede asignar Consultante, Solo lectura, Auditor o Editor
+
+Al guardar con acceso: crea Auth user + documento usuarios + envía email de reset de contraseña (Firebase Auth). No se guarda ni muestra contraseña.
+
+### Navegación bidireccional Socio-Usuario
+- Desde Socio → botón "Ver usuario" o "Crear acceso" según si ya tiene Usuario vinculado
+- Desde Usuario → botón "Ver/editar persona" vinculada
+- `UsuarioDetalleScreen`: muestra foto, datos personales, rol, estado. Admin puede editar rol. Propio usuario puede editar datos pero no su rol.
+
+### Caja Chica — link a movimiento asociado
+En historial de Caja Chica, si el movimiento tiene `gastoId` o `ingresoId` (generado automáticamente por gasto/ingreso en efectivo), muestra botón "Ver gasto/ingreso asociado" que navega a MovimientosScreen con ese movimiento expandido.
+

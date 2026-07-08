@@ -178,5 +178,15 @@ service cloud.firestore {
       allow read: if true;
       allow write: if esAdmin();
     }
+
+    match /rubros/{doc} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    match /balance_snapshots/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esEditor() && estaActivo();
+    }
   }
 }
