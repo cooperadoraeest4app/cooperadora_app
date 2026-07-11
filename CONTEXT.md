@@ -702,3 +702,140 @@ Al guardar con acceso: crea Auth user + documento usuarios + envía email de res
 ### Caja Chica — link a movimiento asociado
 En historial de Caja Chica, si el movimiento tiene `gastoId` o `ingresoId` (generado automáticamente por gasto/ingreso en efectivo), muestra botón "Ver gasto/ingreso asociado" que navega a MovimientosScreen con ese movimiento expandido.
 
+
+---
+
+## 21. Módulo Informes
+
+### Estructura de la pantalla
+- Panel de filtros compartido (fondo blanco) con:
+  - Selector de período: Mes | Trimestre | Año | Libre
+  - Para "Año": selector de mes de cierre del ejercicio (por defecto Abril). El ejercicio anual va del 1 del mes siguiente al cierre del año anterior, al día 30 del mes de cierre del año actual.
+  - Para "Libre": selectores Desde/Hasta
+  - Toggle Detallado/Agrupado con íconos
+  - Botón "Calcular" en verdeTeal
+- TabBar con indicador cyan (0xFF00BCD4), texto e íconos blancos:
+  - Balance (`Icons.table_chart`)
+  - Gráficos (`Icons.bar_chart`)
+  - PDF (`Icons.picture_as_pdf`)
+
+### Vista Detallada vs Agrupada
+Default por período:
+- Mes → Detallado
+- Trimestre → Agrupado
+- Año → Agrupado
+- Libre → Detallado si ≤45 días, Agrupado si >45 días
+
+**Detallado (modelo mensual oficial ABC.gob.ar):**
+- ENTRADAS: agrupadas por Rubro → Categoría con monto total
+- SALIDAS: detalle de cada transacción con Fecha, N° comprobante, Descripción, Monto, agrupadas por Rubro
+
+**Agrupado (modelo anual oficial ABC.gob.ar):**
+- ENTRADAS: Rubro → Categoría → Total período
+- SALIDAS: Rubro → Categoría → Total período (sin detalle de transacciones)
+
+### Resumen al pie (ambas vistas)
+- Total Entradas (a)
+- Saldo ejercicio anterior (1)
+- Total General (Total entradas + Saldo anterior)
+- Total Salidas (b)
+- Saldo próximo ejercicio (2) = Total General - Total Salidas
+- En Banco (3) — debe coincidir con extracto bancario
+- En Caja Chica (4) — debe coincidir con efectivo en caja
+
+### Rubros
+Colección `rubros` en Firestore con campos: activo, esPredeterminado, fechaCreacion, nombre, orden, tipo (ingreso/gasto). Las categorías se asocian a rubros mediante campo `rubroId` en cada categoría.
+
+### Cierre de Balance
+- Colección `balance_snapshots` con índice compuesto: fechaDesde ASC + fechaHasta ASC + version DESC
+- Pueden cerrar balance: Editor y Admin (verificado via `ComisionService.esMiembroComisionDirectiva()`)
+- Regla Firestore: `allow write: if esEditor() && estaActivo()`
+
+### PDF
+- Diseño monocromático para impresión B&N
+- Paleta: negro, gris oscuro (#333), gris medio (#666), gris claro (#CCC), blanco, fondo sección (#F5F5F5)
+- Sin fondos de color oscuro, sin texto blanco sobre fondo oscuro
+- Negativos con paréntesis en lugar de rojo
+- Espacio para firma Tesorero/a al pie
+- Sin marca de agua PREVIEW
+
+### Gráficos
+- Evolución mensual (barras, fl_chart)
+- Distribución por categoría (torta)
+- Top categorías (barras horizontales)
+- Pendiente: exportación de gráficos a PDF/Excel
+
+### Excel
+- Pendiente de implementar siguiendo formato oficial de los templates del ABC.gob.ar
+
+
+---
+
+## 22. Pendiente técnico — Revisión de código
+
+Cuando el desarrollo esté más estable, hacer una sesión dedicada de revisión con Claude Code:
+1. Revisar todos los `TODO` pendientes en el código
+2. Identificar y eliminar código duplicado
+3. Verificar que todos los providers tienen `dispose()` correcto
+4. Revisar que no hay memory leaks en streams
+5. Revisar performance general de queries a Firestore
+
+
+---
+
+## 23. Pendiente — Mejora del diseño Excel del balance
+
+El Excel exportado funciona pero necesita mejoras de diseño:
+- Formato de celdas más prolijo (anchos de columna, colores de encabezado, bordes)
+- Verificar que los totales y fórmulas calculen correctamente
+- Revisar presentación del resumen al pie
+- Considerar agregar exportación de gráficos a PDF/Excel
+
+
+---
+
+## 24. Módulo Presupuestos de Proyecto
+
+### Entidad PresupuestoProyecto
+Colección `presupuestos_proyecto`. Presupuestos a nivel del Proyecto completo (cotizaciones globales), separados de los presupuestos de ítems individuales. Ilimitados por proyecto.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | string | |
+| `proyectoId` | string | |
+| `descripcion` | string | Opcional |
+| `archivos` | array\<string\> | URLs Firebase Storage. Múltiples archivos por presupuesto |
+| `usuarioId` | string | |
+| `ultimaModificacionPor` | string | Nullable |
+| `ultimaModificacionFecha` | timestamp | Nullable |
+| `fechaCreacion` | timestamp | |
+
+**Regla Firestore:** `allow read: if estaAutenticado(); allow write: if esEditor() && estaActivo()`
+
+**Path Storage:** `comprobantes/presupuestos_proyecto/{proyectoId}/{presupuestoId}/{archivo}`
+
+**UI:** Sección expandible en `proyecto_detalle_screen.dart`. Título "Presupuesto N" generado dinámicamente por posición (no almacenado). Al expandir: descripción, archivos descargables, ítems vinculados con totales, quién cargó.
+
+### Vinculación Ítems ↔ Presupuestos
+Campo `presupuestosIds` (List\<String\>) en `ItemProyecto` — un ítem puede estar incluido en múltiples presupuestos. Se selecciona mediante checkboxes en el modal de edición del ítem.
+
+### Flujo automático Gasto → Ítems
+Cuando se carga un Gasto vinculado a un Proyecto con un Presupuesto seleccionado:
+1. Se guarda el gasto con `presupuestoProyectoId`
+2. Todos los ítems que tienen ese presupuesto en `presupuestosIds` pasan automáticamente a estado `comprado`
+3. Se guarda `estadoAnterior` y `gastoQueLoActualizó` en cada ítem para poder revertir
+
+Si se elimina el gasto: los ítems vuelven a su `estadoAnterior` y se limpian los campos temporales.
+
+Campo `presupuestoProyectoId` agregado a `Gasto`.
+
+### Mejoras de navegación y UI
+- Login/Registro: ancho máximo 400px centrado, mismo diseño consistente
+- "Olvidaste tu contraseña" funcional: envía email real de reset con Firebase Auth
+- Login/Registro tienen drawer y casita en AppBar
+- Informes: tab PDF eliminada, botones "Exportar PDF" y "Exportar Excel" siempre visibles
+- Toggle Detallado/Agrupado con íconos en panel de filtros compartido (fondo blanco)
+- Ejercicio anual configurable por mes de cierre (default Abril)
+- Rubros: colección `rubros` en Firestore, asociados a categorías para organizar el balance
+- Firebase Hosting: página personalizada en `hosting/accion.html` para reset de contraseña
+

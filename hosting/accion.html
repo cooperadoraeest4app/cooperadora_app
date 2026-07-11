@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cooperadora EEST4 — Acción de cuenta</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #d6eff9;
+           display: flex; justify-content: center; align-items: center;
+           min-height: 100vh; padding: 16px; }
+    .card { background: white; border-radius: 16px; padding: 32px;
+            width: 100%; max-width: 420px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+    .header { text-align: center; margin-bottom: 24px; }
+    .header h1 { color: #1A3A5C; font-size: 20px; margin-bottom: 4px; }
+    .header p { color: #6B7A99; font-size: 14px; }
+    .icon { font-size: 48px; margin-bottom: 16px; }
+    label { display: block; font-size: 13px; color: #6B7A99; margin-bottom: 6px; margin-top: 16px; }
+    input { width: 100%; padding: 12px; border: 1px solid #b0dff0; border-radius: 8px;
+            font-size: 15px; outline: none; transition: border-color 0.2s; }
+    input:focus { border-color: #1A3A5C; }
+    button { width: 100%; padding: 14px; background: #2E9E7A; color: white;
+             border: none; border-radius: 8px; font-size: 15px; font-weight: bold;
+             cursor: pointer; margin-top: 24px; transition: background 0.2s; }
+    button:hover { background: #27876A; }
+    button:disabled { background: #b0dff0; cursor: not-allowed; }
+    .mensaje { padding: 12px; border-radius: 8px; margin-top: 16px;
+               font-size: 14px; text-align: center; display: none; }
+    .exito { background: #E8F8F1; color: #27AE60; }
+    .error { background: #FDEDEB; color: #E74C3C; }
+    .spinner { display: none; text-align: center; padding: 20px; color: #6B7A99; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="icon">🏫</div>
+      <h1>Cooperadora EEST4 Burzaco</h1>
+      <p>EEST N°4 Alte. Brown</p>
+    </div>
+
+    <div id="cargando" class="spinner">Cargando...</div>
+    <div id="contenido"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+    import { getAuth, verifyPasswordResetCode, confirmPasswordReset, applyActionCode }
+      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAl6NwARZV1DRw9uMqNaYgxx_5BTcPsjbU",
+      authDomain: "cooperadora-app.firebaseapp.com",
+      projectId: "cooperadora-app",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    const oobCode = params.get('oobCode');
+    const contenido = document.getElementById('contenido');
+    const cargando = document.getElementById('cargando');
+
+    function mostrarMensaje(texto, tipo) {
+      const div = document.createElement('div');
+      div.className = `mensaje ${tipo}`;
+      div.style.display = 'block';
+      div.textContent = texto;
+      contenido.appendChild(div);
+    }
+
+    if (mode === 'resetPassword') {
+      cargando.style.display = 'block';
+      verifyPasswordResetCode(auth, oobCode)
+        .then(email => {
+          cargando.style.display = 'none';
+          contenido.innerHTML = `
+            <h2 style="color:#1A3A5C; margin-bottom:8px;">Nueva contraseña</h2>
+            <p style="color:#6B7A99; font-size:14px; margin-bottom:16px;">
+              Establecé una nueva contraseña para <strong>${email}</strong>
+            </p>
+            <label>Nueva contraseña</label>
+            <input type="password" id="pass1" placeholder="Mínimo 8 caracteres" minlength="8">
+            <label>Confirmar contraseña</label>
+            <input type="password" id="pass2" placeholder="Repetí la contraseña">
+            <button id="btn">Cambiar contraseña</button>
+            <div id="msg"></div>
+          `;
+          document.getElementById('btn').addEventListener('click', () => {
+            const p1 = document.getElementById('pass1').value;
+            const p2 = document.getElementById('pass2').value;
+            const msg = document.getElementById('msg');
+            if (p1.length < 8) {
+              msg.className = 'mensaje error'; msg.style.display = 'block';
+              msg.textContent = 'La contraseña debe tener al menos 8 caracteres.'; return;
+            }
+            if (p1 !== p2) {
+              msg.className = 'mensaje error'; msg.style.display = 'block';
+              msg.textContent = 'Las contraseñas no coinciden.'; return;
+            }
+            const btn = document.getElementById('btn');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+            confirmPasswordReset(auth, oobCode, p1)
+              .then(() => {
+                contenido.innerHTML = `
+                  <div style="text-align:center; padding:20px;">
+                    <div style="font-size:48px">✅</div>
+                    <h2 style="color:#27AE60; margin:16px 0 8px;">¡Contraseña actualizada!</h2>
+                    <p style="color:#6B7A99;">Tu contraseña fue cambiada correctamente.
+                    Ya podés ingresar a la app con tu nueva contraseña.</p>
+                  </div>`;
+              })
+              .catch(() => {
+                btn.disabled = false; btn.textContent = 'Cambiar contraseña';
+                msg.className = 'mensaje error'; msg.style.display = 'block';
+                msg.textContent = 'Ocurrió un error. El link puede haber expirado.';
+              });
+          });
+        })
+        .catch(() => {
+          cargando.style.display = 'none';
+          mostrarMensaje('El link no es válido o ya expiró. Solicitá uno nuevo desde la app.', 'error');
+        });
+
+    } else if (mode === 'verifyEmail') {
+      cargando.style.display = 'block';
+      applyActionCode(auth, oobCode)
+        .then(() => {
+          cargando.style.display = 'none';
+          contenido.innerHTML = `
+            <div style="text-align:center; padding:20px;">
+              <div style="font-size:48px">✅</div>
+              <h2 style="color:#27AE60; margin:16px 0 8px;">¡Email verificado!</h2>
+              <p style="color:#6B7A99;">Tu email fue verificado correctamente.
+              Ya podés usar la app normalmente.</p>
+            </div>`;
+        })
+        .catch(() => {
+          cargando.style.display = 'none';
+          mostrarMensaje('El link no es válido o ya expiró.', 'error');
+        });
+
+    } else {
+      contenido.innerHTML = `
+        <div style="text-align:center; padding:20px;">
+          <p style="color:#6B7A99;">Acción no reconocida.</p>
+        </div>`;
+    }
+  </script>
+</body>
+</html>

@@ -19,6 +19,7 @@ class Gasto {
   final String? comprobante;
   final String? nroComprobante;
   final String? nroCheque;
+  final String? presupuestoProyectoId;
   final DateTime fechaCreacion;
   final String? ultimaModificacionPor;
   final DateTime? ultimaModificacionFecha;
@@ -40,6 +41,7 @@ class Gasto {
     this.comprobante,
     this.nroComprobante,
     this.nroCheque,
+    this.presupuestoProyectoId,
     required this.fechaCreacion,
     this.ultimaModificacionPor,
     this.ultimaModificacionFecha,
@@ -63,6 +65,7 @@ class Gasto {
       'comprobante': comprobante,
       'nroComprobante': nroComprobante,
       'nroCheque': nroCheque,
+      'presupuestoProyectoId': presupuestoProyectoId,
       'fechaCreacion': Timestamp.fromDate(fechaCreacion),
       'ultimaModificacionPor': ultimaModificacionPor,
       'ultimaModificacionFecha': ultimaModificacionFecha != null
@@ -91,6 +94,7 @@ class Gasto {
       comprobante: map['comprobante'] as String?,
       nroComprobante: map['nroComprobante'] as String?,
       nroCheque: map['nroCheque'] as String?,
+      presupuestoProyectoId: map['presupuestoProyectoId'] as String?,
       fechaCreacion: (map['fechaCreacion'] as Timestamp).toDate(),
       ultimaModificacionPor: map['ultimaModificacionPor'] as String?,
       ultimaModificacionFecha: map['ultimaModificacionFecha'] != null
@@ -116,6 +120,7 @@ class Gasto {
     Object? comprobante = _unset,
     Object? nroComprobante = _unset,
     Object? nroCheque = _unset,
+    Object? presupuestoProyectoId = _unset,
     DateTime? fechaCreacion,
     Object? ultimaModificacionPor = _unset,
     Object? ultimaModificacionFecha = _unset,
@@ -147,6 +152,9 @@ class Gasto {
           ? this.nroComprobante
           : nroComprobante as String?,
       nroCheque: nroCheque == _unset ? this.nroCheque : nroCheque as String?,
+      presupuestoProyectoId: presupuestoProyectoId == _unset
+          ? this.presupuestoProyectoId
+          : presupuestoProyectoId as String?,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
       ultimaModificacionPor: ultimaModificacionPor == _unset
           ? this.ultimaModificacionPor

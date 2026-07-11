@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/services/storage_service.dart';
 import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../admin/presentation/providers/usuarios_provider.dart';
@@ -14,6 +16,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../ingresos/presentation/screens/movimientos_screen.dart';
 import '../../data/repositories/proyecto_repository.dart';
 import '../../domain/models/item_proyecto.dart';
+import '../../domain/models/presupuesto_proyecto.dart';
 import '../../domain/models/proyecto.dart';
 import '../providers/proyecto_provider.dart';
 import '../../../../shared/widgets/app_drawer.dart';
@@ -445,6 +448,8 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
                   ),
                   const SizedBox(height: 12),
                   _ItemsCard(proyectoId: p.id),
+                  const SizedBox(height: 12),
+                  _PresupuestosCard(proyectoId: p.id),
                   const SizedBox(height: 12),
                   _MovimientosCard(proyecto: p),
                   const SizedBox(height: 24),
@@ -1312,11 +1317,24 @@ class _ItemsCard extends StatefulWidget {
 class _ItemsCardState extends State<_ItemsCard> {
   final _repo = ProyectoRepository();
   late final Stream<List<ItemProyecto>> _stream;
+  List<PresupuestoProyecto> _presupuestos = [];
+  StreamSubscription<List<PresupuestoProyecto>>? _presupuestosSub;
 
   @override
   void initState() {
     super.initState();
     _stream = _repo.obtenerItems(widget.proyectoId);
+    _presupuestosSub = _repo
+        .obtenerPresupuestos(widget.proyectoId)
+        .listen((list) {
+      if (mounted) setState(() => _presupuestos = list);
+    });
+  }
+
+  @override
+  void dispose() {
+    _presupuestosSub?.cancel();
+    super.dispose();
   }
 
   void _abrirModal([ItemProyecto? item]) {
@@ -1324,8 +1342,11 @@ class _ItemsCardState extends State<_ItemsCard> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) =>
-          _ModalItem(proyectoId: widget.proyectoId, item: item),
+      builder: (_) => _ModalItem(
+        proyectoId: widget.proyectoId,
+        item: item,
+        presupuestos: _presupuestos,
+      ),
     );
   }
 
@@ -1403,6 +1424,7 @@ class _ItemsCardState extends State<_ItemsCard> {
                   children: items
                       .map((item) => _ItemTile(
                             item: item,
+                            presupuestos: _presupuestos,
                             puedeGestionar: puedeGestionar,
                             onEdit: () => _abrirModal(item),
                             onDelete: () => _eliminarItem(item.id),
@@ -1460,12 +1482,14 @@ class _ChipEstado extends StatelessWidget {
 class _ItemTile extends StatelessWidget {
   const _ItemTile({
     required this.item,
+    required this.presupuestos,
     required this.puedeGestionar,
     required this.onEdit,
     required this.onDelete,
   });
 
   final ItemProyecto item;
+  final List<PresupuestoProyecto> presupuestos;
   final bool puedeGestionar;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -1565,6 +1589,25 @@ class _ItemTile extends StatelessWidget {
               const SizedBox.shrink(),
           ],
         ),
+        if (item.presupuestosIds.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Wrap(
+              spacing: 4,
+              children: item.presupuestosIds.map((pid) {
+                final idx = presupuestos.indexWhere((p) => p.id == pid);
+                if (idx == -1) return const SizedBox.shrink();
+                return Chip(
+                  label: Text('Pres. ${idx + 1}',
+                      style: const TextStyle(fontSize: 10)),
+                  backgroundColor: AppTheme.celesteFondo,
+                  side: const BorderSide(color: AppTheme.azulMedio),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                );
+              }).toList(),
+            ),
+          ),
         // ── Línea de auditoría ──
         if (auth.isLoggedIn) ...[
           const SizedBox(height: 2),
@@ -1614,10 +1657,15 @@ class _ItemTile extends StatelessWidget {
 // ── _ModalItem ────────────────────────────────────────────────────────────────
 
 class _ModalItem extends StatefulWidget {
-  const _ModalItem({required this.proyectoId, this.item});
+  const _ModalItem({
+    required this.proyectoId,
+    this.item,
+    required this.presupuestos,
+  });
 
   final String proyectoId;
   final ItemProyecto? item;
+  final List<PresupuestoProyecto> presupuestos;
 
   @override
   State<_ModalItem> createState() => _ModalItemState();
@@ -1631,6 +1679,7 @@ class _ModalItemState extends State<_ModalItem> {
   final _unidadCtrl = TextEditingController();
   final _montoCtrl = TextEditingController();
   String _estado = 'pendiente';
+  List<String> _presupuestosIds = [];
   bool _saving = false;
 
   @override
@@ -1643,6 +1692,7 @@ class _ModalItemState extends State<_ModalItem> {
       _unidadCtrl.text = item.unidad ?? '';
       _montoCtrl.text = _formatearMonto(item.montoEstimado);
       _estado = item.estado;
+      _presupuestosIds = List.from(item.presupuestosIds);
     }
   }
 
@@ -1678,6 +1728,7 @@ class _ModalItemState extends State<_ModalItem> {
             responsables: [],
             fechaCreacion: DateTime.now(),
             usuarioId: uid,
+            presupuestosIds: _presupuestosIds,
           ),
           uid,
         );
@@ -1691,6 +1742,7 @@ class _ModalItemState extends State<_ModalItem> {
             clearUnidad: unidad.isEmpty,
             montoEstimado: monto,
             estado: _estado,
+            presupuestosIds: _presupuestosIds,
           ),
           uid,
         );
@@ -1782,6 +1834,41 @@ class _ModalItemState extends State<_ModalItem> {
               ],
               onChanged: (v) => setState(() => _estado = v!),
             ),
+            if (widget.presupuestos.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Incluido en presupuestos:',
+                style: TextStyle(
+                    fontSize: 13, color: AppTheme.textoSecundario),
+              ),
+              ...widget.presupuestos.asMap().entries.map((e) {
+                final numero = e.key + 1;
+                final presupuesto = e.value;
+                final incluido = _presupuestosIds.contains(presupuesto.id);
+                return CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Presupuesto $numero'),
+                  subtitle: presupuesto.descripcion.isNotEmpty
+                      ? Text(
+                          presupuesto.descripcion,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11),
+                        )
+                      : null,
+                  value: incluido,
+                  activeColor: AppTheme.azulMedio,
+                  onChanged: (v) => setState(() {
+                    if (v == true) {
+                      _presupuestosIds.add(presupuesto.id);
+                    } else {
+                      _presupuestosIds.remove(presupuesto.id);
+                    }
+                  }),
+                );
+              }),
+            ],
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
@@ -1796,6 +1883,648 @@ class _ModalItemState extends State<_ModalItem> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── _PresupuestosCard ─────────────────────────────────────────────────────────
+
+class _PresupuestosCard extends StatefulWidget {
+  const _PresupuestosCard({required this.proyectoId});
+  final String proyectoId;
+
+  @override
+  State<_PresupuestosCard> createState() => _PresupuestosCardState();
+}
+
+class _PresupuestosCardState extends State<_PresupuestosCard> {
+  final _repo = ProyectoRepository();
+  late final Stream<List<PresupuestoProyecto>> _stream;
+  List<ItemProyecto> _items = [];
+  StreamSubscription<List<ItemProyecto>>? _itemsSub;
+  final Map<String, bool> _presupuestoExpandido = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _repo.obtenerPresupuestos(widget.proyectoId);
+    _itemsSub = _repo
+        .obtenerItems(widget.proyectoId)
+        .listen((list) {
+      if (mounted) setState(() => _items = list);
+    });
+  }
+
+  @override
+  void dispose() {
+    _itemsSub?.cancel();
+    super.dispose();
+  }
+
+  void _abrirModal([PresupuestoProyecto? presupuesto]) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _ModalPresupuesto(
+        proyectoId: widget.proyectoId,
+        presupuesto: presupuesto,
+      ),
+    );
+  }
+
+  Future<void> _eliminar(PresupuestoProyecto p) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Eliminar presupuesto?'),
+        content: const Text('Se eliminarán también los archivos adjuntos.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AppTheme.rojoGasto),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+    for (final url in p.archivos) {
+      await StorageService().eliminarComprobante(url);
+    }
+    await _repo.eliminarPresupuesto(p.id, uid);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final puedeGestionar = auth.esAdmin || auth.esEditor;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  'Presupuestos',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+                const Spacer(),
+                if (puedeGestionar)
+                  TextButton.icon(
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Agregar'),
+                    onPressed: _abrirModal,
+                  ),
+              ],
+            ),
+            StreamBuilder<List<PresupuestoProyecto>>(
+              stream: _stream,
+              builder: (ctx, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final items = snap.data ?? [];
+                if (items.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: Text(
+                        'Sin presupuestos',
+                        style: TextStyle(color: AppTheme.textoSecundario),
+                      ),
+                    ),
+                  );
+                }
+                return Column(
+                  children: items
+                      .asMap()
+                      .entries
+                      .map((e) => _PresupuestoTile(
+                            presupuesto: e.value,
+                            numero: e.key + 1,
+                            expandido:
+                                _presupuestoExpandido[e.value.id] ?? false,
+                            onToggle: () => setState(() {
+                              _presupuestoExpandido[e.value.id] =
+                                  !(_presupuestoExpandido[e.value.id] ??
+                                      false);
+                            }),
+                            items: _items,
+                            puedeGestionar: puedeGestionar,
+                            onEdit: () => _abrirModal(e.value),
+                            onDelete: () => _eliminar(e.value),
+                          ))
+                      .toList(),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── _PresupuestoTile ──────────────────────────────────────────────────────────
+
+class _PresupuestoTile extends StatelessWidget {
+  const _PresupuestoTile({
+    required this.presupuesto,
+    required this.numero,
+    required this.expandido,
+    required this.onToggle,
+    required this.items,
+    required this.puedeGestionar,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final PresupuestoProyecto presupuesto;
+  final int numero;
+  final bool expandido;
+  final VoidCallback onToggle;
+  final List<ItemProyecto> items;
+  final bool puedeGestionar;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = presupuesto;
+    final vinculados =
+        items.where((i) => i.presupuestosIds.contains(p.id)).toList();
+
+    return InkWell(
+      onTap: onToggle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header siempre visible ─────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Text(
+                        'Presupuesto $numero',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      if (p.descripcion.isNotEmpty) ...[
+                        const Text(
+                          ' — ',
+                          style:
+                              TextStyle(color: AppTheme.textoSecundario),
+                        ),
+                        Expanded(
+                          child: Text(
+                            p.descripcion,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: AppTheme.textoSecundario),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Icon(
+                  expandido ? Icons.expand_less : Icons.expand_more,
+                  color: AppTheme.textoSecundario,
+                ),
+                if (puedeGestionar)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline,
+                        size: 18, color: AppTheme.rojoGasto),
+                    onPressed: onDelete,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                        maxWidth: 32, maxHeight: 32),
+                  ),
+              ],
+            ),
+          ),
+          // ── Contenido expandido ────────────────────────────────────────
+          if (expandido)
+            Container(
+              width: double.infinity,
+              color: AppTheme.celesteFondo,
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (p.proveedor != null) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.store_outlined,
+                            size: 14, color: AppTheme.textoSecundario),
+                        const SizedBox(width: 4),
+                        Text(
+                          p.proveedor!,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: AppTheme.textoSecundario),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  if (p.monto != null) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.attach_money,
+                            size: 14, color: AppTheme.verdeIngreso),
+                        const SizedBox(width: 4),
+                        Text(
+                          _fmt(p.monto!),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.verdeIngreso,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  if (p.archivos.isNotEmpty) ...[
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: p.archivos.asMap().entries.map((e) {
+                        return ActionChip(
+                          label: Text(
+                            'Archivo ${e.key + 1}',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          avatar:
+                              const Icon(Icons.attach_file, size: 14),
+                          onPressed: () async {
+                            final uri = Uri.parse(e.value);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri,
+                                  mode: LaunchMode.externalApplication);
+                            }
+                          },
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (vinculados.isNotEmpty) ...[
+                    const Text(
+                      'Ítems incluidos:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.textoSecundario,
+                      ),
+                    ),
+                    ...vinculados.map((item) => Padding(
+                          padding: const EdgeInsets.only(left: 8, top: 4),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle,
+                                  size: 14, color: AppTheme.verdeIngreso),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(item.descripcion,
+                                    style: const TextStyle(fontSize: 12)),
+                              ),
+                              if (item.montoEstimado > 0)
+                                Text(
+                                  _fmt(item.montoEstimado),
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.textoSecundario),
+                                ),
+                            ],
+                          ),
+                        )),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total ítems vinculados:',
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w500),
+                          ),
+                          Text(
+                            _fmt(vinculados
+                                .where((i) => i.montoEstimado > 0)
+                                .fold(
+                                    0.0, (acc, i) => acc + i.montoEstimado)),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.azulMedio,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  Row(
+                    children: [
+                      NombreUsuarioWidget(
+                        usuarioId: p.usuarioId,
+                        prefijo: 'Creó: ',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textoSecundario),
+                      ),
+                      Text(
+                        ' · ${DateFormat('dd/MM/yyyy').format(p.fechaCreacion)}',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textoSecundario),
+                      ),
+                    ],
+                  ),
+                  if (puedeGestionar) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.edit_outlined, size: 16),
+                        label: const Text('Editar'),
+                        onPressed: onEdit,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.azulMedio,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          const Divider(height: 1, color: AppTheme.celesteBorde),
+        ],
+      ),
+    );
+  }
+}
+
+// ── _ModalPresupuesto ─────────────────────────────────────────────────────────
+
+class _ModalPresupuesto extends StatefulWidget {
+  const _ModalPresupuesto({required this.proyectoId, this.presupuesto});
+  final String proyectoId;
+  final PresupuestoProyecto? presupuesto;
+
+  @override
+  State<_ModalPresupuesto> createState() => _ModalPresupuestoState();
+}
+
+class _ModalPresupuestoState extends State<_ModalPresupuesto> {
+  final _repo = ProyectoRepository();
+  final _storage = StorageService();
+  final _form = GlobalKey<FormState>();
+  final _descripcionCtrl = TextEditingController();
+  final _proveedorCtrl = TextEditingController();
+  final _montoCtrl = TextEditingController();
+  List<String> _archivosExistentes = [];
+  final List<PlatformFile> _archivosNuevos = [];
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.presupuesto;
+    if (p != null) {
+      _descripcionCtrl.text = p.descripcion;
+      _proveedorCtrl.text = p.proveedor ?? '';
+      if (p.monto != null) _montoCtrl.text = _formatearMonto(p.monto!);
+      _archivosExistentes = List.from(p.archivos);
+    }
+  }
+
+  @override
+  void dispose() {
+    _descripcionCtrl.dispose();
+    _proveedorCtrl.dispose();
+    _montoCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.pickFiles(withData: true);
+    if (result == null || result.files.isEmpty) return;
+    setState(() => _archivosNuevos.add(result.files.first));
+  }
+
+  Future<void> _guardar() async {
+    if (!_form.currentState!.validate()) return;
+    setState(() => _saving = true);
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+    try {
+      final urlsNuevas = <String>[];
+      for (final f in _archivosNuevos) {
+        final url = await _storage.subirComprobante(
+          'presupuestos_proyecto/${widget.proyectoId}',
+          f.bytes!,
+          f.name,
+        );
+        urlsNuevas.add(url);
+      }
+
+      if (widget.presupuesto != null) {
+        for (final url in widget.presupuesto!.archivos) {
+          if (!_archivosExistentes.contains(url)) {
+            await _storage.eliminarComprobante(url);
+          }
+        }
+      }
+
+      final archivos = [..._archivosExistentes, ...urlsNuevas];
+      final montoStr = _montoCtrl.text.trim();
+      final monto = montoStr.isEmpty ? null : _parseMonto(montoStr);
+      final proveedorStr = _proveedorCtrl.text.trim();
+      final proveedor = proveedorStr.isEmpty ? null : proveedorStr;
+
+      if (widget.presupuesto == null) {
+        await _repo.agregarPresupuesto(
+          PresupuestoProyecto(
+            id: '',
+            proyectoId: widget.proyectoId,
+            descripcion: _descripcionCtrl.text.trim(),
+            proveedor: proveedor,
+            monto: monto,
+            archivos: archivos,
+            usuarioId: uid,
+            fechaCreacion: DateTime.now(),
+          ),
+          uid,
+        );
+      } else {
+        await _repo.actualizarPresupuesto(
+          widget.presupuesto!.copyWith(
+            descripcion: _descripcionCtrl.text.trim(),
+            proveedor: proveedor,
+            clearProveedor: proveedor == null,
+            monto: monto,
+            clearMonto: monto == null,
+            archivos: archivos,
+          ),
+          uid,
+        );
+      }
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final esNuevo = widget.presupuesto == null;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Form(
+        key: _form,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                esNuevo ? 'Agregar presupuesto' : 'Editar presupuesto',
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _descripcionCtrl,
+                decoration:
+                    const InputDecoration(labelText: 'Descripción *'),
+                textCapitalization: TextCapitalization.sentences,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Requerido' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _proveedorCtrl,
+                decoration: const InputDecoration(labelText: 'Proveedor'),
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _montoCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Monto',
+                  prefixText: '\$ ',
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [_MontoFormatter()],
+              ),
+              const SizedBox(height: 16),
+              if (_archivosExistentes.isNotEmpty) ...[
+                const Text(
+                  'Archivos adjuntos',
+                  style: TextStyle(
+                      fontSize: 12, color: AppTheme.textoSecundario),
+                ),
+                const SizedBox(height: 4),
+                ..._archivosExistentes.asMap().entries.map(
+                      (e) => ListTile(
+                        dense: true,
+                        leading:
+                            const Icon(Icons.attach_file, size: 18),
+                        title: Text(
+                          'Archivo ${e.key + 1}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close,
+                              size: 16, color: AppTheme.rojoGasto),
+                          onPressed: () => setState(() =>
+                              _archivosExistentes.removeAt(e.key)),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                const SizedBox(height: 4),
+              ],
+              if (_archivosNuevos.isNotEmpty) ...[
+                const Text(
+                  'Nuevos archivos',
+                  style: TextStyle(
+                      fontSize: 12, color: AppTheme.textoSecundario),
+                ),
+                const SizedBox(height: 4),
+                ..._archivosNuevos.asMap().entries.map(
+                      (e) => ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.upload_file,
+                            size: 18, color: AppTheme.verdeTeal),
+                        title: Text(
+                          e.value.name,
+                          style: const TextStyle(fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close,
+                              size: 16, color: AppTheme.rojoGasto),
+                          onPressed: () => setState(
+                              () => _archivosNuevos.removeAt(e.key)),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                const SizedBox(height: 4),
+              ],
+              OutlinedButton.icon(
+                icon: const Icon(Icons.attach_file, size: 16),
+                label: const Text('Adjuntar archivo'),
+                onPressed: _saving ? null : _pickFile,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _saving ? null : _guardar,
+                  child: _saving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(esNuevo ? 'Agregar' : 'Guardar'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

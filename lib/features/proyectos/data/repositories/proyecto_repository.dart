@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../shared/services/log_cambio_service.dart';
 import '../../domain/models/item_proyecto.dart';
+import '../../domain/models/presupuesto_proyecto.dart';
 import '../../domain/models/proyecto.dart';
 import '../../domain/models/tipo_proyecto.dart';
 
@@ -92,6 +93,73 @@ class ProyectoRepository {
     if (anterior != null) {
       await LogCambioService().registrar(
         entidadTipo: 'item_proyecto',
+        entidadId: id,
+        usuarioId: usuarioId,
+        accion: 'eliminacion',
+        anterior: anterior,
+        nuevo: null,
+      );
+    }
+  }
+
+  // ── Presupuestos ──────────────────────────────────────────────────────────
+
+  final _presupuestosCol =
+      FirebaseFirestore.instance.collection('presupuestos_proyecto');
+
+  Stream<List<PresupuestoProyecto>> obtenerPresupuestos(String proyectoId) {
+    return _presupuestosCol
+        .where('proyectoId', isEqualTo: proyectoId)
+        .snapshots()
+        .map((s) {
+          final list = s.docs
+              .map((d) => PresupuestoProyecto.fromMap(d.data(), d.id))
+              .toList()
+            ..sort((a, b) => a.fechaCreacion.compareTo(b.fechaCreacion));
+          return list;
+        });
+  }
+
+  Future<void> agregarPresupuesto(
+      PresupuestoProyecto presupuesto, String usuarioId) async {
+    final item = presupuesto.copyWith(usuarioId: usuarioId);
+    final ref = await _presupuestosCol.add(item.toMap());
+    await LogCambioService().registrar(
+      entidadTipo: 'presupuesto_proyecto',
+      entidadId: ref.id,
+      usuarioId: usuarioId,
+      accion: 'creacion',
+      anterior: null,
+      nuevo: item.toMap(),
+    );
+  }
+
+  Future<void> actualizarPresupuesto(
+      PresupuestoProyecto presupuesto, String usuarioId) async {
+    final snap = await _presupuestosCol.doc(presupuesto.id).get();
+    final anterior = snap.data();
+    final actualizado = presupuesto.copyWith(
+      ultimaModificacionPor: usuarioId,
+      ultimaModificacionFecha: DateTime.now(),
+    );
+    await _presupuestosCol.doc(presupuesto.id).update(actualizado.toMap());
+    await LogCambioService().registrar(
+      entidadTipo: 'presupuesto_proyecto',
+      entidadId: presupuesto.id,
+      usuarioId: usuarioId,
+      accion: 'modificacion',
+      anterior: anterior,
+      nuevo: actualizado.toMap(),
+    );
+  }
+
+  Future<void> eliminarPresupuesto(String id, String usuarioId) async {
+    final snap = await _presupuestosCol.doc(id).get();
+    final anterior = snap.data();
+    await _presupuestosCol.doc(id).delete();
+    if (anterior != null) {
+      await LogCambioService().registrar(
+        entidadTipo: 'presupuesto_proyecto',
         entidadId: id,
         usuarioId: usuarioId,
         accion: 'eliminacion',

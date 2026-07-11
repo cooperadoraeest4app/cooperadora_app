@@ -13,6 +13,8 @@ class ItemProyecto {
   final String usuarioId;
   final String? ultimaModificacionPor;
   final DateTime? ultimaModificacionFecha;
+  final List<String> presupuestosIds;
+  final double? montoPresupuestado;
 
   const ItemProyecto({
     required this.id,
@@ -27,6 +29,8 @@ class ItemProyecto {
     this.usuarioId = '',
     this.ultimaModificacionPor,
     this.ultimaModificacionFecha,
+    this.presupuestosIds = const [],
+    this.montoPresupuestado,
   });
 
   Map<String, dynamic> toMap() => {
@@ -43,6 +47,8 @@ class ItemProyecto {
           'ultimaModificacionPor': ultimaModificacionPor,
         if (ultimaModificacionFecha != null)
           'ultimaModificacionFecha': Timestamp.fromDate(ultimaModificacionFecha!),
+        'presupuestosIds': presupuestosIds,
+        if (montoPresupuestado != null) 'montoPresupuestado': montoPresupuestado,
       };
 
   factory ItemProyecto.fromMap(Map<String, dynamic> map, String id) {
@@ -64,6 +70,9 @@ class ItemProyecto {
       ultimaModificacionFecha: map['ultimaModificacionFecha'] != null
           ? ts(map['ultimaModificacionFecha'])
           : null,
+      presupuestosIds:
+          (map['presupuestosIds'] as List<dynamic>?)?.cast<String>() ?? [],
+      montoPresupuestado: (map['montoPresupuestado'] as num?)?.toDouble(),
     );
   }
 
@@ -80,6 +89,9 @@ class ItemProyecto {
     String? usuarioId,
     String? ultimaModificacionPor,
     DateTime? ultimaModificacionFecha,
+    List<String>? presupuestosIds,
+    double? montoPresupuestado,
+    bool clearMontoPresupuestado = false,
   }) =>
       ItemProyecto(
         id: id,
@@ -96,5 +108,9 @@ class ItemProyecto {
             ultimaModificacionPor ?? this.ultimaModificacionPor,
         ultimaModificacionFecha:
             ultimaModificacionFecha ?? this.ultimaModificacionFecha,
+        presupuestosIds: presupuestosIds ?? this.presupuestosIds,
+        montoPresupuestado: clearMontoPresupuestado
+            ? null
+            : (montoPresupuestado ?? this.montoPresupuestado),
       );
 }

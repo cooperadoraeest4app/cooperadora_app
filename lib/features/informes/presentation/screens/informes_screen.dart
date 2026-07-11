@@ -12,10 +12,14 @@ import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/models/balance_resultado.dart';
 import '../../domain/models/balance_snapshot.dart';
 import '../providers/informes_provider.dart';
+import '../../services/excel_service.dart';
 import '../../services/pdf_service.dart';
+import 'dart:typed_data';
+import 'package:printing/printing.dart';
 
 final _fmt = NumberFormat('#,##0.00', 'es_AR');
 final _fmtFecha = DateFormat('dd/MM/yyyy');
+final _fmtCorto = DateFormat('dd/MM');
 final _fmtMes = DateFormat('MMM yy', 'es');
 
 String _ars(double v) => '\$${_fmt.format(v)}';
@@ -46,6 +50,8 @@ class _InformesScreenState extends State<InformesScreen>
   DateTime? _desde;
   DateTime? _hasta;
   bool _calculando = false;
+  bool _exportando = false;
+  bool _vistaDetallada = true;
   int _mesCierreEjercicio = 4; // Abril por defecto
 
   DateTimeRange get _rango {
@@ -87,7 +93,7 @@ class _InformesScreenState extends State<InformesScreen>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 3, vsync: this);
+    _tabCtrl = TabController(length: 2, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
@@ -125,13 +131,77 @@ class _InformesScreenState extends State<InformesScreen>
   }
 
   void _onPeriodoChanged(String p) {
-    setState(() => _periodo = p);
+    setState(() {
+      _periodo = p;
+      _vistaDetallada = p == 'mes' ||
+          (p == 'libre' && _rango.duration.inDays <= 45);
+    });
     context.read<InformesProvider>().limpiarResultado();
+  }
+
+  String _tituloBalance() {
+    final fmt = DateFormat('MMMM yyyy', 'es');
+    switch (_periodo) {
+      case 'mes':
+        return fmt.format(_rango.start).toUpperCase();
+      case 'trimestre':
+        return 'TRIMESTRE ${DateFormat('MM/yyyy').format(_rango.start)}';
+      case 'anio':
+        return '${_rango.start.year} / ${_rango.end.year}';
+      default:
+        return '${_fmtFecha.format(_rango.start)} - ${_fmtFecha.format(_rango.end)}';
+    }
+  }
+
+  Future<void> _exportarPdf() async {
+    final resultado = context.read<InformesProvider>().resultado;
+    if (resultado == null) return;
+    try {
+      await PdfService.generarYMostrar(
+        resultado: resultado,
+        nombreCooperadora: 'Cooperadora',
+        vistaDetallada: _vistaDetallada,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Error al generar PDF: $e'),
+            backgroundColor: AppTheme.rojoGasto),
+      );
+    }
+  }
+
+  Future<void> _exportarExcel() async {
+    final resultado = context.read<InformesProvider>().resultado;
+    if (resultado == null) return;
+    setState(() => _exportando = true);
+    try {
+      final bytes = await ExcelService().generarBalance(
+        resultado: resultado,
+        vistaDetallada: _vistaDetallada,
+        titulo: _tituloBalance(),
+      );
+      await Printing.sharePdf(
+        bytes: Uint8List.fromList(bytes),
+        filename: 'balance_${DateFormat('yyyy_MM').format(DateTime.now())}.xlsx',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Error al generar Excel: $e'),
+            backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _exportando = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final rango = _rango;
+    final resultado = context.watch<InformesProvider>().resultado;
     return Scaffold(
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
@@ -151,7 +221,7 @@ class _InformesScreenState extends State<InformesScreen>
               width: 48,
               height: 48,
               child: IconButton(
-                icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                icon: Icon(Icons.home, color: Colors.white.withValues(alpha: 0.8), size: 20),
                 padding: EdgeInsets.zero,
                 onPressed: () => Navigator.pushAndRemoveUntil(
                   context,
@@ -177,17 +247,104 @@ class _InformesScreenState extends State<InformesScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Panel de filtros fijo — no scrollea
-          _PeriodoSelector(
-            periodo: _periodo,
-            desde: _desde,
-            hasta: _hasta,
-            mesCierreEjercicio: _mesCierreEjercicio,
-            onPeriodoChanged: _onPeriodoChanged,
-            onDesdeChanged: (d) => setState(() => _desde = d),
-            onHastaChanged: (h) => setState(() => _hasta = h),
-            onMesCierreChanged: (m) => setState(() => _mesCierreEjercicio = m),
-            onCalcular: _calcular,
-            isCalculating: _calculando,
+          Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: AppTheme.celesteBorde)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _PeriodoSelector(
+                  periodo: _periodo,
+                  desde: _desde,
+                  hasta: _hasta,
+                  mesCierreEjercicio: _mesCierreEjercicio,
+                  onPeriodoChanged: _onPeriodoChanged,
+                  onDesdeChanged: (d) => setState(() => _desde = d),
+                  onHastaChanged: (h) => setState(() => _hasta = h),
+                  onMesCierreChanged: (m) => setState(() => _mesCierreEjercicio = m),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                  child: Row(
+                    children: [
+                      _BotonVista(
+                        icono: Icons.format_list_bulleted,
+                        label: 'Detallado',
+                        activo: _vistaDetallada,
+                        onTap: () => setState(() => _vistaDetallada = true),
+                      ),
+                      const SizedBox(width: 8),
+                      _BotonVista(
+                        icono: Icons.summarize,
+                        label: 'Agrupado',
+                        activo: !_vistaDetallada,
+                        onTap: () => setState(() => _vistaDetallada = false),
+                      ),
+                      const Spacer(),
+                      ElevatedButton.icon(
+                        onPressed: _calculando ? null : _calcular,
+                        icon: _calculando
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.calculate),
+                        label: Text(_calculando ? 'Calculando...' : 'Calcular'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.verdeTeal,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: resultado != null ? _exportarPdf : null,
+                          icon: const Icon(Icons.picture_as_pdf),
+                          label: const Text('PDF'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.rojoGasto,
+                            side: const BorderSide(color: AppTheme.rojoGasto),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: resultado != null && !_exportando
+                              ? _exportarExcel
+                              : null,
+                          icon: _exportando
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                )
+                              : const Icon(Icons.table_chart),
+                          label: Text(_exportando ? 'Generando...' : 'Excel'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.verdeTeal,
+                            side: const BorderSide(color: AppTheme.verdeTeal),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           // TabBar fijo
           Container(
@@ -201,7 +358,6 @@ class _InformesScreenState extends State<InformesScreen>
               tabs: const [
                 Tab(icon: Icon(Icons.table_chart, size: 18), text: 'Balance'),
                 Tab(icon: Icon(Icons.bar_chart, size: 18), text: 'Gráficos'),
-                Tab(icon: Icon(Icons.picture_as_pdf, size: 18), text: 'PDF'),
               ],
             ),
           ),
@@ -210,9 +366,8 @@ class _InformesScreenState extends State<InformesScreen>
             child: TabBarView(
               controller: _tabCtrl,
               children: [
-                _BalanceTab(rango: rango, periodo: _periodo),
+                _BalanceTab(rango: rango, periodo: _periodo, vistaDetallada: _vistaDetallada),
                 _GraficosTab(rango: rango),
-                _PdfTab(rango: rango),
               ],
             ),
           ),
@@ -234,8 +389,6 @@ class _PeriodoSelector extends StatelessWidget {
     required this.onDesdeChanged,
     required this.onHastaChanged,
     required this.onMesCierreChanged,
-    required this.onCalcular,
-    required this.isCalculating,
   });
 
   final String periodo;
@@ -246,16 +399,14 @@ class _PeriodoSelector extends StatelessWidget {
   final void Function(DateTime) onDesdeChanged;
   final void Function(DateTime) onHastaChanged;
   final void Function(int) onMesCierreChanged;
-  final VoidCallback onCalcular;
-  final bool isCalculating;
 
   static const _opciones = {'mes': 'Mes', 'trimestre': 'Trimestre', 'anio': 'Año', 'libre': 'Libre'};
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppTheme.celesteFondo,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -331,22 +482,6 @@ class _PeriodoSelector extends StatelessWidget {
               ],
             ),
           ],
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            onPressed: isCalculating ? null : onCalcular,
-            icon: isCalculating
-                ? const SizedBox(
-                    width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.calculate),
-            label: Text(isCalculating ? 'Calculando...' : 'Calcular'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.verdeTeal,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 44),
-            ),
-          ),
         ],
       ),
     );
@@ -390,12 +525,61 @@ class _DateButton extends StatelessWidget {
   }
 }
 
+// ── Botón Vista (Detallado / Agrupado) ───────────────────────────────────────
+
+class _BotonVista extends StatelessWidget {
+  const _BotonVista({
+    required this.icono,
+    required this.label,
+    required this.activo,
+    required this.onTap,
+  });
+  final IconData icono;
+  final String label;
+  final bool activo;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: activo ? AppTheme.azulMedio : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: activo ? AppTheme.azulMedio : const Color(0xFFb0dff0),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icono, size: 15,
+                color: activo ? Colors.white : AppTheme.textoSecundario),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: activo ? Colors.white : AppTheme.textoSecundario,
+                fontWeight: activo ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── Tab Balance ───────────────────────────────────────────────────────────────
 
 class _BalanceTab extends StatefulWidget {
-  const _BalanceTab({required this.rango, required this.periodo});
+  const _BalanceTab({required this.rango, required this.periodo, required this.vistaDetallada});
   final DateTimeRange rango;
   final String periodo;
+  final bool vistaDetallada;
 
   @override
   State<_BalanceTab> createState() => _BalanceTabState();
@@ -483,23 +667,37 @@ class _BalanceTabState extends State<_BalanceTab> {
         // Saldo ejercicio anterior
         Row(
           children: [
-            const Expanded(
-              child: Text('Saldo ejercicio anterior:', style: TextStyle(fontWeight: FontWeight.w500)),
+            const Text(
+              'Saldo ejercicio anterior:',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textoPrincipal,
+              ),
             ),
+            const SizedBox(width: 12),
             SizedBox(
-              width: 140,
+              width: 160,
               child: TextFormField(
                 controller: _saldoCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                keyboardType: TextInputType.number,
                 textAlign: TextAlign.right,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.azulMedio,
+                ),
                 decoration: const InputDecoration(
                   prefixText: '\$ ',
                   isDense: true,
                   contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                 ),
                 onChanged: (v) {
-                  final parsed = double.tryParse(v.replaceAll(',', '.')) ?? 0;
-                  prov.setSaldoAnterior(parsed);
+                  final monto = double.tryParse(
+                        v.replaceAll('.', '').replaceAll(',', '.'),
+                      ) ??
+                      0;
+                  prov.setSaldoAnterior(monto);
                 },
               ),
             ),
@@ -517,7 +715,7 @@ class _BalanceTabState extends State<_BalanceTab> {
           ),
 
         if (prov.resultado != null) ...[
-          _ResultadoBalance(resultado: prov.resultado!),
+          _ResultadoBalance(resultado: prov.resultado!, vistaDetallada: widget.vistaDetallada),
           const SizedBox(height: 12),
 
           if (prov.snapshotsPeriodo.isNotEmpty) ...[
@@ -591,6 +789,23 @@ class _GraficosTabState extends State<_GraficosTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (resultado != null || evolucion.isNotEmpty) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Exportar gráficos: próximamente disponible')),
+              ),
+              icon: const Icon(Icons.image_outlined),
+              label: const Text('Exportar gráficos'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.azulMedio,
+                side: const BorderSide(color: AppTheme.azulMedio),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         if (evolucion.isNotEmpty) ...[
           const Text('Evolución mensual (12 meses)',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
@@ -640,120 +855,13 @@ class _GraficosTabState extends State<_GraficosTab> {
   }
 }
 
-// ── Tab PDF ───────────────────────────────────────────────────────────────────
-
-class _PdfTab extends StatelessWidget {
-  const _PdfTab({required this.rango});
-  final DateTimeRange rango;
-
-  Future<void> _exportar(BuildContext context, BalanceResultado r,
-      {BalanceSnapshot? snapshot}) async {
-    try {
-      await PdfService.generarYMostrar(
-        resultado: r,
-        nombreCooperadora: 'Cooperadora',
-        snapshot: snapshot,
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al generar PDF: $e'),
-          backgroundColor: AppTheme.rojoGasto,
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final prov = context.watch<InformesProvider>();
-    final r = prov.resultado;
-
-    if (r == null) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Calculá un balance en la pestaña Balance\npara poder exportar el PDF.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textoSecundario),
-          ),
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Balance calculado',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                const SizedBox(height: 6),
-                Text(
-                  '${_fmtFecha.format(rango.start)} — ${_fmtFecha.format(rango.end)}',
-                  style: const TextStyle(color: AppTheme.textoSecundario),
-                ),
-                const SizedBox(height: 4),
-                Text('Entradas: ${_ars(r.totalEntradas)}  ·  Salidas: ${_ars(r.totalSalidas)}',
-                    style: const TextStyle(fontSize: 13)),
-                Text(
-                  'Saldo: ${_ars(r.saldoProximoEjercicio)}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: r.saldoProximoEjercicio >= 0 ? AppTheme.verdeIngreso : AppTheme.rojoGasto,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.picture_as_pdf_outlined),
-          label: const Text('Exportar como PDF (preview)'),
-          onPressed: () => _exportar(context, r),
-          style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-        ),
-
-        if (prov.snapshotsPeriodo.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          const Text('Balances cerrados del período',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-          const SizedBox(height: 8),
-          ...prov.snapshotsPeriodo.map((s) => Card(
-                child: ListTile(
-                  leading: Icon(
-                    s.esConfiable ? Icons.check_circle_outline : Icons.warning_amber_rounded,
-                    color: s.esConfiable ? AppTheme.verdeTeal : AppTheme.amarilloAlerta,
-                  ),
-                  title: Text('v${s.version} — ${_fmtFecha.format(s.fechaCierre)}'),
-                  subtitle: Text(
-                      '${s.esConfiable ? '' : 'Banco estimado · '}Saldo: ${_ars(s.saldoProximoEjercicio)}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.picture_as_pdf_outlined),
-                    tooltip: 'Exportar PDF de este cierre',
-                    onPressed: () => _exportar(context, r, snapshot: s),
-                  ),
-                ),
-              )),
-        ],
-      ],
-    );
-  }
-}
 
 // ── Resultado del balance ─────────────────────────────────────────────────────
 
 class _ResultadoBalance extends StatelessWidget {
-  const _ResultadoBalance({required this.resultado});
+  const _ResultadoBalance({required this.resultado, required this.vistaDetallada});
   final BalanceResultado resultado;
+  final bool vistaDetallada;
 
   @override
   Widget build(BuildContext context) {
@@ -764,8 +872,12 @@ class _ResultadoBalance extends StatelessWidget {
         _SeccionBalance(titulo: 'ENTRADAS', color: AppTheme.verdeIngreso,
             rubros: r.entradas, total: r.totalEntradas),
         const SizedBox(height: 8),
-        _SeccionBalance(titulo: 'SALIDAS', color: AppTheme.rojoGasto,
-            rubros: r.salidas, total: r.totalSalidas),
+        if (vistaDetallada && r.salidasDetalle.isNotEmpty)
+          _SeccionDetalladaSalidas(
+              rubros: r.salidas, movimientos: r.salidasDetalle, total: r.totalSalidas)
+        else
+          _SeccionBalance(titulo: 'SALIDAS', color: AppTheme.rojoGasto,
+              rubros: r.salidas, total: r.totalSalidas),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
@@ -947,6 +1059,148 @@ class _RubroBalanceTileState extends State<_RubroBalanceTile> {
                 ),
               )),
       ],
+    );
+  }
+}
+
+// ── Salidas en vista Detallada ────────────────────────────────────────────────
+
+class _SeccionDetalladaSalidas extends StatelessWidget {
+  const _SeccionDetalladaSalidas({
+    required this.rubros,
+    required this.movimientos,
+    required this.total,
+  });
+  final List<RubroBalance> rubros;
+  final List<MovimientoBalance> movimientos;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    final Map<String, List<MovimientoBalance>> porRubro = {};
+    for (final m in movimientos) {
+      porRubro.putIfAbsent(m.rubroId, () => []).add(m);
+    }
+
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Cabecera
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                const Icon(Icons.arrow_upward, color: AppTheme.rojoGasto, size: 18),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('SALIDAS',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700, color: AppTheme.rojoGasto)),
+                ),
+                Text(_ars(total),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, color: AppTheme.rojoGasto)),
+              ],
+            ),
+          ),
+          // Encabezados de columna
+          Container(
+            color: AppTheme.celesteFondo,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: Row(
+              children: [
+                SizedBox(
+                    width: 44,
+                    child: Text('Fecha',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textoSecundario,
+                            fontWeight: FontWeight.w600))),
+                SizedBox(
+                    width: 56,
+                    child: Text('N° Comp.',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textoSecundario,
+                            fontWeight: FontWeight.w600))),
+                const Expanded(
+                    child: Text('Descripción',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textoSecundario,
+                            fontWeight: FontWeight.w600))),
+                Text('Monto',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textoSecundario,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+          // Filas por rubro
+          ...rubros.expand((r) {
+            final movs = porRubro[r.rubroId] ?? [];
+            if (movs.isEmpty) return <Widget>[];
+            return [
+              const Divider(height: 1, indent: 16),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.folder_outlined,
+                        size: 14, color: AppTheme.rojoGasto.withAlpha(180)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(r.nombre,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 13)),
+                    ),
+                    Text(_ars(r.total),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.rojoGasto,
+                            fontSize: 13)),
+                  ],
+                ),
+              ),
+              ...movs.map((m) => Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 44,
+                          child: Text(_fmtCorto.format(m.fecha),
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.textoSecundario)),
+                        ),
+                        SizedBox(
+                          width: 56,
+                          child: Text(m.nroComprobante ?? '—',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.textoSecundario),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        Expanded(
+                          child: Text(
+                              m.descripcion.isEmpty
+                                  ? '(sin descripción)'
+                                  : m.descripcion,
+                              style: const TextStyle(fontSize: 12),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        Text(_ars(m.monto),
+                            style: const TextStyle(
+                                fontSize: 12, color: AppTheme.rojoGasto)),
+                      ],
+                    ),
+                  )),
+            ];
+          }),
+        ],
+      ),
     );
   }
 }

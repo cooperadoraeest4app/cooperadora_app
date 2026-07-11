@@ -1,4 +1,5 @@
-﻿import 'package:file_picker/file_picker.dart';
+﻿import 'dart:async';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,8 @@ import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../cuenta_bancaria/presentation/providers/cuenta_bancaria_provider.dart';
+import '../../../proyectos/data/repositories/proyecto_repository.dart';
+import '../../../proyectos/domain/models/presupuesto_proyecto.dart';
 import '../../../proyectos/presentation/providers/proyecto_provider.dart';
 import '../../../inventario/domain/models/bien_inventario.dart';
 import '../../../inventario/presentation/providers/inventario_provider.dart';
@@ -141,6 +144,11 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   String? _tipoCuotaId;
   double? _tarifaVigente;
   final _periodoCtrl = TextEditingController();
+  // Presupuesto de proyecto
+  String? _presupuestoProyectoId;
+  List<PresupuestoProyecto> _presupuestos = [];
+  StreamSubscription<List<PresupuestoProyecto>>? _presupuestosSub;
+
   // Inventario
   bool _registrarEnInventario = false;
   String? _estadoInicialBien;
@@ -181,11 +189,15 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         orElse: () =>
             const TipoCuota(id: '', nombre: '', orden: 0, activo: false),
       );
-      if (tipoMensual.id.isEmpty) return;
-      _tipoCuotaId = tipoMensual.id;
-      final tarifa = await cuotaProv.obtenerTarifaVigente(tipoMensual.id);
-      if (tarifa != null && mounted) {
-        setState(() => _tarifaVigente = tarifa.monto);
+      if (tipoMensual.id.isNotEmpty) {
+        _tipoCuotaId = tipoMensual.id;
+        final tarifa = await cuotaProv.obtenerTarifaVigente(tipoMensual.id);
+        if (tarifa != null && mounted) {
+          setState(() => _tarifaVigente = tarifa.monto);
+        }
+      }
+      if (_proyectoId != null) {
+        _actualizarPresupuestos(_proyectoId);
       }
     });
   }
@@ -232,10 +244,12 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _recurrente = g.recurrente;
     _frecuenciaId = g.frecuenciaId;
     _proyectoId = g.proyectoId;
+    _presupuestoProyectoId = g.presupuestoProyectoId;
   }
 
   @override
   void dispose() {
+    _presupuestosSub?.cancel();
     _montoController.dispose();
     _nroComprobanteController.dispose();
     _nroChequeController.dispose();
@@ -249,6 +263,29 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _nroActaBienCtrl.dispose();
     _ubicacionBienCtrl.dispose();
     super.dispose();
+  }
+
+  void _actualizarPresupuestos(String? proyectoId) {
+    _presupuestosSub?.cancel();
+    if (proyectoId == null) {
+      setState(() {
+        _presupuestos = [];
+        _presupuestoProyectoId = null;
+      });
+      return;
+    }
+    _presupuestosSub = ProyectoRepository()
+        .obtenerPresupuestos(proyectoId)
+        .listen((list) {
+      if (!mounted) return;
+      setState(() {
+        _presupuestos = list;
+        if (_presupuestoProyectoId != null &&
+            !list.any((p) => p.id == _presupuestoProyectoId)) {
+          _presupuestoProyectoId = null;
+        }
+      });
+    });
   }
 
   Future<void> _cargarTarifaVigente() async {
@@ -414,6 +451,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           nroCheque: _nroChequeController.text.trim().isEmpty
               ? null
               : _nroChequeController.text.trim(),
+          presupuestoProyectoId: _presupuestoProyectoId,
           recurrente: _recurrente,
           frecuenciaId: _recurrente ? _frecuenciaId : null,
           proximaFecha: _recurrente ? _calcularProximaFecha() : null,
@@ -517,6 +555,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           nroCheque: _nroChequeController.text.trim().isEmpty
               ? null
               : _nroChequeController.text.trim(),
+          presupuestoProyectoId: _presupuestoProyectoId,
           recurrente: _recurrente,
           frecuenciaId: _recurrente ? _frecuenciaId : null,
           proximaFecha: _recurrente ? _calcularProximaFecha() : null,
@@ -876,8 +915,53 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                   const Text('Sin proyecto asociado'),
                   ...proyectos.map((p) => Text(p.nombre)),
                 ],
-                onChanged: (v) => setState(() => _proyectoId = v),
+                onChanged: (v) {
+                  setState(() => _proyectoId = v);
+                  _actualizarPresupuestos(v);
+                },
               ),
+              if (!_esIngreso && _proyectoId != null && _presupuestos.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String?>(
+                  key: ValueKey('pres-$_proyectoId'),
+                  initialValue: _presupuestoProyectoId,
+                  decoration: const InputDecoration(
+                    labelText: 'Presupuesto del proyecto (opcional)',
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('Sin presupuesto asociado'),
+                      ),
+                    ),
+                    ..._presupuestos.asMap().entries.map((e) =>
+                        DropdownMenuItem<String?>(
+                          value: e.value.id,
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.description,
+                                color: AppTheme.azulMedio),
+                            title: Text('Presupuesto ${e.key + 1}'),
+                            subtitle: e.value.descripcion.isNotEmpty
+                                ? Text(e.value.descripcion,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis)
+                                : null,
+                          ),
+                        )),
+                  ],
+                  selectedItemBuilder: (ctx) => [
+                    const Text('Sin presupuesto'),
+                    ..._presupuestos.asMap().entries
+                        .map((e) => Text('Presupuesto ${e.key + 1}')),
+                  ],
+                  onChanged: (v) => setState(() => _presupuestoProyectoId = v),
+                ),
+              ],
             ],
             if (_esIngreso) ...[
               if (!esCuotaSocial) ..._buildCamposIngreso(),

@@ -1,8 +1,11 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 import '../providers/auth_provider.dart' as ap;
 import 'registro_screen.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -53,8 +56,39 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Cooperadora App'),
+        backgroundColor: AppTheme.azulOscuro,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
+        ),
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.3)),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                icon: Icon(Icons.home, color: Colors.white.withValues(alpha: 0.8), size: 20),
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                ),
+              ),
+            ),
+            Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.3)),
+            const SizedBox(width: 12),
+            const Text(
+              'Ingresar',
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        actions: [const AccionAuthWidget()],
       ),
       body: SingleChildScrollView(
         child: Center(
@@ -157,12 +191,41 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 16),
                     TextButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Funcionalidad próximamente'),
-                          ),
-                        );
+                      onPressed: () async {
+                        final email = _emailController.text.trim();
+                        if (email.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Ingresá tu email primero para restablecer la contraseña',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                        try {
+                          await FirebaseAuth.instance
+                              .sendPasswordResetEmail(email: email);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Te enviamos un email a $email para restablecer tu contraseña',
+                              ),
+                              backgroundColor: AppTheme.verdeIngreso,
+                            ),
+                          );
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'No encontramos una cuenta con ese email',
+                              ),
+                              backgroundColor: AppTheme.rojoGasto,
+                            ),
+                          );
+                        }
                       },
                       child: const Text(
                         '¿Olvidaste tu contraseña?',

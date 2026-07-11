@@ -51,8 +51,9 @@ class InformesRepository {
       entGrupo[rubroId]![catId]!.add(monto);
     }
 
-    // Agrupa gastos por rubroId → categoriaId
+    // Agrupa gastos por rubroId → categoriaId + recolecta detalle individual
     final Map<String, Map<String, _Acum>> salGrupo = {};
+    final salidasDetalle = <MovimientoBalance>[];
     for (final doc in gasSnap.docs) {
       final data = doc.data();
       final catId = data['categoriaId'] as String? ?? '';
@@ -62,7 +63,16 @@ class InformesRepository {
       salGrupo.putIfAbsent(rubroId, () => {});
       salGrupo[rubroId]!.putIfAbsent(catId, () => _Acum(cNombre));
       salGrupo[rubroId]![catId]!.add(monto);
+      final ts = data['fecha'];
+      salidasDetalle.add(MovimientoBalance(
+        fecha: ts is Timestamp ? ts.toDate() : DateTime.now(),
+        nroComprobante: data['nroComprobante'] as String?,
+        descripcion: data['descripcion'] as String? ?? '',
+        monto: monto,
+        rubroId: rubroId,
+      ));
     }
+    salidasDetalle.sort((a, b) => a.fecha.compareTo(b.fecha));
 
     // Ordena rubros según el orden definido en la lista `rubros`
     List<RubroBalance> construir(Map<String, Map<String, _Acum>> grupo) {
@@ -138,6 +148,7 @@ class InformesRepository {
       saldoBanco: saldoBanco,
       fechaSaldoBanco: fechaBanco,
       saldoBancoExacto: bancoExacto,
+      salidasDetalle: salidasDetalle,
     );
   }
 

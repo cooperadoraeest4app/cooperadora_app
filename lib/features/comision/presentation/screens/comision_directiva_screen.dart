@@ -1,10 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import '../../../admin/domain/models/persona.dart';
 import '../../../admin/presentation/providers/cargo_provider.dart';
+import '../../../admin/presentation/providers/persona_provider.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 
 class ComisionDirectivaScreen extends StatefulWidget {
@@ -14,11 +15,40 @@ class ComisionDirectivaScreen extends StatefulWidget {
   State<ComisionDirectivaScreen> createState() => _ComisionDirectivaScreenState();
 }
 
-// StatefulWidget para que el botón "Reintentar" pueda llamar setState(),
-// lo que fuerza una reconstrucción y pasa un Stream nuevo al StreamBuilder.
 class _ComisionDirectivaScreenState extends State<ComisionDirectivaScreen> {
   @override
   Widget build(BuildContext context) {
+    final cargoProvider = context.watch<CargoProvider>();
+    final personaProvider = context.watch<PersonaProvider>();
+
+    Widget body;
+    if (!cargoProvider.cargado) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (cargoProvider.cargos.isEmpty) {
+      body = const Center(
+        child: Text('Sin cargos registrados',
+            style: TextStyle(color: AppTheme.textoSecundario)),
+      );
+    } else {
+      final cargos = cargoProvider.cargos;
+      body = ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: cargos.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (context, i) {
+          final cargo = cargos[i];
+          final personaId = cargo['personaId'] as String?;
+          final persona = personaId != null && personaId.isNotEmpty
+              ? personaProvider.porId(personaId)
+              : null;
+          return _CargoCard(
+            nombreCargo: cargo['nombre'] as String,
+            persona: persona,
+          );
+        },
+      );
+    }
+
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
@@ -60,181 +90,48 @@ class _ComisionDirectivaScreenState extends State<ComisionDirectivaScreen> {
         ),
         actions: [AccionAuthWidget()],
       ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: context.read<CargoProvider>().cargosStream,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline,
-                        color: AppTheme.rojoGasto, size: 48),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Error al cargar: ${snapshot.error}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppTheme.rojoGasto),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () => setState(() {}),
-                      child: const Text('Reintentar'),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-          final cargos = snapshot.data ?? [];
-          if (cargos.isEmpty) {
-            return const Center(
-              child: Text('Sin cargos registrados',
-                  style: TextStyle(color: AppTheme.textoSecundario)),
-            );
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: cargos.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (context, i) {
-              final cargo = cargos[i];
-              final personaId = cargo['personaId'] as String?;
-              return _CargoCard(cargo: cargo, personaId: personaId);
-            },
-          );
-        },
-      ),
+      body: body,
     );
   }
 }
 
-// ── Cards de cargo ────────────────────────────────────────────────────────────
+// ── Card de cargo ─────────────────────────────────────────────────────────────
 
 class _CargoCard extends StatelessWidget {
-  const _CargoCard({required this.cargo, required this.personaId});
-  final Map<String, dynamic> cargo;
-  final String? personaId;
+  const _CargoCard({required this.nombreCargo, required this.persona});
+  final String nombreCargo;
+  final Persona? persona;
 
   @override
   Widget build(BuildContext context) {
+    final fotoUrl = persona?.fotoUrl;
+    final nombre = persona?.nombreCompleto ?? '';
+
     return Card(
-      child: personaId != null && personaId!.isNotEmpty
-          ? _CardConPersona(
-              nombreCargo: cargo['nombre'] as String,
-              personaId: personaId!,
-            )
-          : _CardVacante(nombreCargo: cargo['nombre'] as String),
-    );
-  }
-}
-
-class _CardVacante extends StatelessWidget {
-  const _CardVacante({required this.nombreCargo});
-  final String nombreCargo;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: const CircleAvatar(
-        radius: 22,
-        backgroundColor: AppTheme.celesteFondo,
-        child: Icon(Icons.person_outline, color: AppTheme.textoSecundario, size: 22),
-      ),
-      title: Text(
-        nombreCargo,
-        style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textoPrincipal),
-      ),
-      subtitle: const Text('Vacante',
-          style: TextStyle(color: AppTheme.textoSecundario, fontSize: 13)),
-    );
-  }
-}
-
-class _CardConPersona extends StatefulWidget {
-  const _CardConPersona({required this.nombreCargo, required this.personaId});
-  final String nombreCargo;
-  final String personaId;
-
-  @override
-  State<_CardConPersona> createState() => _CardConPersonaState();
-}
-
-class _CardConPersonaState extends State<_CardConPersona> {
-  Map<String, dynamic>? _persona;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _cargar();
-  }
-
-  @override
-  void didUpdateWidget(_CardConPersona old) {
-    super.didUpdateWidget(old);
-    if (old.personaId != widget.personaId) _cargar();
-  }
-
-  Future<void> _cargar() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('personas')
-          .doc(widget.personaId)
-          .get();
-      if (mounted) {
-        setState(() {
-          _persona = doc.data();
-          _loading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const ListTile(
-        leading: CircleAvatar(radius: 22, backgroundColor: AppTheme.celesteFondo),
-        title: LinearProgressIndicator(),
-      );
-    }
-
-    final nombre = _persona != null
-        ? '${_persona!['nombre'] ?? ''} ${_persona!['apellido'] ?? ''}'.trim()
-        : '';
-    final fotoUrl = _persona?['fotoUrl'] as String?;
-    final inicial = nombre.isNotEmpty ? nombre[0].toUpperCase() : '?';
-
-    return ListTile(
-      leading: CircleAvatar(
-        radius: 22,
-        backgroundColor: AppTheme.celesteAccento,
-        backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
-        child: fotoUrl == null
-            ? Text(
-                inicial,
-                style: const TextStyle(
-                    color: AppTheme.azulOscuro,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14),
-              )
-            : null,
-      ),
-      title: Text(
-        widget.nombreCargo,
-        style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textoPrincipal),
-      ),
-      subtitle: Text(
-        nombre.isNotEmpty ? nombre : 'Persona no encontrada',
-        style: const TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
+      child: ListTile(
+        leading: CircleAvatar(
+          radius: 22,
+          backgroundColor: persona != null
+              ? AppTheme.celesteAccento
+              : AppTheme.celesteFondo,
+          backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
+          child: fotoUrl == null
+              ? Icon(
+                  persona != null ? null : Icons.person_outline,
+                  color: persona != null ? null : AppTheme.textoSecundario,
+                  size: 22,
+                )
+              : null,
+        ),
+        title: Text(
+          nombreCargo,
+          style: const TextStyle(
+              fontWeight: FontWeight.w600, color: AppTheme.textoPrincipal),
+        ),
+        subtitle: Text(
+          persona != null ? nombre : 'Vacante',
+          style: const TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
+        ),
       ),
     );
   }

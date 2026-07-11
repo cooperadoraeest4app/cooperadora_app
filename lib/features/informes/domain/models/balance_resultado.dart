@@ -1,3 +1,19 @@
+class MovimientoBalance {
+  final DateTime fecha;
+  final String? nroComprobante;
+  final String descripcion;
+  final double monto;
+  final String rubroId;
+
+  const MovimientoBalance({
+    required this.fecha,
+    this.nroComprobante,
+    required this.descripcion,
+    required this.monto,
+    required this.rubroId,
+  });
+}
+
 class CategoriaBalance {
   final String categoriaId;
   final String nombre;
@@ -55,6 +71,7 @@ class BalanceResultado {
   final double? saldoBanco;
   final DateTime? fechaSaldoBanco;
   final bool saldoBancoExacto;
+  final List<MovimientoBalance> salidasDetalle;
 
   const BalanceResultado({
     required this.fechaDesde,
@@ -71,5 +88,6 @@ class BalanceResultado {
     this.saldoBanco,
     this.fechaSaldoBanco,
     this.saldoBancoExacto = true,
+    this.salidasDetalle = const [],
   });
 }

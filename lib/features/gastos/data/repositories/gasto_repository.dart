@@ -37,6 +37,14 @@ class GastoRepository {
       accion: 'creacion',
       nuevo: gasto.toMap(),
     );
+    if (gasto.presupuestoProyectoId != null && gasto.proyectoId != null) {
+      await _actualizarItemsPresupuesto(
+        proyectoId: gasto.proyectoId!,
+        presupuestoId: gasto.presupuestoProyectoId!,
+        nuevoEstado: 'comprado',
+        gastoId: ref.id,
+      );
+    }
     return ref.id;
   }
 
@@ -58,6 +66,11 @@ class GastoRepository {
     final snap = await _collection.doc(id).get();
     final anterior = snap.data();
     final usuarioId = anterior?['usuarioId'] as String? ?? 'desconocido';
+
+    if (anterior?['presupuestoProyectoId'] != null) {
+      await _revertirItemsPresupuesto(gastoId: id);
+    }
+
     await _collection.doc(id).delete();
     await _log.registrar(
       entidadTipo: 'gasto',
@@ -66,5 +79,47 @@ class GastoRepository {
       accion: 'eliminacion',
       anterior: anterior,
     );
+  }
+
+  Future<void> _actualizarItemsPresupuesto({
+    required String proyectoId,
+    required String presupuestoId,
+    required String nuevoEstado,
+    required String gastoId,
+  }) async {
+    final itemsSnap = await FirebaseFirestore.instance
+        .collection('items_proyecto')
+        .where('proyectoId', isEqualTo: proyectoId)
+        .where('presupuestosIds', arrayContains: presupuestoId)
+        .get();
+    if (itemsSnap.docs.isEmpty) return;
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in itemsSnap.docs) {
+      final estadoAnterior = doc.data()['estado'] as String? ?? 'pendiente';
+      batch.update(doc.reference, {
+        'estado': nuevoEstado,
+        'estadoAnterior': estadoAnterior,
+        'gastoQueLoActualizó': gastoId,
+      });
+    }
+    await batch.commit();
+  }
+
+  Future<void> _revertirItemsPresupuesto({required String gastoId}) async {
+    final itemsSnap = await FirebaseFirestore.instance
+        .collection('items_proyecto')
+        .where('gastoQueLoActualizó', isEqualTo: gastoId)
+        .get();
+    if (itemsSnap.docs.isEmpty) return;
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in itemsSnap.docs) {
+      final estadoAnterior = doc.data()['estadoAnterior'] as String? ?? 'pendiente';
+      batch.update(doc.reference, {
+        'estado': estadoAnterior,
+        'estadoAnterior': FieldValue.delete(),
+        'gastoQueLoActualizó': FieldValue.delete(),
+      });
+    }
+    await batch.commit();
   }
 }

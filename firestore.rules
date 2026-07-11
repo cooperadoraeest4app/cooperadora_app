@@ -86,6 +86,11 @@ service cloud.firestore {
       allow write: if esEditor() && estaActivo();
     }
 
+    match /presupuestos_proyecto/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if esEditor() && estaActivo();
+    }
+
     match /ingresos/{doc} {
       allow read: if true;
       allow write: if esEditor() && estaActivo();

@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import 'package:intl/intl.dart';
@@ -55,6 +56,7 @@ class _MovimientoUnificado {
   final String? frecuenciaId;
   final DateTime? proximaFecha;
   final String? proyectoId;
+  final String? presupuestoProyectoId;
   final String? ultimaModificacionPor;
   final DateTime? ultimaModificacionFecha;
   final Ingreso? ingreso;
@@ -77,6 +79,7 @@ class _MovimientoUnificado {
     this.frecuenciaId,
     this.proximaFecha,
     this.proyectoId,
+    this.presupuestoProyectoId,
     this.ultimaModificacionPor,
     this.ultimaModificacionFecha,
     this.ingreso,
@@ -123,6 +126,7 @@ class _MovimientoUnificado {
         frecuenciaId: g.frecuenciaId,
         proximaFecha: g.proximaFecha,
         proyectoId: g.proyectoId,
+        presupuestoProyectoId: g.presupuestoProyectoId,
         ultimaModificacionPor: g.ultimaModificacionPor,
         ultimaModificacionFecha: g.ultimaModificacionFecha,
         gasto: g,
@@ -615,6 +619,7 @@ class _MovimientoTileState extends State<_MovimientoTile> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('=== TILE esIngreso=${widget.item.esIngreso} id=${widget.item.id} proyectoId=${widget.item.proyectoId} presupuestoProyectoId=${widget.item.presupuestoProyectoId}');
     final item = widget.item;
     final auth = context.watch<AuthProvider>();
     final catProvider = context.watch<CategoriaProvider>();
@@ -717,6 +722,37 @@ class _MovimientoTileState extends State<_MovimientoTile> {
             ),
           if (item.proyectoId?.isNotEmpty == true)
             _buildProyectoRow(context, item.proyectoId!),
+          if (item.presupuestoProyectoId != null && item.proyectoId != null)
+            FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              future: FirebaseFirestore.instance
+                  .collection('presupuestos_proyecto')
+                  .where('proyectoId', isEqualTo: item.proyectoId)
+                  .orderBy('fechaCreacion')
+                  .get(),
+              builder: (context, snap) {
+                debugPrint('FutureBuilder state: ${snap.connectionState}, hasData: ${snap.hasData}, error: ${snap.error}');
+                if (!snap.hasData) return const SizedBox.shrink();
+                final docs = snap.data!.docs;
+                final idx = docs.indexWhere(
+                    (d) => d.id == item.presupuestoProyectoId);
+                if (idx == -1) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.description,
+                          size: 16, color: AppTheme.textoSecundario),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Presupuesto ${idx + 1}',
+                        style: const TextStyle(
+                            fontSize: 13, color: AppTheme.textoSecundario),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           if (auth.isLoggedIn)
             _DetalleRow(
               icono: Icons.badge,
@@ -895,7 +931,7 @@ class _MovimientoTileState extends State<_MovimientoTile> {
     );
   }
 
-  Future<void> _confirmarEliminar(_MovimientoUnificado item) async {
+Future<void> _confirmarEliminar(_MovimientoUnificado item) async {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(

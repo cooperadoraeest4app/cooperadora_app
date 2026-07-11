@@ -33,6 +33,7 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
     ('cuenta_bancaria', 'Cuenta bancaria'),
     ('caja_chica', 'Caja chica'),
     ('inventario', 'Inventario'),
+    ('presupuesto_proyecto', 'Presupuesto de proyecto'),
   ];
 
   @override

@@ -1,4 +1,4 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +7,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../admin/data/repositories/invitacion_repository.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../providers/auth_provider.dart';
+import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 class RegistroScreen extends StatefulWidget {
@@ -197,23 +198,53 @@ class _RegistroScreenState extends State<RegistroScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.celesteFondo,
       drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.azulOscuro,
-        foregroundColor: AppTheme.blanco,
-        iconTheme: const IconThemeData(color: AppTheme.blanco),
-        titleTextStyle: const TextStyle(
-          color: AppTheme.blanco,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-        ),
-        title: Text(_paso == 0 ? 'Registrarse' : 'Completar registro'),
         leading: _paso == 1
             ? IconButton(
-                icon: const Icon(Icons.arrow_back),
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
                 onPressed: () => setState(() => _paso = 0),
               )
-            : null,
+            : Builder(
+                builder: (ctx) => IconButton(
+                  icon: const Icon(Icons.menu, color: Colors.white),
+                  onPressed: () => Scaffold.of(ctx).openDrawer(),
+                ),
+              ),
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.3)),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton(
+                icon: Icon(Icons.home, color: Colors.white.withValues(alpha: 0.8), size: 20),
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                ),
+              ),
+            ),
+            Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.3)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _paso == 0 ? 'Registrarse' : 'Completar registro',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [const AccionAuthWidget()],
       ),
       body: _paso == 0 ? _buildPaso1() : _buildPaso2(),
     );
@@ -223,86 +254,97 @@ class _RegistroScreenState extends State<RegistroScreen> {
 
   Widget _buildPaso1() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 40),
-          const Icon(Icons.mail_outline, size: 80, color: AppTheme.azulOscuro),
-          const SizedBox(height: 24),
-          Text(
-            'Código de invitación',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: AppTheme.textoPrincipal,
-                  fontWeight: FontWeight.w700,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 32),
+                const Icon(
+                  Icons.school,
+                  size: 80,
+                  color: AppTheme.azulOscuro,
                 ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Ingresá el código de invitación que recibiste',
-            textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: AppTheme.textoSecundario),
-          ),
-          const SizedBox(height: 40),
-          TextField(
-            controller: _codigoCtrl,
-            textAlign: TextAlign.center,
-            textCapitalization: TextCapitalization.characters,
-            maxLength: 8,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 6,
-              color: AppTheme.azulOscuro,
-            ),
-            decoration: InputDecoration(
-              labelText: 'Código de invitación',
-              hintText: 'XXXXXXXX',
-              hintStyle: TextStyle(
-                fontFamily: 'monospace',
-                letterSpacing: 6,
-                fontSize: 24,
-                color: AppTheme.textoSecundario.withAlpha(80),
-              ),
-            ),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
-              _UpperCaseFormatter(),
-            ],
-            onSubmitted: (_) => _verificarCodigo(),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.azulOscuro,
-              foregroundColor: AppTheme.blanco,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.all(Radius.circular(8)),
-              ),
-            ),
-            onPressed: _isLoading ? null : _verificarCodigo,
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.blanco,
-                    ),
-                  )
-                : const Text(
-                    'Verificar código',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                const SizedBox(height: 16),
+                Text(
+                  'Registrarse',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontSize: 26,
+                        color: AppTheme.azulOscuro,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Ingresá el código de invitación que recibiste',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: AppTheme.textoSecundario),
+                ),
+                const SizedBox(height: 40),
+                TextField(
+                  controller: _codigoCtrl,
+                  textAlign: TextAlign.center,
+                  textCapitalization: TextCapitalization.characters,
+                  maxLength: 8,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 6,
+                    color: AppTheme.azulOscuro,
                   ),
+                  decoration: InputDecoration(
+                    labelText: 'Código de invitación',
+                    hintText: 'XXXXXXXX',
+                    hintStyle: TextStyle(
+                      fontFamily: 'monospace',
+                      letterSpacing: 6,
+                      fontSize: 24,
+                      color: AppTheme.textoSecundario.withAlpha(80),
+                    ),
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                    _UpperCaseFormatter(),
+                  ],
+                  onSubmitted: (_) => _verificarCodigo(),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.verdeTeal,
+                    foregroundColor: AppTheme.blanco,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                    ),
+                  ),
+                  onPressed: _isLoading ? null : _verificarCodigo,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.blanco,
+                          ),
+                        )
+                      : const Text(
+                          'Verificar código',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -317,132 +359,166 @@ class _RegistroScreenState extends State<RegistroScreen> {
     final rol = inv['rolAsignado'] as String? ?? 'solo_lectura';
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 8),
-            _RolInfoChip(rol: rol),
-            const SizedBox(height: 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 32),
+                  const Icon(
+                    Icons.school,
+                    size: 80,
+                    color: AppTheme.azulOscuro,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Completar registro',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontSize: 26,
+                          color: AppTheme.azulOscuro,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Completá tus datos para crear tu cuenta',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(color: AppTheme.textoSecundario),
+                  ),
+                  const SizedBox(height: 24),
+                  _RolInfoChip(rol: rol),
+                  const SizedBox(height: 24),
 
-            // Nombre
-            if (nombreFijo?.isNotEmpty ?? false)
-              _CampoFijo(label: 'Nombre', valor: nombreFijo!)
-            else
-              TextFormField(
-                controller: _nombreCtrl,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Nombre *'),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Campo obligatorio' : null,
-              ),
-            const SizedBox(height: 12),
-
-            // Apellido
-            if (apellidoFijo?.isNotEmpty ?? false)
-              _CampoFijo(label: 'Apellido', valor: apellidoFijo!)
-            else
-              TextFormField(
-                controller: _apellidoCtrl,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Apellido *'),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Campo obligatorio' : null,
-              ),
-            const SizedBox(height: 12),
-
-            // Email
-            if (emailFijo?.isNotEmpty ?? false)
-              _CampoFijo(label: 'Email', valor: emailFijo!)
-            else
-              TextFormField(
-                controller: _emailCtrl,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email *'),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return 'El email es obligatorio';
-                  }
-                  if (!v.contains('@')) return 'Email inválido';
-                  return null;
-                },
-              ),
-            const SizedBox(height: 12),
-
-            // Contraseña
-            TextFormField(
-              controller: _passwordCtrl,
-              obscureText: !_verPassword,
-              decoration: InputDecoration(
-                labelText: 'Contraseña *',
-                suffixIcon: IconButton(
-                  icon: Icon(_verPassword
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined),
-                  onPressed: () =>
-                      setState(() => _verPassword = !_verPassword),
-                ),
-              ),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'La contraseña es obligatoria';
-                if (v.length < 8) return 'Mínimo 8 caracteres';
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
-
-            // Confirmar contraseña
-            TextFormField(
-              controller: _confirmCtrl,
-              obscureText: !_verConfirm,
-              decoration: InputDecoration(
-                labelText: 'Confirmar contraseña *',
-                suffixIcon: IconButton(
-                  icon: Icon(_verConfirm
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined),
-                  onPressed: () => setState(() => _verConfirm = !_verConfirm),
-                ),
-              ),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Campo obligatorio';
-                if (v != _passwordCtrl.text) {
-                  return 'Las contraseñas no coinciden';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 32),
-
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.verdeTeal,
-                foregroundColor: AppTheme.blanco,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                ),
-              ),
-              onPressed: _isLoading ? null : _crearCuenta,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppTheme.blanco,
-                      ),
-                    )
-                  : const Text(
-                      'Crear cuenta',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600),
+                  // Nombre
+                  if (nombreFijo?.isNotEmpty ?? false)
+                    _CampoFijo(label: 'Nombre', valor: nombreFijo!)
+                  else
+                    TextFormField(
+                      controller: _nombreCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Nombre *'),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Campo obligatorio' : null,
                     ),
+                  const SizedBox(height: 12),
+
+                  // Apellido
+                  if (apellidoFijo?.isNotEmpty ?? false)
+                    _CampoFijo(label: 'Apellido', valor: apellidoFijo!)
+                  else
+                    TextFormField(
+                      controller: _apellidoCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Apellido *'),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Campo obligatorio' : null,
+                    ),
+                  const SizedBox(height: 12),
+
+                  // Email
+                  if (emailFijo?.isNotEmpty ?? false)
+                    _CampoFijo(label: 'Email', valor: emailFijo!)
+                  else
+                    TextFormField(
+                      controller: _emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(labelText: 'Email *'),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'El email es obligatorio';
+                        }
+                        if (!v.contains('@')) return 'Email inválido';
+                        return null;
+                      },
+                    ),
+                  const SizedBox(height: 12),
+
+                  // Contraseña
+                  TextFormField(
+                    controller: _passwordCtrl,
+                    obscureText: !_verPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña *',
+                      prefixIcon: const Icon(Icons.lock_outlined),
+                      suffixIcon: IconButton(
+                        icon: Icon(_verPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined),
+                        onPressed: () =>
+                            setState(() => _verPassword = !_verPassword),
+                      ),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'La contraseña es obligatoria';
+                      if (v.length < 8) return 'Mínimo 8 caracteres';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Confirmar contraseña
+                  TextFormField(
+                    controller: _confirmCtrl,
+                    obscureText: !_verConfirm,
+                    decoration: InputDecoration(
+                      labelText: 'Confirmar contraseña *',
+                      prefixIcon: const Icon(Icons.lock_outlined),
+                      suffixIcon: IconButton(
+                        icon: Icon(_verConfirm
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined),
+                        onPressed: () =>
+                            setState(() => _verConfirm = !_verConfirm),
+                      ),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Campo obligatorio';
+                      if (v != _passwordCtrl.text) {
+                        return 'Las contraseñas no coinciden';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 28),
+
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.verdeTeal,
+                      foregroundColor: AppTheme.blanco,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(8)),
+                      ),
+                    ),
+                    onPressed: _isLoading ? null : _crearCuenta,
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.blanco,
+                            ),
+                          )
+                        : const Text(
+                            'Crear cuenta',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
+                  ),
+                  const SizedBox(height: 32),
+                ],
+              ),
             ),
-            const SizedBox(height: 32),
-          ],
+          ),
         ),
       ),
     );
@@ -482,8 +558,7 @@ class _RolInfoChip extends StatelessWidget {
           style: TextStyle(color: AppTheme.textoSecundario),
         ),
         Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: const BorderRadius.all(Radius.circular(12)),
@@ -519,10 +594,9 @@ class _CampoFijo extends StatelessWidget {
         const SizedBox(height: 4),
         Container(
           width: double.infinity,
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           decoration: BoxDecoration(
-            color: AppTheme.celesteFondo,
+            color: Colors.white,
             borderRadius: const BorderRadius.all(Radius.circular(8)),
             border: Border.all(color: AppTheme.celesteBorde),
           ),

@@ -26,11 +26,13 @@ class PdfService {
     required BalanceResultado resultado,
     required String nombreCooperadora,
     BalanceSnapshot? snapshot,
+    bool vistaDetallada = false,
   }) async {
     final bytes = await _generar(
       resultado: resultado,
       nombreCooperadora: nombreCooperadora,
       snapshot: snapshot,
+      vistaDetallada: vistaDetallada,
     );
     await Printing.layoutPdf(onLayout: (_) async => Uint8List.fromList(bytes));
   }
@@ -39,6 +41,7 @@ class PdfService {
     required BalanceResultado resultado,
     required String nombreCooperadora,
     BalanceSnapshot? snapshot,
+    bool vistaDetallada = false,
   }) async {
     final regular = await PdfGoogleFonts.nunitoSansRegular();
     final bold = await PdfGoogleFonts.nunitoSansBold();
@@ -93,13 +96,21 @@ class PdfService {
               ),
               pw.SizedBox(width: 12),
               pw.Expanded(
-                child: _buildColumna(
-                  titulo: 'SALIDAS',
-                  rubros: r.salidas,
-                  total: r.totalSalidas,
-                  bold: bold,
-                  regular: regular,
-                ),
+                child: vistaDetallada && r.salidasDetalle.isNotEmpty
+                    ? _buildColumnaSalidasDetallada(
+                        rubros: r.salidas,
+                        movimientos: r.salidasDetalle,
+                        total: r.totalSalidas,
+                        bold: bold,
+                        regular: regular,
+                      )
+                    : _buildColumna(
+                        titulo: 'SALIDAS',
+                        rubros: r.salidas,
+                        total: r.totalSalidas,
+                        bold: bold,
+                        regular: regular,
+                      ),
               ),
             ],
           ),
@@ -117,6 +128,15 @@ class PdfService {
               italic: italic,
             ),
           ],
+
+          pw.SizedBox(height: 8),
+          pw.Text(
+            '(*) Debe coincidir con Libro de Socios/as',
+            style: pw.TextStyle(font: italic, fontSize: 7, color: _pdfGrisMedio),
+          ),
+
+          pw.SizedBox(height: 40),
+          _buildFirma(regular: regular),
         ],
       ),
     );
@@ -389,6 +409,173 @@ class PdfService {
         'El saldo bancario es ESTIMADO y puede no coincidir con el saldo real.',
         style: pw.TextStyle(font: italic, fontSize: 8, color: _pdfGrisMedio),
       ),
+    );
+  }
+
+  // ── Columna SALIDAS detallada (transacciones individuales) ───────────────────
+
+  static pw.Widget _buildColumnaSalidasDetallada({
+    required List<RubroBalance> rubros,
+    required List<MovimientoBalance> movimientos,
+    required double total,
+    required pw.Font bold,
+    required pw.Font regular,
+  }) {
+    final fmt = DateFormat('dd/MM');
+    final Map<String, List<MovimientoBalance>> porRubro = {};
+    for (final m in movimientos) {
+      porRubro.putIfAbsent(m.rubroId, () => []).add(m);
+    }
+
+    pw.Widget filaMovimiento(MovimientoBalance m) => pw.Padding(
+          padding: const pw.EdgeInsets.fromLTRB(8, 2, 8, 2),
+          child: pw.Row(children: [
+            pw.SizedBox(
+              width: 26,
+              child: pw.Text(fmt.format(m.fecha),
+                  style: pw.TextStyle(
+                      font: regular, fontSize: 7, color: _pdfGrisMedio)),
+            ),
+            pw.SizedBox(
+              width: 32,
+              child: pw.Text(m.nroComprobante ?? '—',
+                  style: pw.TextStyle(
+                      font: regular, fontSize: 7, color: _pdfGrisMedio),
+                  maxLines: 1),
+            ),
+            pw.Expanded(
+              child: pw.Text(
+                  m.descripcion.isEmpty ? '(sin descripción)' : m.descripcion,
+                  style: pw.TextStyle(font: regular, fontSize: 7),
+                  maxLines: 1,
+                  overflow: pw.TextOverflow.clip),
+            ),
+            pw.SizedBox(
+              width: 44,
+              child: pw.Text(_ars(m.monto),
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                      font: regular, fontSize: 7, color: _pdfGrisMedio)),
+            ),
+          ]),
+        );
+
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: _pdfGrisClaro),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          // Cabecera
+          pw.Container(
+            decoration: const pw.BoxDecoration(
+              color: _pdfFondoSeccion,
+              border: pw.Border(
+                  left: pw.BorderSide(color: _pdfGrisOscuro, width: 3)),
+            ),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: pw.Text('SALIDAS',
+                style: pw.TextStyle(
+                    font: bold, fontSize: 11, color: _pdfGrisOscuro)),
+          ),
+          // Encabezados columna
+          pw.Container(
+            color: _pdfFondoSeccion,
+            padding: const pw.EdgeInsets.fromLTRB(8, 3, 8, 3),
+            child: pw.Row(children: [
+              pw.SizedBox(
+                  width: 26,
+                  child: pw.Text('Fecha',
+                      style: pw.TextStyle(
+                          font: bold, fontSize: 7, color: _pdfGrisMedio))),
+              pw.SizedBox(
+                  width: 32,
+                  child: pw.Text('N°Comp.',
+                      style: pw.TextStyle(
+                          font: bold, fontSize: 7, color: _pdfGrisMedio))),
+              pw.Expanded(
+                  child: pw.Text('Descripción',
+                      style: pw.TextStyle(
+                          font: bold, fontSize: 7, color: _pdfGrisMedio))),
+              pw.SizedBox(
+                  width: 44,
+                  child: pw.Text('Monto',
+                      textAlign: pw.TextAlign.right,
+                      style: pw.TextStyle(
+                          font: bold, fontSize: 7, color: _pdfGrisMedio))),
+            ]),
+          ),
+          // Rubros con transacciones
+          ...rubros.expand((r) {
+            final movs = porRubro[r.rubroId] ?? [];
+            if (movs.isEmpty) return <pw.Widget>[];
+            return [
+              pw.Container(
+                color: _pdfFondoSeccion,
+                padding: const pw.EdgeInsets.fromLTRB(8, 4, 8, 4),
+                child: pw.Row(children: [
+                  pw.Expanded(
+                    child: pw.Text(r.nombre.toUpperCase(),
+                        style: pw.TextStyle(
+                            font: bold, fontSize: 8, color: _pdfGrisOscuro)),
+                  ),
+                  pw.Text(_ars(r.total),
+                      style: pw.TextStyle(
+                          font: bold, fontSize: 8, color: _pdfGrisOscuro)),
+                ]),
+              ),
+              ...movs.map(filaMovimiento),
+            ];
+          }),
+          // Total
+          pw.Container(
+            decoration: const pw.BoxDecoration(
+              color: _pdfFondoSeccion,
+              border: pw.Border(
+                  top: pw.BorderSide(color: _pdfGrisClaro, width: 0.5)),
+            ),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('TOTAL',
+                    style: pw.TextStyle(
+                        font: bold, fontSize: 9, color: _pdfGrisOscuro)),
+                pw.Text(_ars(total),
+                    style: pw.TextStyle(
+                        font: bold, fontSize: 9, color: _pdfGrisOscuro)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Firma ─────────────────────────────────────────────────────────────────────
+
+  static pw.Widget _buildFirma({required pw.Font regular}) {
+    pw.Widget linea(String cargo) => pw.Expanded(
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Divider(color: _pdfGrisClaro, thickness: 0.5),
+              pw.SizedBox(height: 4),
+              pw.Text(cargo,
+                  style: pw.TextStyle(
+                      font: regular, fontSize: 8, color: _pdfGrisMedio)),
+            ],
+          ),
+        );
+
+    return pw.Row(
+      children: [
+        linea('Firma Tesorero/a'),
+        pw.SizedBox(width: 40),
+        linea('Firma Presidente/a'),
+      ],
     );
   }
 }
