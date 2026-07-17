@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../../data/repositories/cuota_repository.dart';
 import '../../domain/models/cuota.dart';
@@ -8,6 +9,7 @@ import '../../domain/models/tipo_cuota.dart';
 class CuotaProvider extends ChangeNotifier {
   final _repo = CuotaRepository();
 
+  StreamSubscription? _authSub;
   StreamSubscription<List<TipoCuota>>? _tiposSub;
   StreamSubscription<List<TarifaCuota>>? _tarifasSub;
 
@@ -17,6 +19,19 @@ class CuotaProvider extends ChangeNotifier {
   String? error;
 
   CuotaProvider() {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        _arrancar();
+      } else {
+        _detener();
+      }
+    });
+  }
+
+  void _arrancar() {
+    _tiposSub?.cancel();
+    _tarifasSub?.cancel();
+
     _tiposSub = _repo.obtenerTiposCuota().listen(
       (list) {
         tiposCuota = list;
@@ -27,6 +42,7 @@ class CuotaProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+
     _tarifasSub = _repo.obtenerTarifas().listen(
       (list) {
         tarifas = list;
@@ -37,11 +53,24 @@ class CuotaProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+
     _repo.inicializarDatosDefault();
+  }
+
+  void _detener() {
+    _tiposSub?.cancel();
+    _tarifasSub?.cancel();
+    _tiposSub = null;
+    _tarifasSub = null;
+    tiposCuota = [];
+    tarifas = [];
+    error = null;
+    notifyListeners();
   }
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _tiposSub?.cancel();
     _tarifasSub?.cancel();
     super.dispose();

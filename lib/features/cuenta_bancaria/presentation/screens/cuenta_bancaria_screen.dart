@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/services/log_cambio_service.dart';
 import '../../../../shared/services/storage_service.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/nombre_usuario_widget.dart';
@@ -323,6 +324,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen>
     final provider = context.watch<CuentaBancariaProvider>();
     final auth = context.watch<AuthProvider>();
     final esAdmin = auth.esAdmin;
+    final puedeConfirmar = auth.esAdmin || auth.esEditor;
     final cuenta = provider.cuenta;
 
     // Pre-fill saldo when cuenta loads for the first time
@@ -390,7 +392,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen>
               children: [
                 (cuenta == null || _editandoCuenta)
                     ? _buildSinCuenta(esAdmin, provider.isSaving)
-                    : _buildConCuenta(cuenta, esAdmin, provider),
+                    : _buildConCuenta(cuenta, esAdmin, provider, puedeConfirmar),
                 SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -557,6 +559,7 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen>
     CuentaBancaria cuenta,
     bool esAdmin,
     CuentaBancariaProvider provider,
+    bool puedeConfirmar,
   ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -594,7 +597,11 @@ class _CuentaBancariaScreenState extends State<CuentaBancariaScreen>
             ),
           ],
           const SizedBox(height: 16),
-          _HistorialCard(movimientos: provider.movimientos, esAdmin: esAdmin),
+          _HistorialCard(
+            movimientos: provider.movimientos,
+            esAdmin: esAdmin,
+            puedeConfirmar: puedeConfirmar,
+          ),
           const SizedBox(height: 32),
         ],
       ),
@@ -1029,10 +1036,15 @@ const _mesesEs = [
 ];
 
 class _HistorialCard extends StatefulWidget {
-  const _HistorialCard({required this.movimientos, required this.esAdmin});
+  const _HistorialCard({
+    required this.movimientos,
+    required this.esAdmin,
+    required this.puedeConfirmar,
+  });
 
   final List<MovimientoBancario> movimientos;
   final bool esAdmin;
+  final bool puedeConfirmar;
 
   @override
   State<_HistorialCard> createState() => _HistorialCardState();
@@ -1186,7 +1198,10 @@ class _HistorialCardState extends State<_HistorialCard> {
           itemCount: ultimos.length,
           separatorBuilder: (_, _) => const Divider(height: 1),
           itemBuilder: (_, i) => _MovimientoTile(
-              movimiento: ultimos[i], esAdmin: widget.esAdmin),
+              movimiento: ultimos[i],
+              esAdmin: widget.esAdmin,
+              puedeConfirmar: widget.puedeConfirmar,
+            ),
         ),
         if (widget.movimientos.length > 6) ...[
           const SizedBox(height: 8),
@@ -1431,7 +1446,10 @@ class _HistorialCardState extends State<_HistorialCard> {
                 itemCount: pagina.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, i) => _MovimientoTile(
-                    movimiento: pagina[i], esAdmin: widget.esAdmin),
+                  movimiento: pagina[i],
+                  esAdmin: widget.esAdmin,
+                  puedeConfirmar: widget.puedeConfirmar,
+                ),
               ),
               if (totalPaginas > 1) ...[
                 const SizedBox(height: 8),
@@ -1895,11 +1913,15 @@ class _MovimientoCajaChicaTileState extends State<_MovimientoCajaChicaTile> {
 }
 
 class _MovimientoTile extends StatefulWidget {
-  const _MovimientoTile(
-      {required this.movimiento, required this.esAdmin});
+  const _MovimientoTile({
+    required this.movimiento,
+    required this.esAdmin,
+    required this.puedeConfirmar,
+  });
 
   final MovimientoBancario movimiento;
   final bool esAdmin;
+  final bool puedeConfirmar;
 
   @override
   State<_MovimientoTile> createState() => _MovimientoTileState();
@@ -1909,6 +1931,36 @@ class _MovimientoTileState extends State<_MovimientoTile> {
   bool _expandido = false;
 
   String _fmt(double? v) => v != null ? '\$${_doubleToArgentino(v)}' : '-';
+
+  Future<void> _confirmarMovimiento(BuildContext context) async {
+    final usuarioId = context.read<AuthProvider>().currentUser?.uid ?? '';
+    final movimientoId = widget.movimiento.id;
+    await FirebaseFirestore.instance
+        .collection('cuenta_bancaria')
+        .doc('cuenta_principal')
+        .collection('movimientos')
+        .doc(movimientoId)
+        .update({
+      'confirmado': true,
+      'usuarioConfirmacionId': usuarioId,
+      'fechaConfirmacion': FieldValue.serverTimestamp(),
+    });
+    await LogCambioService().registrar(
+      entidadTipo: 'cuenta_bancaria',
+      entidadId: movimientoId,
+      usuarioId: usuarioId,
+      accion: 'confirmacion_deposito',
+      nuevo: {'confirmado': true, 'movimientoId': movimientoId},
+    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Movimiento confirmado'),
+          backgroundColor: AppTheme.verdeIngreso,
+        ),
+      );
+    }
+  }
 
   String _fmtFecha(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/'
@@ -1947,10 +1999,23 @@ class _MovimientoTileState extends State<_MovimientoTile> {
   Widget build(BuildContext context) {
     final mov = widget.movimiento;
     final esResumen = mov.tipo == 'resumen_mensual';
+    final esDeposito = mov.tipoOrigen == 'deposito_caja_chica';
+    final esPendiente = esDeposito && mov.confirmado == false;
     final tieneDescarga =
         mov.archivo != null && mov.archivo!.startsWith('http');
     final tieneObs =
         mov.observaciones != null && mov.observaciones!.isNotEmpty;
+
+    final String titulo = esResumen
+        ? 'Resumen ${mov.periodo ?? ''}'
+        : esDeposito
+            ? 'Depósito desde Caja Chica'
+            : 'Actualización de saldo';
+    final IconData icono = esResumen
+        ? Icons.description_outlined
+        : esDeposito
+            ? Icons.account_balance
+            : Icons.account_balance_wallet_outlined;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1962,13 +2027,7 @@ class _MovimientoTileState extends State<_MovimientoTile> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(right: 12, top: 2),
-                child: Icon(
-                  esResumen
-                      ? Icons.description_outlined
-                      : Icons.account_balance_wallet_outlined,
-                  size: 20,
-                  color: AppTheme.azulMedio,
-                ),
+                child: Icon(icono, size: 20, color: AppTheme.azulMedio),
               ),
               Expanded(
                 child: Column(
@@ -1978,9 +2037,7 @@ class _MovimientoTileState extends State<_MovimientoTile> {
                       children: [
                         Expanded(
                           child: Text(
-                            esResumen
-                                ? 'Resumen ${mov.periodo ?? ''}'
-                                : 'Actualización de saldo',
+                            titulo,
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
@@ -2025,6 +2082,30 @@ class _MovimientoTileState extends State<_MovimientoTile> {
                         prefijo: 'Por: ',
                         style: const TextStyle(
                             color: AppTheme.textoSecundario, fontSize: 11),
+                      ),
+                    if (mov.confirmado == true &&
+                        mov.usuarioConfirmacionId != null)
+                      Row(
+                        children: [
+                          NombreUsuarioWidget(
+                            usuarioId: mov.usuarioConfirmacionId!,
+                            prefijo: 'Confirmado por: ',
+                            style: const TextStyle(
+                                fontSize: 11, color: AppTheme.verdeTeal),
+                          ),
+                          if (mov.fechaConfirmacion != null) ...[
+                            const Text(' · ',
+                                style: TextStyle(
+                                    color: AppTheme.textoSecundario,
+                                    fontSize: 11)),
+                            Text(
+                              DateFormat('dd/MM/yyyy')
+                                  .format(mov.fechaConfirmacion!),
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppTheme.verdeTeal),
+                            ),
+                          ],
+                        ],
                       ),
                   ],
                 ),
@@ -2078,6 +2159,38 @@ class _MovimientoTileState extends State<_MovimientoTile> {
                     fontSize: 12,
                   ),
                 ),
+              ),
+            ),
+          if (esPendiente)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber,
+                      color: AppTheme.amarilloAlerta, size: 16),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Pendiente de confirmación',
+                    style: TextStyle(
+                        color: AppTheme.amarilloAlerta, fontSize: 12),
+                  ),
+                  const Spacer(),
+                  if (widget.puedeConfirmar)
+                    TextButton(
+                      onPressed: () => _confirmarMovimiento(context),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Confirmar',
+                        style: TextStyle(
+                            color: AppTheme.verdeTeal, fontSize: 12),
+                      ),
+                    ),
+                ],
               ),
             ),
         ],
@@ -2171,11 +2284,35 @@ class _ModalDepositoBancarioState extends State<_ModalDepositoBancario> {
         backgroundColor: AppTheme.rojoGasto,
       ));
     } else {
-      Navigator.pop(context);
-      messenger.showSnackBar(const SnackBar(
-        content: Text('Depósito realizado correctamente'),
-        backgroundColor: AppTheme.verdeIngreso,
-      ));
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Row(
+            children: const [
+              Icon(Icons.info_outline, color: AppTheme.amarilloAlerta),
+              SizedBox(width: 8),
+              Text('Depósito registrado'),
+            ],
+          ),
+          content: Text(
+            'El depósito de \$${_doubleToArgentino(monto)} fue registrado '
+            'en Caja Chica y el saldo de Cuenta Bancaria fue actualizado '
+            'provisionalmente.\n\n'
+            'Recordá verificar que el depósito se acreditó en el extracto '
+            'bancario y confirmarlo en el historial.',
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.verdeTeal),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+      if (mounted) Navigator.pop(context);
     }
   }
 

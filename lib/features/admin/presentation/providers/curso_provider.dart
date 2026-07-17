@@ -11,10 +11,10 @@ class CursoProvider extends ChangeNotifier {
   List<Curso> todos = [];
   List<Curso> activos = [];
   bool isLoading = true;
-  bool isSaving = false;
   String? error;
 
   CursoProvider() {
+    _repo.inicializarDatosDefault().catchError((_) {});
     _sub = _repo.obtenerTodos().listen(
       (list) {
         todos = list;
@@ -46,37 +46,18 @@ class CursoProvider extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> agregar(Curso curso) async {
-    isSaving = true;
-    error = null;
-    notifyListeners();
+  Future<void> activarDesactivar(String id, bool activo) async {
     try {
-      await _repo.agregar(curso);
+      await _repo.activarDesactivar(id, activo);
     } catch (e) {
       error = e.toString();
-    } finally {
-      isSaving = false;
       notifyListeners();
     }
   }
 
   Future<void> actualizar(Curso curso) async {
-    isSaving = true;
-    error = null;
-    notifyListeners();
     try {
       await _repo.actualizar(curso);
-    } catch (e) {
-      error = e.toString();
-    } finally {
-      isSaving = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> activarDesactivar(String id, bool activo) async {
-    try {
-      await _repo.activarDesactivar(id, activo);
     } catch (e) {
       error = e.toString();
       notifyListeners();

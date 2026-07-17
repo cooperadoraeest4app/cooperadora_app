@@ -619,7 +619,6 @@ class _MovimientoTileState extends State<_MovimientoTile> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('=== TILE esIngreso=${widget.item.esIngreso} id=${widget.item.id} proyectoId=${widget.item.proyectoId} presupuestoProyectoId=${widget.item.presupuestoProyectoId}');
     final item = widget.item;
     final auth = context.watch<AuthProvider>();
     final catProvider = context.watch<CategoriaProvider>();
@@ -730,7 +729,6 @@ class _MovimientoTileState extends State<_MovimientoTile> {
                   .orderBy('fechaCreacion')
                   .get(),
               builder: (context, snap) {
-                debugPrint('FutureBuilder state: ${snap.connectionState}, hasData: ${snap.hasData}, error: ${snap.error}');
                 if (!snap.hasData) return const SizedBox.shrink();
                 final docs = snap.data!.docs;
                 final idx = docs.indexWhere(

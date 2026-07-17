@@ -6,8 +6,9 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../admin/data/repositories/invitacion_repository.dart';
 import '../../../home/presentation/screens/home_screen.dart';
+import '../../../socios/data/repositories/socio_repository.dart';
+import '../../../socios/domain/models/socio.dart';
 import '../providers/auth_provider.dart';
-import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 class RegistroScreen extends StatefulWidget {
@@ -34,6 +35,9 @@ class _RegistroScreenState extends State<RegistroScreen> {
   final _confirmCtrl = TextEditingController();
   bool _verPassword = false;
   bool _verConfirm = false;
+  final _dniCtrl = TextEditingController();
+  final _telefonoCtrl = TextEditingController();
+  DateTime? _fechaNacimiento;
 
   @override
   void dispose() {
@@ -43,6 +47,8 @@ class _RegistroScreenState extends State<RegistroScreen> {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
+    _dniCtrl.dispose();
+    _telefonoCtrl.dispose();
     super.dispose();
   }
 
@@ -92,6 +98,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
       _nombreCtrl.text = inv['nombreDestino'] as String? ?? '';
       _apellidoCtrl.text = inv['apellidoDestino'] as String? ?? '';
       _emailCtrl.text = inv['emailDestino'] as String? ?? '';
+      _telefonoCtrl.text = inv['telefonoDestino'] as String? ?? '';
 
       setState(() {
         _invitacion = inv;
@@ -108,6 +115,36 @@ class _RegistroScreenState extends State<RegistroScreen> {
 
   Future<void> _crearCuenta() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_telefonoCtrl.text.trim().isEmpty || _fechaNacimiento == null) {
+      final continuar = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Completá tu perfil'),
+          content: Text(
+            'Para un mejor registro te recomendamos completar:'
+            '${_telefonoCtrl.text.trim().isEmpty ? "\n• Teléfono" : ""}'
+            '${_fechaNacimiento == null ? "\n• Fecha de nacimiento" : ""}'
+            '\n\nPodés agregarlos ahora o más tarde desde tu perfil.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Completar ahora'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.verdeTeal,
+                foregroundColor: AppTheme.blanco,
+              ),
+              child: const Text('Continuar igual'),
+            ),
+          ],
+        ),
+      );
+      if (continuar != true) return;
+    }
 
     final inv = _invitacion!;
     final nombreFijo = inv['nombreDestino'] as String?;
@@ -137,8 +174,9 @@ class _RegistroScreenState extends State<RegistroScreen> {
         'nombre': nombre,
         'apellido': apellido,
         'email': email,
-        if ((inv['telefonoDestino'] as String?)?.isNotEmpty ?? false)
-          'telefono': inv['telefonoDestino'],
+        'dni': _dniCtrl.text.trim(),
+        if (_telefonoCtrl.text.trim().isNotEmpty) 'telefono': _telefonoCtrl.text.trim(),
+        if (_fechaNacimiento != null) 'fechaNacimiento': Timestamp.fromDate(_fechaNacimiento!),
         'activo': true,
         'fechaCreacion': Timestamp.now(),
       });
@@ -162,6 +200,20 @@ class _RegistroScreenState extends State<RegistroScreen> {
             .collection('invitaciones')
             .doc(invId)
             .update({'usos': FieldValue.increment(1)});
+      }
+
+      final esSocio = inv['esSocio'] as bool? ?? false;
+      final tipoSocioInv = inv['tipoSocio'] as String?;
+      if (esSocio && tipoSocioInv != null) {
+        await SocioRepository().agregar(Socio(
+          id: '',
+          personaId: personaRef.id,
+          tipoSocio: tipoSocioInv,
+          numeroSocio: 0,
+          activo: true,
+          fechaIngreso: DateTime.now(),
+          usuarioId: uid,
+        ));
       }
 
       if (!mounted) return;
@@ -244,7 +296,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
             ),
           ],
         ),
-        actions: [const AccionAuthWidget()],
+        actions: const [SizedBox.shrink()],
       ),
       body: _paso == 0 ? _buildPaso1() : _buildPaso2(),
     );
@@ -423,6 +475,17 @@ class _RegistroScreenState extends State<RegistroScreen> {
                     ),
                   const SizedBox(height: 12),
 
+                  // DNI
+                  TextFormField(
+                    controller: _dniCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(labelText: 'DNI *'),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'El DNI es obligatorio' : null,
+                  ),
+                  const SizedBox(height: 12),
+
                   // Email
                   if (emailFijo?.isNotEmpty ?? false)
                     _CampoFijo(label: 'Email', valor: emailFijo!)
@@ -486,6 +549,50 @@ class _RegistroScreenState extends State<RegistroScreen> {
                       }
                       return null;
                     },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Teléfono (opcional)
+                  TextFormField(
+                    controller: _telefonoCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: 'Teléfono (opcional)'),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Fecha de nacimiento (opcional)
+                  InkWell(
+                    onTap: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        initialDate: _fechaNacimiento ?? DateTime(2000),
+                        firstDate: DateTime(1900),
+                        lastDate: DateTime.now(),
+                      );
+                      if (d != null) setState(() => _fechaNacimiento = d);
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Fecha de nacimiento (opcional)',
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _fechaNacimiento == null
+                                ? 'Opcional'
+                                : '${_fechaNacimiento!.day.toString().padLeft(2, '0')}/${_fechaNacimiento!.month.toString().padLeft(2, '0')}/${_fechaNacimiento!.year}',
+                            style: TextStyle(
+                              color: _fechaNacimiento == null
+                                  ? AppTheme.textoSecundario
+                                  : AppTheme.textoPrincipal,
+                            ),
+                          ),
+                          const Icon(Icons.calendar_today_outlined,
+                              size: 16, color: AppTheme.azulMedio),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 28),
 

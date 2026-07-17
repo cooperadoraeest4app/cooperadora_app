@@ -28,13 +28,23 @@ class SocioRepository {
     });
   }
 
-  Future<int> _siguienteNumeroSocio() async {
+  Future<int> siguienteNumeroSocio() async {
     final snap = await _col.get();
     return snap.docs.length + 1;
   }
 
   Future<String> agregar(Socio socio) async {
-    final numeroSocio = await _siguienteNumeroSocio();
+    final existente = await _col
+        .where('personaId', isEqualTo: socio.personaId)
+        .limit(1)
+        .get();
+    if (existente.docs.isNotEmpty) {
+      final nro = existente.docs.first.data()['numeroSocio'];
+      throw Exception(
+          'Esta persona ya está registrada como socia (N° $nro)');
+    }
+
+    final numeroSocio = await siguienteNumeroSocio();
     final conNumero = socio.copyWith(numeroSocio: numeroSocio);
     final ref = await _col.add(conNumero.toMap());
     await LogCambioService().registrar(

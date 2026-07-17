@@ -7,6 +7,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../providers/invitacion_provider.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class InvitacionesScreen extends StatelessWidget {
   const InvitacionesScreen({super.key});
@@ -136,6 +137,15 @@ class _InvitacionCard extends StatelessWidget {
     final usos = invitacion['usos'] as int? ?? 0;
     final limiteUsos = invitacion['limiteUsos'] as int?;
     final fechaVenc = invitacion['fechaVencimiento'];
+    final esSocio = invitacion['esSocio'] as bool? ?? false;
+    final tipoSocioCard = invitacion['tipoSocio'] as String?;
+
+    String tipoSocioLabel(String t) => switch (t) {
+      'activo' => 'activo',
+      'adherente' => 'adherente',
+      'honorario' => 'honorario',
+      _ => t,
+    };
 
     final nombreCompleto = [nombreDestino, apellidoDestino]
         .where((s) => s?.isNotEmpty ?? false)
@@ -161,6 +171,15 @@ class _InvitacionCard extends StatelessWidget {
                 _TipoChip(tipo: tipo),
                 const SizedBox(width: 8),
                 _RolChip(rol: rol),
+                if (esSocio) ...[
+                  const SizedBox(width: 8),
+                  _TagSmall(
+                    label: tipoSocioCard != null
+                        ? 'Socio ${tipoSocioLabel(tipoSocioCard)}'
+                        : 'Socio',
+                    color: AppTheme.verdeTeal,
+                  ),
+                ],
                 if (usada && tipo == 'individual') ...[
                   const SizedBox(width: 8),
                   _TagSmall(
@@ -389,7 +408,9 @@ class _CrearInvitacionSheet extends StatefulWidget {
 class _CrearInvitacionSheetState extends State<_CrearInvitacionSheet> {
   final _formKey = GlobalKey<FormState>();
   String _tipo = 'individual';
-  String _rol = 'editor';
+  String _rol = 'consultante';
+  bool _esSocio = false;
+  String? _tipoSocio;
 
   final _nombreCtrl = TextEditingController();
   final _apellidoCtrl = TextEditingController();
@@ -427,6 +448,8 @@ class _CrearInvitacionSheetState extends State<_CrearInvitacionSheet> {
             ? int.tryParse(_limiteUsosCtrl.text)
             : null,
         fechaVencimiento: _fechaVencimiento,
+        esSocio: _esSocio,
+        tipoSocio: _esSocio ? _tipoSocio : null,
       );
       widget.onCreada(codigo);
     } catch (_) {
@@ -534,20 +557,85 @@ class _CrearInvitacionSheetState extends State<_CrearInvitacionSheet> {
               ),
               const SizedBox(height: 12),
             ],
-            DropdownButtonFormField<String>(
-              initialValue: _rol,
-              decoration:
-                  const InputDecoration(labelText: 'Rol asignado'),
-              items: const [
-                DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                DropdownMenuItem(value: 'editor', child: Text('Editor')),
-                DropdownMenuItem(
-                    value: 'solo_lectura', child: Text('Solo lectura')),
-                DropdownMenuItem(
-                    value: 'consultante', child: Text('Consultante')),
-              ],
-              onChanged: (v) => setState(() => _rol = v!),
+            Builder(builder: (context) {
+              final esAdmin = context.read<AuthProvider>().esAdmin;
+              return DropdownButtonFormField<String>(
+                value: _rol,
+                decoration: const InputDecoration(labelText: 'Rol asignado'),
+                items: [
+                  if (esAdmin) ...[
+                    const DropdownMenuItem(value: 'editor', child: Text('Editor')),
+                    const DropdownMenuItem(value: 'auditor', child: Text('Auditor')),
+                  ],
+                  const DropdownMenuItem(value: 'consultante', child: Text('Consultante')),
+                  const DropdownMenuItem(value: 'solo_lectura', child: Text('Solo lectura')),
+                ],
+                onChanged: (v) => setState(() => _rol = v!),
+              );
+            }),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Registrar como socio', style: TextStyle(fontSize: 14)),
+              subtitle: const Text(
+                'Se creará el registro de socio al aceptar la invitación',
+                style: TextStyle(fontSize: 12),
+              ),
+              value: _esSocio,
+              onChanged: (v) => setState(() {
+                _esSocio = v;
+                if (!v) _tipoSocio = null;
+              }),
             ),
+            if (_esSocio) ...[
+              DropdownButtonFormField<String>(
+                value: _tipoSocio,
+                decoration: const InputDecoration(labelText: 'Tipo de socio *'),
+                items: [
+                  DropdownMenuItem(
+                    value: 'activo',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Text('Activo'),
+                        Text('Voz y voto', style: TextStyle(fontSize: 11, color: Color(0xFF757575))),
+                      ],
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'adherente',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Text('Adherente'),
+                        Text('Solo voz', style: TextStyle(fontSize: 11, color: Color(0xFF757575))),
+                      ],
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'honorario',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Text('Honorario'),
+                        Text('Solo voz mediante delegado', style: TextStyle(fontSize: 11, color: Color(0xFF757575))),
+                      ],
+                    ),
+                  ),
+                ],
+                selectedItemBuilder: (context) => const [
+                  Text('Activo'),
+                  Text('Adherente'),
+                  Text('Honorario'),
+                ],
+                onChanged: (v) => setState(() => _tipoSocio = v),
+                validator: (v) => _esSocio && v == null ? 'Seleccioná un tipo de socio' : null,
+              ),
+              const SizedBox(height: 4),
+            ],
             const SizedBox(height: 12),
             TextFormField(
               controller: _fechaCtrl,

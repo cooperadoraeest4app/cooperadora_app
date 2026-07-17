@@ -3,16 +3,21 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../features/admin/presentation/providers/configuracion_provider.dart';
 import '../../features/admin/presentation/screens/admin_panel_screen.dart';
+import '../../features/admin/presentation/screens/invitaciones_screen.dart';
+import '../../features/admin/presentation/screens/log_cambios_screen.dart';
+import '../../features/admin/presentation/screens/usuarios_screen.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/perfil_screen.dart';
 import '../../features/comision/presentation/screens/comision_directiva_screen.dart';
 import '../../features/cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
-import '../../features/inventario/presentation/screens/inventario_screen.dart';
-import '../../features/ingresos/presentation/screens/movimientos_screen.dart';
 import '../../features/informes/presentation/screens/informes_screen.dart';
+import '../../features/ingresos/presentation/screens/agregar_movimiento_screen.dart';
+import '../../features/ingresos/presentation/screens/movimientos_screen.dart';
+import '../../features/inventario/presentation/screens/inventario_screen.dart';
 import '../../features/proyectos/presentation/screens/proyectos_screen.dart';
+import '../../features/socios/presentation/screens/socios_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final bool esInicio;
@@ -25,11 +30,23 @@ class AppDrawer extends StatelessWidget {
     final secciones = config.seccionesPublicas;
     final puedeVolver = !esInicio;
 
+    Widget itemMenu(IconData icono, String titulo, Widget Function() pantalla) {
+      return ListTile(
+        leading: Icon(icono, color: AppTheme.azulMedio),
+        title: Text(titulo),
+        onTap: () {
+          Navigator.pop(context);
+          Navigator.push(
+              context, MaterialPageRoute(builder: (_) => pantalla()));
+        },
+      );
+    }
+
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          // Header
+          // ── Header ──────────────────────────────────────────────────────────
           DrawerHeader(
             decoration: const BoxDecoration(color: AppTheme.azulOscuro),
             margin: EdgeInsets.zero,
@@ -53,15 +70,15 @@ class AppDrawer extends StatelessWidget {
                   if (config.nombreEscuela.isNotEmpty)
                     Text(
                       config.nombreEscuela,
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 13),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                 ],
               ),
             ),
           ),
 
-          // Volver — solo si hay pantalla anterior
+          // ── Volver ──────────────────────────────────────────────────────────
           if (puedeVolver) ...[
             ListTile(
               leading: const Icon(Icons.arrow_back,
@@ -70,14 +87,14 @@ class AppDrawer extends StatelessWidget {
                   style: TextStyle(color: AppTheme.textoSecundario)),
               tileColor: AppTheme.textoSecundario.withValues(alpha: 0.08),
               onTap: () {
-                Navigator.pop(context); // cierra drawer
-                Navigator.pop(context); // vuelve atrás
+                Navigator.pop(context);
+                Navigator.pop(context);
               },
             ),
             const Divider(height: 1),
           ],
 
-          // Inicio
+          // ── Inicio ──────────────────────────────────────────────────────────
           ListTile(
             leading: const Icon(Icons.home, color: AppTheme.azulMedio),
             title: Text(
@@ -98,123 +115,85 @@ class AppDrawer extends StatelessWidget {
           ),
           const Divider(height: 1),
 
-          // Comisión Directiva — solo logueados
-          if (auth.isLoggedIn)
-            ListTile(
-              leading: const Icon(Icons.groups, color: AppTheme.azulMedio),
-              title: const Text('Comisión Directiva'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const ComisionDirectivaScreen()),
-                );
-              },
-            ),
-
-          // Secciones públicas configurables
+          // ── Secciones públicas ───────────────────────────────────────────────
           if (secciones['proyectos'] == true)
-            ListTile(
-              leading: const Icon(Icons.folder_special_outlined,
-                  color: AppTheme.azulMedio),
-              title: const Text('Proyectos'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ProyectosScreen()),
-                );
-              },
-            ),
+            itemMenu(Icons.folder_special_outlined, 'Proyectos',
+                () => const ProyectosScreen()),
           if (secciones['ingresos'] == true)
-            ListTile(
-              leading:
-                  const Icon(Icons.swap_vert, color: AppTheme.azulMedio),
-              title: const Text('Movimientos'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const MovimientosScreen()),
-                );
-              },
-            ),
+            itemMenu(Icons.swap_vert, 'Movimientos',
+                () => const MovimientosScreen()),
           if (secciones['cuentaBancaria'] == true)
-            ListTile(
-              leading: const Icon(Icons.account_balance,
-                  color: AppTheme.azulMedio),
-              title: const Text('Cuenta Bancaria'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const CuentaBancariaScreen()),
-                );
-              },
-            ),
+            itemMenu(Icons.account_balance, 'Cuenta Bancaria',
+                () => const CuentaBancariaScreen()),
           if (secciones['inventario'] == true)
-            ListTile(
-              leading: const Icon(Icons.inventory_2_outlined,
-                  color: AppTheme.azulMedio),
-              title: const Text('Inventario'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const InventarioScreen()),
-                );
-              },
-            ),
-          if (auth.isLoggedIn)
-            ListTile(
-              leading: const Icon(Icons.assessment_outlined,
-                  color: AppTheme.azulMedio),
-              title: const Text('Informes'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const InformesScreen()),
-                );
-              },
-            ),
+            itemMenu(Icons.inventory_2_outlined, 'Inventario',
+                () => const InventarioScreen()),
 
-          const Divider(),
-
-          // Opciones de usuario
+          // ── Para logueados ───────────────────────────────────────────────────
           if (auth.isLoggedIn) ...[
-            ListTile(
-              leading: const Icon(Icons.person_outline,
-                  color: AppTheme.azulMedio),
-              title: const Text('Mi perfil'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PerfilScreen()),
-                );
-              },
-            ),
-            if (auth.esAdmin || auth.esAuditor)
-              ListTile(
-                leading: const Icon(Icons.admin_panel_settings,
-                    color: AppTheme.azulMedio),
-                title: const Text('Panel de administración'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const AdminPanelScreen()),
-                  );
-                },
+            const Divider(height: 1),
+            itemMenu(Icons.groups, 'Comisión Directiva',
+                () => const ComisionDirectivaScreen()),
+            itemMenu(Icons.assessment_outlined, 'Informes',
+                () => const InformesScreen()),
+
+            // GESTIÓN — Editor y Admin
+            if (auth.esEditor || auth.esAdmin) ...[
+              const Divider(height: 1),
+              const Padding(
+                padding: EdgeInsets.only(left: 16, top: 8, bottom: 4),
+                child: Text(
+                  'GESTIÓN',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textoSecundario,
+                      letterSpacing: 1.2),
+                ),
               ),
+              itemMenu(Icons.people, 'Socios', () => const SociosScreen()),
+              itemMenu(Icons.mail_outline, 'Invitaciones',
+                  () => const InvitacionesScreen()),
+              itemMenu(Icons.add_circle_outline, 'Nuevo ingreso',
+                  () => const AgregarMovimientoScreen(tipoInicial: 'ingreso')),
+              itemMenu(Icons.remove_circle_outline, 'Nuevo gasto',
+                  () => const AgregarMovimientoScreen(tipoInicial: 'gasto')),
+              itemMenu(Icons.savings_outlined, 'Caja Chica',
+                  () => const CuentaBancariaScreen()),
+            ],
+
+            // ADMINISTRACIÓN — solo Admin
+            if (auth.esAdmin) ...[
+              const Divider(height: 1),
+              const Padding(
+                padding: EdgeInsets.only(left: 16, top: 8, bottom: 4),
+                child: Text(
+                  'ADMINISTRACIÓN',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textoSecundario,
+                      letterSpacing: 1.2),
+                ),
+              ),
+              itemMenu(Icons.admin_panel_settings, 'Panel de administración',
+                  () => const AdminPanelScreen()),
+              itemMenu(Icons.manage_accounts, 'Usuarios',
+                  () => const UsuariosScreen()),
+            ],
+
+            // AUDITORÍA — Auditor y Admin
+            if (auth.esAuditor || auth.esAdmin) ...[
+              const Divider(height: 1),
+              itemMenu(Icons.history, 'Log de cambios',
+                  () => const LogCambiosScreen()),
+            ],
+
+            const Divider(height: 1),
+            itemMenu(Icons.person_outline, 'Mi perfil',
+                () => const PerfilScreen()),
             ListTile(
-              leading:
-                  const Icon(Icons.logout, color: AppTheme.rojoGasto),
+              leading: const Icon(Icons.logout, color: AppTheme.rojoGasto),
               title: const Text('Cerrar sesión',
                   style: TextStyle(color: AppTheme.rojoGasto)),
               onTap: () {
@@ -223,9 +202,9 @@ class AppDrawer extends StatelessWidget {
               },
             ),
           ] else ...[
+            const Divider(height: 1),
             ListTile(
-              leading:
-                  const Icon(Icons.login, color: AppTheme.azulMedio),
+              leading: const Icon(Icons.login, color: AppTheme.azulMedio),
               title: const Text('Ingresar'),
               onTap: () {
                 Navigator.pop(context);

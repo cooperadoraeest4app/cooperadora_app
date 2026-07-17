@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +13,12 @@ import '../../../../shared/widgets/nombre_usuario_widget.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../admin/presentation/providers/usuarios_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../socios/domain/models/socio.dart';
+import '../../../socios/presentation/providers/socio_provider.dart';
+import '../../../votaciones/data/repositories/votacion_repository.dart';
+import '../../../votaciones/domain/models/votacion.dart';
+import '../../../votaciones/domain/models/voto.dart';
+import '../../../votaciones/presentation/providers/votacion_provider.dart';
 import '../../../ingresos/presentation/screens/movimientos_screen.dart';
 import '../../data/repositories/proyecto_repository.dart';
 import '../../domain/models/item_proyecto.dart';
@@ -52,6 +58,12 @@ IconData _iconForTipo(String nombre) {
   if (n.contains('equipamiento')) return Icons.warehouse_outlined;
   return Icons.category_outlined;
 }
+
+int _tabIndexForEstado(String estado) => switch (estado) {
+      'en_curso' => 0,
+      'planificado' => 1,
+      _ => 2,
+    };
 
 // ── Popups de estados ─────────────────────────────────────────────────────────
 
@@ -203,6 +215,8 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
   bool _hayCambios = false;
   bool _guardando = false;
 
+  Future<void> Function(String)? _scrollToPresupuesto;
+
   @override
   void initState() {
     super.initState();
@@ -329,7 +343,10 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
       _ => p.estado,
     };
 
-    return PopScope(
+    return DefaultTabController(
+      length: 3,
+      initialIndex: _tabIndexForEstado(widget.proyecto.estado),
+      child: PopScope(
       canPop: !_hayCambios,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
@@ -402,6 +419,47 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
             ],
           ),
           actions: [AccionAuthWidget()],
+          bottom: TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white,
+            indicatorColor: const Color(0xFF00BCD4),
+            indicatorWeight: 3,
+            onTap: (index) async {
+              if (_hayCambios) {
+                final accion = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Cambios sin guardar'),
+                    content: const Text(
+                        'Tenés cambios sin guardar. ¿Qué querés hacer?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, 'cancelar'),
+                        child: const Text('Seguir editando'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, 'descartar'),
+                        child: const Text('Descartar',
+                            style: TextStyle(color: AppTheme.rojoGasto)),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, 'guardar'),
+                        child: const Text('Guardar y salir'),
+                      ),
+                    ],
+                  ),
+                );
+                if (accion == 'cancelar' || accion == null) return;
+                if (accion == 'guardar') await _guardar(p);
+              }
+              if (context.mounted) Navigator.pop(context, index);
+            },
+            tabs: const [
+              Tab(icon: Icon(Icons.play_circle, size: 18), text: 'En curso'),
+              Tab(icon: Icon(Icons.pending, size: 18), text: 'Planificados'),
+              Tab(icon: Icon(Icons.check_circle, size: 18), text: 'Finalizados'),
+            ],
+          ),
         ),
       body: Column(
         children: [
@@ -447,9 +505,17 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
                     onResponsablesChanged: _setResponsables,
                   ),
                   const SizedBox(height: 12),
-                  _ItemsCard(proyectoId: p.id),
+                  _ItemsCard(
+                    proyectoId: p.id,
+                    onScrollToPresupuesto: _scrollToPresupuesto,
+                  ),
                   const SizedBox(height: 12),
-                  _PresupuestosCard(proyectoId: p.id),
+                  _PresupuestosCard(
+                    proyectoId: p.id,
+                    onScrollReady: (fn) {
+                      if (mounted) setState(() => _scrollToPresupuesto = fn);
+                    },
+                  ),
                   const SizedBox(height: 12),
                   _MovimientosCard(proyecto: p),
                   const SizedBox(height: 24),
@@ -463,6 +529,7 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
               onGuardar: () => _guardar(p),
             ),
         ],
+      ),
       ),
       ),
     );
@@ -1306,9 +1373,10 @@ class _FechaRow extends StatelessWidget {
 // ── _ItemsCard ────────────────────────────────────────────────────────────────
 
 class _ItemsCard extends StatefulWidget {
-  const _ItemsCard({required this.proyectoId});
+  const _ItemsCard({required this.proyectoId, this.onScrollToPresupuesto});
 
   final String proyectoId;
+  final Future<void> Function(String)? onScrollToPresupuesto;
 
   @override
   State<_ItemsCard> createState() => _ItemsCardState();
@@ -1428,6 +1496,8 @@ class _ItemsCardState extends State<_ItemsCard> {
                             puedeGestionar: puedeGestionar,
                             onEdit: () => _abrirModal(item),
                             onDelete: () => _eliminarItem(item.id),
+                            onScrollToPresupuesto:
+                                widget.onScrollToPresupuesto,
                           ))
                       .toList(),
                 );
@@ -1486,6 +1556,7 @@ class _ItemTile extends StatelessWidget {
     required this.puedeGestionar,
     required this.onEdit,
     required this.onDelete,
+    this.onScrollToPresupuesto,
   });
 
   final ItemProyecto item;
@@ -1493,6 +1564,7 @@ class _ItemTile extends StatelessWidget {
   final bool puedeGestionar;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final Future<void> Function(String)? onScrollToPresupuesto;
 
   @override
   Widget build(BuildContext context) {
@@ -1591,21 +1663,54 @@ class _ItemTile extends StatelessWidget {
         ),
         if (item.presupuestosIds.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Wrap(
-              spacing: 4,
-              children: item.presupuestosIds.map((pid) {
-                final idx = presupuestos.indexWhere((p) => p.id == pid);
-                if (idx == -1) return const SizedBox.shrink();
-                return Chip(
-                  label: Text('Pres. ${idx + 1}',
-                      style: const TextStyle(fontSize: 10)),
-                  backgroundColor: AppTheme.celesteFondo,
-                  side: const BorderSide(color: AppTheme.azulMedio),
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                );
-              }).toList(),
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  item.presupuestosIds.length == 1
+                      ? 'Presupuesto:'
+                      : 'Presupuestos:',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppTheme.textoSecundario),
+                ),
+                const SizedBox(width: 6),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: item.presupuestosIds.map((pid) {
+                    final idx = presupuestos.indexWhere((p) => p.id == pid);
+                    if (idx == -1) return const SizedBox.shrink();
+                    return GestureDetector(
+                      onTap: onScrollToPresupuesto != null
+                          ? () => onScrollToPresupuesto!(pid)
+                          : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.celesteFondo,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppTheme.azulMedio),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.description,
+                                size: 11, color: AppTheme.azulMedio),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${idx + 1}',
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppTheme.azulMedio),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
             ),
           ),
         // ── Línea de auditoría ──
@@ -1889,11 +1994,46 @@ class _ModalItemState extends State<_ModalItem> {
   }
 }
 
+// ── _ChipEstadoPresupuesto ────────────────────────────────────────────────────
+
+class _ChipEstadoPresupuesto extends StatelessWidget {
+  const _ChipEstadoPresupuesto({required this.estado});
+  final String estado;
+
+  @override
+  Widget build(BuildContext context) {
+    final ({Color color, String texto})? config = {
+      'aprobado': (color: AppTheme.amarilloAlerta, texto: 'Aprobado'),
+      'comprado': (color: AppTheme.verdeIngreso, texto: 'Comprado'),
+    }[estado];
+
+    if (config == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: config.color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: config.color.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        config.texto,
+        style: TextStyle(
+          fontSize: 11,
+          color: config.color,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+}
+
 // ── _PresupuestosCard ─────────────────────────────────────────────────────────
 
 class _PresupuestosCard extends StatefulWidget {
-  const _PresupuestosCard({required this.proyectoId});
+  const _PresupuestosCard({required this.proyectoId, this.onScrollReady});
   final String proyectoId;
+  final void Function(Future<void> Function(String))? onScrollReady;
 
   @override
   State<_PresupuestosCard> createState() => _PresupuestosCardState();
@@ -1905,21 +2045,77 @@ class _PresupuestosCardState extends State<_PresupuestosCard> {
   List<ItemProyecto> _items = [];
   StreamSubscription<List<ItemProyecto>>? _itemsSub;
   final Map<String, bool> _presupuestoExpandido = {};
+  List<Map<String, dynamic>> _gastos = [];
+  // Todas las votaciones de tipo presupuesto (cualquier estado), indexadas por objetoId
+  Map<String, Votacion> _todasVotaciones = {};
+  List<PresupuestoProyecto> _presupuestos = [];
+  StreamSubscription<List<PresupuestoProyecto>>? _presupuestosSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _gastosSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _votacionesSub;
+  final Map<String, GlobalKey> _presupuestoKeys = {};
+
+  GlobalKey _keyParaPresupuesto(String presupuestoId) =>
+      _presupuestoKeys.putIfAbsent(presupuestoId, () => GlobalKey());
+
+  Future<void> _scrollarAPresupuesto(String id) async {
+    setState(() => _presupuestoExpandido[id] = true);
+    await Future.delayed(const Duration(milliseconds: 150));
+    final key = _presupuestoKeys[id];
+    if (key?.currentContext != null) {
+      await Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        alignment: 0.1,
+      );
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _stream = _repo.obtenerPresupuestos(widget.proyectoId);
-    _itemsSub = _repo
-        .obtenerItems(widget.proyectoId)
-        .listen((list) {
+    _presupuestosSub = _stream.listen((list) {
+      if (mounted) {
+        setState(() => _presupuestos = list);
+        _cargarEstadosVotaciones();
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onScrollReady?.call(_scrollarAPresupuesto);
+    });
+    _itemsSub = _repo.obtenerItems(widget.proyectoId).listen((list) {
       if (mounted) setState(() => _items = list);
+    });
+    _gastosSub = FirebaseFirestore.instance
+        .collection('gastos')
+        .where('proyectoId', isEqualTo: widget.proyectoId)
+        .snapshots()
+        .listen((snap) {
+      if (mounted) setState(() => _gastos = snap.docs.map((d) => d.data()).toList());
+    });
+    _votacionesSub = FirebaseFirestore.instance
+        .collection('votaciones')
+        .where('tipo', isEqualTo: 'presupuesto')
+        .snapshots()
+        .listen((snap) {
+      if (mounted) {
+        final todas =
+            snap.docs.map((d) => Votacion.fromMap(d.data(), d.id)).toList();
+        setState(() => _todasVotaciones = {
+              for (final v in todas) v.objetoId: v,
+            });
+      }
     });
   }
 
   @override
   void dispose() {
+    _presupuestosSub?.cancel();
     _itemsSub?.cancel();
+    _gastosSub?.cancel();
+    _votacionesSub?.cancel();
+    _presupuestoKeys.clear();
     super.dispose();
   }
 
@@ -1962,10 +2158,181 @@ class _PresupuestosCardState extends State<_PresupuestosCard> {
     await _repo.eliminarPresupuesto(p.id, uid);
   }
 
+  Socio? _resolverMiSocio(BuildContext context, AuthProvider auth) {
+    final uid = auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return null;
+    final usuarios = context.read<UsuariosProvider>().usuarios;
+    Map<String, dynamic>? miUsuario;
+    for (final u in usuarios) {
+      if (u['id'] == uid) {
+        miUsuario = u;
+        break;
+      }
+    }
+    final miPersonaId = miUsuario?['personaId'] as String?;
+    if (miPersonaId == null || miPersonaId.isEmpty) return null;
+    final socios = context.read<SocioProvider>().todos;
+    for (final s in socios) {
+      if (s.personaId == miPersonaId && s.activo) return s;
+    }
+    return null;
+  }
+
+  Map<String, List<PresupuestoProyecto>> _agruparPresupuestos(
+      List<PresupuestoProyecto> presupuestos) {
+    final grupos = <String, List<PresupuestoProyecto>>{};
+    for (final p in presupuestos) {
+      final vinculados =
+          _items.where((i) => i.presupuestosIds.contains(p.id)).toList();
+      final ids = vinculados.map((i) => i.id).toList()..sort();
+      final clave = ids.isEmpty ? '__sin_items__' : ids.join('|');
+      grupos.putIfAbsent(clave, () => []).add(p);
+    }
+    return grupos;
+  }
+
+  String _nombreGrupo(String clave) {
+    if (clave == '__sin_items__') return 'Sin ítems vinculados';
+    final ids = clave.split('|');
+    final nombres = <String>[];
+    for (final id in ids) {
+      final matches = _items.where((i) => i.id == id).toList();
+      if (matches.isNotEmpty) nombres.add(matches.first.descripcion);
+    }
+    return nombres.isEmpty ? 'Ítems no encontrados' : nombres.join(' + ');
+  }
+
+  String? _estadoPresupuesto(String presupuestoId) {
+    final tieneGasto =
+        _gastos.any((g) => g['presupuestoProyectoId'] == presupuestoId);
+    if (tieneGasto) return 'comprado';
+    if (_todasVotaciones[presupuestoId]?.estado == 'aprobada') return 'aprobado';
+    return null;
+  }
+
+  String? _presupuestoAprobadoEnGrupo(
+    PresupuestoProyecto presupuesto,
+    List<PresupuestoProyecto> todos,
+    List<ItemProyecto> items,
+  ) {
+    final misItems = items
+        .where((i) => i.presupuestosIds.contains(presupuesto.id))
+        .map((i) => i.id)
+        .toSet();
+    if (misItems.isEmpty) return null;
+    for (final otro in todos) {
+      if (otro.id == presupuesto.id) continue;
+      final otrosItems = items
+          .where((i) => i.presupuestosIds.contains(otro.id))
+          .map((i) => i.id)
+          .toSet();
+      if (misItems.length == otrosItems.length &&
+          misItems.containsAll(otrosItems)) {
+        final estadoOtro = _estadoPresupuesto(otro.id);
+        if (estadoOtro == 'aprobado' || estadoOtro == 'comprado') {
+          return 'Presupuesto ${todos.indexOf(otro) + 1}';
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _cargarEstadosVotaciones() async {
+    if (_presupuestos.isEmpty) return;
+    final configSnap = await FirebaseFirestore.instance
+        .collection('configuracion')
+        .doc('config')
+        .get();
+    final modoTesting = configSnap.data()?['modoTesting'] as bool? ?? false;
+    if (!modoTesting) return;
+
+    final repo = VotacionRepository();
+    for (final presupuesto in _presupuestos) {
+      final votacion = _todasVotaciones[presupuesto.id];
+      if (votacion == null || votacion.estado != 'en_curso') continue;
+
+      final estadoDinamico = await repo.calcularEstadoDinamico(
+        votacionId: votacion.id,
+        quorumRequerido: 1,
+        mayoriaRequerida: 50.0,
+      );
+
+      if (estadoDinamico != votacion.estado) {
+        await FirebaseFirestore.instance
+            .collection('votaciones')
+            .doc(votacion.id)
+            .update({'estado': estadoDinamico});
+      }
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _emitirVotoImpl(
+      String presupuestoId, String valor, Socio miSocio) async {
+    // Capturar todo del contexto antes del primer await
+    final votacionProv = context.read<VotacionProvider>();
+    final socios = context.read<SocioProvider>().todos;
+    final proyecto =
+        context.read<ProyectoProvider>().obtenerPorId(widget.proyectoId);
+    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+
+    Votacion? v =
+        await votacionProv.obtenerPorObjetoFuture(presupuestoId, 'presupuesto');
+
+    if (v == null) {
+      final sociosActivos =
+          socios.where((s) => s.activo && s.tipoSocio == 'activo').length;
+      final quorum = await votacionProv.calcularQuorum();
+      final mayoria = await votacionProv.calcularMayoriaRequerida();
+
+      final nueva = Votacion(
+        id: '',
+        tipo: 'presupuesto',
+        objetoId: presupuestoId,
+        titulo: 'Votación — ${proyecto?.nombre ?? widget.proyectoId}',
+        estado: 'en_curso',
+        fechaInicio: DateTime.now(),
+        totalSociosActivos: sociosActivos,
+        totalMiembrosCD: 0,
+        quorumRequerido: quorum,
+        mayoriaRequerida: mayoria,
+        usuarioId: uid,
+        fechaCreacion: DateTime.now(),
+      );
+
+      final id = await votacionProv.crear(nueva);
+      v = nueva.copyWith(id: id);
+    }
+
+    final voto = Voto(
+      id: '',
+      votacionId: v.id,
+      objetoId: presupuestoId,
+      socioId: miSocio.id,
+      tipoSocio: miSocio.tipoSocio,
+      valor: valor,
+      fecha: DateTime.now(),
+    );
+
+    await votacionProv.emitirVoto(voto, v);
+  }
+
+  Future<void> _emitirAbstencion(
+      List<PresupuestoProyecto> votables, Socio socio) async {
+    for (final p in votables) {
+      await _emitirVotoImpl(p.id, 'abstencion', socio);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final puedeGestionar = auth.esAdmin || auth.esEditor;
+    // watch para redibujar cuando carguen los datos de socios/usuarios
+    context.watch<SocioProvider>();
+    context.watch<UsuariosProvider>();
+    final miSocio = _resolverMiSocio(context, auth);
 
     return Card(
       child: Padding(
@@ -2009,27 +2376,80 @@ class _PresupuestosCardState extends State<_PresupuestosCard> {
                     ),
                   );
                 }
-                return Column(
-                  children: items
-                      .asMap()
-                      .entries
-                      .map((e) => _PresupuestoTile(
-                            presupuesto: e.value,
-                            numero: e.key + 1,
-                            expandido:
-                                _presupuestoExpandido[e.value.id] ?? false,
-                            onToggle: () => setState(() {
-                              _presupuestoExpandido[e.value.id] =
-                                  !(_presupuestoExpandido[e.value.id] ??
-                                      false);
-                            }),
-                            items: _items,
-                            puedeGestionar: puedeGestionar,
-                            onEdit: () => _abrirModal(e.value),
-                            onDelete: () => _eliminar(e.value),
-                          ))
-                      .toList(),
-                );
+                final puedeVotar = miSocio != null;
+                Future<void> Function(String, String) onVotar;
+                if (puedeVotar) {
+                  final socio = miSocio;
+                  onVotar = (pid, v) => _emitirVotoImpl(pid, v, socio);
+                } else {
+                  onVotar = (pid, val) async {};
+                }
+                final grupos = _agruparPresupuestos(items);
+                final grupoKeys = grupos.keys.toList();
+                final tiles = <Widget>[];
+                for (int g = 0; g < grupoKeys.length; g++) {
+                  final clave = grupoKeys[g];
+                  final presupuestosGrupo = grupos[clave]!;
+                  if (grupoKeys.length > 1) {
+                    tiles.add(
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            const Expanded(
+                                child: Divider(color: AppTheme.celesteBorde)),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              child: Text(
+                                _nombreGrupo(clave),
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textoSecundario),
+                              ),
+                            ),
+                            const Expanded(
+                                child: Divider(color: AppTheme.celesteBorde)),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  for (final p in presupuestosGrupo) {
+                    tiles.add(_PresupuestoTile(
+                      key: _keyParaPresupuesto(p.id),
+                      presupuesto: p,
+                      numero: items.indexOf(p) + 1,
+                      expandido: _presupuestoExpandido[p.id] ?? false,
+                      onToggle: () => setState(() {
+                        _presupuestoExpandido[p.id] =
+                            !(_presupuestoExpandido[p.id] ?? false);
+                      }),
+                      items: _items,
+                      puedeGestionar: puedeGestionar,
+                      onEdit: () => _abrirModal(p),
+                      onDelete: () => _eliminar(p),
+                      miSocio: miSocio,
+                      puedeVotar: puedeVotar,
+                      onVotar: onVotar,
+                      estadoPresupuesto: _estadoPresupuesto(p.id),
+                      aprobadoEnGrupo:
+                          _presupuestoAprobadoEnGrupo(p, items, _items),
+                    ));
+                  }
+                }
+final votables = items.where((pres) {
+                  final e = _estadoPresupuesto(pres.id);
+                  return e != 'aprobado' && e != 'comprado';
+                }).toList();
+                return Column(children: [
+                  ...tiles,
+                  if (puedeVotar && votables.isNotEmpty)
+                    _ItemAbstencion(
+                      onVotar: () =>
+                          _emitirAbstencion(votables, miSocio),
+                    ),
+                ]);
               },
             ),
           ],
@@ -2041,8 +2461,9 @@ class _PresupuestosCardState extends State<_PresupuestosCard> {
 
 // ── _PresupuestoTile ──────────────────────────────────────────────────────────
 
-class _PresupuestoTile extends StatelessWidget {
+class _PresupuestoTile extends StatefulWidget {
   const _PresupuestoTile({
+    super.key,
     required this.presupuesto,
     required this.numero,
     required this.expandido,
@@ -2051,6 +2472,11 @@ class _PresupuestoTile extends StatelessWidget {
     required this.puedeGestionar,
     required this.onEdit,
     required this.onDelete,
+    required this.miSocio,
+    required this.puedeVotar,
+    required this.onVotar,
+    this.estadoPresupuesto,
+    this.aprobadoEnGrupo,
   });
 
   final PresupuestoProyecto presupuesto;
@@ -2061,66 +2487,279 @@ class _PresupuestoTile extends StatelessWidget {
   final bool puedeGestionar;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final Socio? miSocio;
+  final bool puedeVotar;
+  final Future<void> Function(String presupuestoId, String valor) onVotar;
+  final String? estadoPresupuesto;
+  final String? aprobadoEnGrupo;
+
+  @override
+  State<_PresupuestoTile> createState() => _PresupuestoTileState();
+}
+
+class _PresupuestoTileState extends State<_PresupuestoTile> {
+  int _reloadKey = 0;
+  bool _emitiendo = false;
+
+  Future<Voto?> _fetchMiVoto() {
+    if (!widget.puedeVotar || widget.miSocio == null) {
+      return Future.value(null);
+    }
+    return VotacionRepository()
+        .obtenerMiVotoPorObjeto(widget.presupuesto.id, widget.miSocio!.id);
+  }
+
+  Future<void> _confirmarYVotar(String valor, String label) async {
+    final estadoCerrado = widget.estadoPresupuesto == 'aprobado' ||
+        widget.estadoPresupuesto == 'comprado';
+    if (!widget.puedeVotar || estadoCerrado || _emitiendo) return;
+    final p = widget.presupuesto;
+    final titulo = p.descripcion.isNotEmpty
+        ? 'Presupuesto ${widget.numero} — ${p.descripcion}'
+        : 'Presupuesto ${widget.numero}';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar voto'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(titulo),
+            const SizedBox(height: 4),
+            Text('Tu voto: $label',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            const Text(
+              '⚠️ Tu voto es definitivo y no podrá modificarse.',
+              style: TextStyle(
+                  color: AppTheme.rojoGasto,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _emitiendo = true);
+    try {
+      await widget.onVotar(widget.presupuesto.id, valor);
+      if (mounted) setState(() => _reloadKey++);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error al votar: $e'),
+          backgroundColor: AppTheme.rojoGasto,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _emitiendo = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final p = presupuesto;
-    final vinculados =
-        items.where((i) => i.presupuestosIds.contains(p.id)).toList();
+    return FutureBuilder<Voto?>(
+      key: ValueKey('${widget.presupuesto.id}-$_reloadKey'),
+      future: _fetchMiVoto(),
+      builder: (ctx, snap) {
+        return _buildTile(
+            snap.data, snap.connectionState == ConnectionState.waiting);
+      },
+    );
+  }
 
-    return InkWell(
-      onTap: onToggle,
+  Widget _buildTile(Voto? miVoto, bool cargandoVoto) {
+    final p = widget.presupuesto;
+    final vinculados =
+        widget.items.where((i) => i.presupuestosIds.contains(p.id)).toList();
+
+    final Color? colorVoto = miVoto == null
+        ? null
+        : miVoto.valor == 'a_favor'
+            ? AppTheme.verdeIngreso
+            : miVoto.valor == 'en_contra'
+                ? AppTheme.rojoGasto
+                : AppTheme.amarilloAlerta;
+
+    final votacionCerrada = widget.estadoPresupuesto == 'aprobado' ||
+        widget.estadoPresupuesto == 'comprado';
+    final puedeVotarEste = widget.puedeVotar && !votacionCerrada;
+    final estaDescartado = widget.aprobadoEnGrupo != null && !votacionCerrada;
+
+    Widget iconoHeader() {
+      if (votacionCerrada) {
+        return Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: widget.estadoPresupuesto == 'comprado'
+                ? AppTheme.verdeTeal
+                : AppTheme.verdeIngreso,
+          ),
+          child: Icon(
+            miVoto?.valor == 'a_favor'
+                ? Icons.thumb_up
+                : miVoto?.valor == 'en_contra'
+                    ? Icons.thumb_down
+                    : widget.estadoPresupuesto == 'comprado'
+                        ? Icons.check
+                        : Icons.thumb_up,
+            color: Colors.white,
+            size: 14,
+          ),
+        );
+      }
+      if (estaDescartado) {
+        return Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.transparent,
+            border: Border.all(color: Colors.grey.shade400, width: 1.5),
+          ),
+          child: Icon(Icons.remove, color: Colors.grey.shade400, size: 14),
+        );
+      }
+      return GestureDetector(
+        onTap: widget.puedeVotar && !widget.expandido ? widget.onToggle : null,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.transparent,
+            border: Border.all(color: Colors.grey.shade400, width: 1.5),
+          ),
+          child: Icon(
+            miVoto == null
+                ? Icons.thumb_up_outlined
+                : miVoto.valor == 'a_favor'
+                    ? Icons.thumb_up
+                    : miVoto.valor == 'en_contra'
+                        ? Icons.thumb_down
+                        : Icons.pan_tool,
+            color: miVoto == null
+                ? AppTheme.azulMedio
+                : colorVoto ?? AppTheme.textoSecundario,
+            size: 14,
+          ),
+        ),
+      );
+    }
+
+    return Opacity(
+      opacity: estaDescartado ? 0.6 : 1.0,
+      child: InkWell(
+      onTap: widget.onToggle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Header siempre visible ─────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Text(
-                        'Presupuesto $numero',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Container(
+              decoration: BoxDecoration(
+                color: colorVoto?.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: colorVoto ?? AppTheme.celesteBorde,
+                  width: colorVoto != null ? 1.5 : 0.5,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 10),
+                child: Row(
+                  children: [
+                    iconoHeader(),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Presupuesto ${widget.numero}',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: colorVoto ?? AppTheme.textoPrincipal,
+                                ),
+                              ),
+                              if (widget.estadoPresupuesto != null) ...[
+                                const SizedBox(width: 6),
+                                _ChipEstadoPresupuesto(
+                                    estado: widget.estadoPresupuesto!),
+                              ],
+                            ],
+                          ),
+                          if (p.descripcion.isNotEmpty)
+                            Text(
+                              p.descripcion,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorVoto ?? AppTheme.textoSecundario,
+                              ),
+                            ),
+                        ],
                       ),
-                      if (p.descripcion.isNotEmpty) ...[
-                        const Text(
-                          ' — ',
-                          style:
-                              TextStyle(color: AppTheme.textoSecundario),
-                        ),
-                        Expanded(
-                          child: Text(
-                            p.descripcion,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: AppTheme.textoSecundario),
+                    ),
+                    if (p.monto != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          _formatearMonto(p.monto!),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: colorVoto ?? AppTheme.textoPrincipal,
                           ),
                         ),
-                      ],
-                    ],
-                  ),
+                      ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      widget.expandido
+                          ? Icons.expand_less
+                          : Icons.expand_more,
+                      color: colorVoto ?? AppTheme.textoSecundario,
+                      size: 20,
+                    ),
+                    if (widget.puedeGestionar)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            size: 18, color: AppTheme.rojoGasto),
+                        onPressed: widget.onDelete,
+                        padding: EdgeInsets.zero,
+                        constraints:
+                            const BoxConstraints(maxWidth: 32, maxHeight: 32),
+                      ),
+                  ],
                 ),
-                Icon(
-                  expandido ? Icons.expand_less : Icons.expand_more,
-                  color: AppTheme.textoSecundario,
-                ),
-                if (puedeGestionar)
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline,
-                        size: 18, color: AppTheme.rojoGasto),
-                    onPressed: onDelete,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                        maxWidth: 32, maxHeight: 32),
-                  ),
-              ],
+              ),
             ),
           ),
           // ── Contenido expandido ────────────────────────────────────────
-          if (expandido)
+          if (widget.expandido)
             Container(
               width: double.infinity,
               color: AppTheme.celesteFondo,
@@ -2231,8 +2870,8 @@ class _PresupuestoTile extends StatelessWidget {
                           Text(
                             _fmt(vinculados
                                 .where((i) => i.montoEstimado > 0)
-                                .fold(
-                                    0.0, (acc, i) => acc + i.montoEstimado)),
+                                .fold(0.0,
+                                    (acc, i) => acc + i.montoEstimado)),
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
@@ -2261,14 +2900,14 @@ class _PresupuestoTile extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (puedeGestionar) ...[
+                  if (widget.puedeGestionar) ...[
                     const SizedBox(height: 8),
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
                         icon: const Icon(Icons.edit_outlined, size: 16),
                         label: const Text('Editar'),
-                        onPressed: onEdit,
+                        onPressed: widget.onEdit,
                         style: TextButton.styleFrom(
                           foregroundColor: AppTheme.azulMedio,
                           padding: const EdgeInsets.symmetric(
@@ -2278,11 +2917,306 @@ class _PresupuestoTile extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (estaDescartado)
+                    _buildBarraDescartado()
+                  else if (!votacionCerrada &&
+                      (puedeVotarEste || widget.puedeGestionar))
+                    _buildVotacionSection(miVoto, cargandoVoto)
+                  else if (votacionCerrada)
+                    _buildBarraVotacionCerrada(miVoto),
                 ],
               ),
             ),
           const Divider(height: 1, color: AppTheme.celesteBorde),
         ],
+      ),
+      ),
+    );
+  }
+
+  Widget _buildVotacionSection(Voto? miVoto, bool cargandoVoto) {
+    final yaVote = miVoto != null;
+    final opciones = [
+      (valor: 'a_favor', label: 'A favor', icon: Icons.thumb_up_outlined),
+      (
+        valor: 'en_contra',
+        label: 'En contra',
+        icon: Icons.thumb_down_outlined
+      ),
+      (
+        valor: 'abstencion',
+        label: 'Abstención',
+        icon: Icons.remove_circle_outline
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 10, bottom: 6),
+          child: Divider(color: AppTheme.celesteBorde, height: 1),
+        ),
+        Row(
+          children: [
+            const Icon(Icons.how_to_vote_outlined,
+                size: 14, color: AppTheme.azulOscuro),
+            const SizedBox(width: 6),
+            Text(
+              yaVote
+                  ? 'Tu voto registrado'
+                  : widget.puedeVotar
+                      ? 'Emitir voto'
+                      : 'Votación',
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.azulOscuro),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (!widget.puedeVotar)
+          const Text(
+            'Solo los socios activos pueden votar.',
+            style:
+                TextStyle(fontSize: 12, color: AppTheme.textoSecundario),
+          )
+        else
+          Row(
+            children: opciones.map((op) {
+              final esMiVoto = yaVote && miVoto.valor == op.valor;
+              final tappable = !yaVote && !cargandoVoto && !_emitiendo;
+              final Color color;
+              switch (op.valor) {
+                case 'a_favor':
+                  color = AppTheme.verdeIngreso;
+                case 'en_contra':
+                  color = AppTheme.rojoGasto;
+                default:
+                  color = AppTheme.textoSecundario;
+              }
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Opacity(
+                    opacity: (yaVote && !esMiVoto) ? 0.35 : 1.0,
+                    child: InkWell(
+                      onTap: tappable
+                          ? () => _confirmarYVotar(op.valor, op.label)
+                          : null,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 4),
+                        decoration: BoxDecoration(
+                          color: esMiVoto
+                              ? color.withValues(alpha: 0.12)
+                              : Colors.transparent,
+                          border: Border.all(
+                              color:
+                                  esMiVoto ? color : AppTheme.celesteBorde),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              esMiVoto ? Icons.check_circle : op.icon,
+                              size: 20,
+                              color: esMiVoto
+                                  ? color
+                                  : AppTheme.textoSecundario,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              op.label,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: esMiVoto
+                                    ? FontWeight.w700
+                                    : FontWeight.normal,
+                                color: esMiVoto
+                                    ? color
+                                    : AppTheme.textoSecundario,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildBarraDescartado() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.block, size: 15, color: AppTheme.textoSecundario),
+          const SizedBox(width: 6),
+          const Text(
+            'Votación no disponible',
+            style: TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
+          ),
+          const Spacer(),
+          Text(
+            '${widget.aprobadoEnGrupo} fue el seleccionado',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppTheme.textoSecundario,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBarraVotacionCerrada(Voto? miVoto) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_outline,
+              size: 15, color: AppTheme.textoSecundario),
+          const SizedBox(width: 6),
+          const Text(
+            'Votación cerrada',
+            style: TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
+          ),
+          const Spacer(),
+          if (miVoto != null) ...[
+            Icon(
+              miVoto.valor == 'a_favor'
+                  ? Icons.thumb_up
+                  : miVoto.valor == 'en_contra'
+                      ? Icons.thumb_down
+                      : Icons.pan_tool,
+              size: 15,
+              color: miVoto.valor == 'a_favor'
+                  ? AppTheme.verdeIngreso
+                  : miVoto.valor == 'en_contra'
+                      ? AppTheme.rojoGasto
+                      : AppTheme.amarilloAlerta,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              miVoto.valor == 'a_favor'
+                  ? 'Votaste a favor'
+                  : miVoto.valor == 'en_contra'
+                      ? 'Votaste en contra'
+                      : 'Te abstuviste',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: miVoto.valor == 'a_favor'
+                    ? AppTheme.verdeIngreso
+                    : miVoto.valor == 'en_contra'
+                        ? AppTheme.rojoGasto
+                        : AppTheme.amarilloAlerta,
+              ),
+            ),
+          ] else
+            const Text(
+              'No emitiste voto',
+              style:
+                  TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ItemAbstencion extends StatelessWidget {
+  const _ItemAbstencion({required this.onVotar});
+  final VoidCallback onVotar;
+
+  Future<void> _confirmarAbstencion(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Abstenerse de todos?'),
+        content: const Text(
+            'Se registrará tu abstención en todos los presupuestos pendientes.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirmar')),
+        ],
+      ),
+    );
+    if (confirm == true) onVotar();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _confirmarAbstencion(context),
+      child: Container(
+        margin: const EdgeInsets.only(top: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9F9F9),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF9CA3AF), width: 1.5),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.transparent,
+                  border:
+                      Border.all(color: const Color(0xFF9CA3AF), width: 1.5),
+                ),
+                child: const Icon(Icons.pan_tool,
+                    size: 14, color: Color(0xFF6B7A99)),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Me abstengo de votar todos',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.textoSecundario),
+                  ),
+                  Text(
+                    'Cuenta para el quórum',
+                    style: TextStyle(
+                        fontSize: 11, color: Color(0xFF9CA3AF)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -22,8 +22,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   final _emailController = TextEditingController();
   final _telefonoController = TextEditingController();
   final _anioController = TextEditingController();
-  final _quorumController = TextEditingController();
-  final _aprobacionController = TextEditingController();
 
   @override
   void initState() {
@@ -40,8 +38,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     _emailController.text = provider.emailContacto;
     _telefonoController.text = provider.telefonoContacto;
     _anioController.text = provider.anioLectivo.toString();
-    _quorumController.text = provider.quorumMinimo.toString();
-    _aprobacionController.text = provider.porcentajeAprobacion.toString();
   }
 
   @override
@@ -51,8 +47,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     _emailController.dispose();
     _telefonoController.dispose();
     _anioController.dispose();
-    _quorumController.dispose();
-    _aprobacionController.dispose();
     super.dispose();
   }
 
@@ -65,8 +59,6 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
       emailContacto: _emailController.text.trim(),
       telefonoContacto: _telefonoController.text.trim(),
       anioLectivo: int.parse(_anioController.text),
-      quorumMinimo: int.parse(_quorumController.text),
-      porcentajeAprobacion: int.parse(_aprobacionController.text),
     );
     if (!mounted) return;
     if (provider.error != null) {
@@ -216,53 +208,14 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
                   const InputDecoration(labelText: 'Teléfono de contacto'),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _anioController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration:
-                        const InputDecoration(labelText: 'Año lectivo activo'),
-                    validator: (v) => (v == null || v.isEmpty)
-                        ? 'Campo obligatorio'
-                        : null,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
-                    controller: _quorumController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration:
-                        const InputDecoration(labelText: 'Quórum mínimo (%)'),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Obligatorio';
-                      final n = int.tryParse(v);
-                      if (n == null || n < 0 || n > 100) return '0–100';
-                      return null;
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
-                    controller: _aprobacionController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration:
-                        const InputDecoration(labelText: 'Aprobación (%)'),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Obligatorio';
-                      final n = int.tryParse(v);
-                      if (n == null || n < 0 || n > 100) return '0–100';
-                      return null;
-                    },
-                  ),
-                ),
-              ],
+            TextFormField(
+              controller: _anioController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration:
+                  const InputDecoration(labelText: 'Año lectivo activo'),
+              validator: (v) =>
+                  (v == null || v.isEmpty) ? 'Campo obligatorio' : null,
             ),
           ],
         ),

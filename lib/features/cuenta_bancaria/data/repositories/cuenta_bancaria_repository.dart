@@ -233,6 +233,12 @@ class CuentaBancariaRepository {
     );
   }
 
+  String _formatMonto(double monto) {
+    final n = monto.toInt();
+    final dec = ((monto - n) * 100).round();
+    return dec == 0 ? '\$$n' : '\$$n,${dec.toString().padLeft(2, '0')}';
+  }
+
   Future<void> depositarACuentaBancaria(
     double monto,
     String usuarioId,
@@ -247,32 +253,43 @@ class CuentaBancariaRepository {
 
     final nuevoSaldoCaja = saldoCaja - monto;
     final nuevoSaldoCuenta = saldoCuenta + monto;
-    final obs = observaciones ?? 'Depósito desde Caja Chica';
+
+    final cajaChicaMovRef = _cajaChicaMovCol.doc();
+    final cuentaBancariaMovRef = _movCol.doc();
 
     final batch = FirebaseFirestore.instance.batch();
     batch.update(_col.doc(_cajaChicaId), {
       'saldoActual': nuevoSaldoCaja,
       'fechaActualizacion': FieldValue.serverTimestamp(),
     });
-    batch.set(_cajaChicaMovCol.doc(), {
+    batch.set(cajaChicaMovRef, {
+      'tipo': 'egreso',
+      'monto': monto,
       'saldoAnterior': saldoCaja,
       'saldoNuevo': nuevoSaldoCaja,
-      'observaciones': obs,
-      'tipo': 'deposito_banco',
+      'observaciones':
+          'Depósito en cuenta bancaria · ${_formatMonto(monto)}'
+          '${observaciones != null ? " · $observaciones" : ""}',
       'usuarioId': usuarioId,
       'fechaCreacion': FieldValue.serverTimestamp(),
+      'tipo_origen': 'deposito_banco',
     });
     batch.update(_col.doc(_docId), {
       'saldoActual': nuevoSaldoCuenta,
       'fechaActualizacion': FieldValue.serverTimestamp(),
     });
-    batch.set(_movCol.doc(), {
-      'tipo': 'actualizacion_saldo',
+    batch.set(cuentaBancariaMovRef, {
+      'tipo': 'ingreso',
+      'monto': monto,
       'saldoAnterior': saldoCuenta,
       'saldoNuevo': nuevoSaldoCuenta,
-      'observaciones': obs,
+      'observaciones':
+          'Ingreso desde Caja Chica'
+          '${observaciones != null ? " · $observaciones" : ""}',
       'usuarioId': usuarioId,
       'fechaCreacion': FieldValue.serverTimestamp(),
+      'tipo_origen': 'deposito_caja_chica',
+      'confirmado': false,
     });
     await batch.commit();
 

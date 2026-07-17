@@ -16,6 +16,7 @@ import 'log_cambios_screen.dart';
 import 'metodos_pago_screen.dart';
 import 'usuarios_screen.dart';
 import '../../../comision/presentation/screens/comision_directiva_admin_screen.dart';
+import '../../../votaciones/presentation/screens/votacion_config_screen.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 class AdminPanelScreen extends StatefulWidget {
@@ -92,6 +93,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       titulo: 'Comisión Directiva',
       subtitulo: 'Cargos y personas asignadas',
       esComision: true,
+    ),
+    _OpcionPanel(
+      icono: Icons.how_to_vote,
+      titulo: 'Configuración de Votaciones',
+      subtitulo: 'Quórum, mayoría y modo testing',
+      esVotaciones: true,
     ),
     _OpcionPanel(
       icono: Icons.history,
@@ -271,6 +278,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                         builder: (_) =>
                             const ComisionDirectivaAdminScreen()),
                   );
+                } else if (opcion.esVotaciones) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const VotacionConfigScreen()),
+                  );
                 } else if (opcion.esLogCambios) {
                   Navigator.push(
                     context,
@@ -306,6 +319,7 @@ class _OpcionPanel {
   final bool esCursos;
   final bool esInventario;
   final bool esComision;
+  final bool esVotaciones;
   final bool esLogCambios;
 
   const _OpcionPanel({
@@ -323,6 +337,7 @@ class _OpcionPanel {
     this.esCursos = false,
     this.esInventario = false,
     this.esComision = false,
+    this.esVotaciones = false,
     this.esLogCambios = false,
   });
 }

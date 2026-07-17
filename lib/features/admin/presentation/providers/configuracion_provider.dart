@@ -9,8 +9,6 @@ class ConfiguracionProvider extends ChangeNotifier {
   String emailContacto = '';
   String telefonoContacto = '';
   int anioLectivo = DateTime.now().year;
-  int quorumMinimo = 30;
-  int porcentajeAprobacion = 50;
 
   Map<String, bool> seccionesPublicas = {
     'ingresos': true,
@@ -37,9 +35,6 @@ class ConfiguracionProvider extends ChangeNotifier {
         telefonoContacto = datos['telefonoContacto'] as String? ?? '';
         anioLectivo =
             datos['anioLectivo'] as int? ?? DateTime.now().year;
-        quorumMinimo = datos['quorumMinimo'] as int? ?? 30;
-        porcentajeAprobacion =
-            datos['porcentajeAprobacion'] as int? ?? 50;
 
         final secciones =
             datos['seccionesPublicas'] as Map<String, dynamic>?;
@@ -65,8 +60,6 @@ class ConfiguracionProvider extends ChangeNotifier {
     required String emailContacto,
     required String telefonoContacto,
     required int anioLectivo,
-    required int quorumMinimo,
-    required int porcentajeAprobacion,
   }) async {
     isSaving = true;
     error = null;
@@ -77,8 +70,6 @@ class ConfiguracionProvider extends ChangeNotifier {
       this.emailContacto = emailContacto;
       this.telefonoContacto = telefonoContacto;
       this.anioLectivo = anioLectivo;
-      this.quorumMinimo = quorumMinimo;
-      this.porcentajeAprobacion = porcentajeAprobacion;
 
       await _repo.guardar({
         'nombreCooperadora': nombreCooperadora,
@@ -86,8 +77,6 @@ class ConfiguracionProvider extends ChangeNotifier {
         'emailContacto': emailContacto,
         'telefonoContacto': telefonoContacto,
         'anioLectivo': anioLectivo,
-        'quorumMinimo': quorumMinimo,
-        'porcentajeAprobacion': porcentajeAprobacion,
         'seccionesPublicas': seccionesPublicas,
       });
     } catch (e) {

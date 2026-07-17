@@ -21,6 +21,8 @@ class InvitacionProvider extends ChangeNotifier {
     String? telefonoDestino,
     DateTime? fechaVencimiento,
     int? limiteUsos,
+    bool esSocio = false,
+    String? tipoSocio,
   }) async {
     isSaving = true;
     error = null;
@@ -43,6 +45,8 @@ class InvitacionProvider extends ChangeNotifier {
         datos['fechaVencimiento'] = Timestamp.fromDate(fechaVencimiento);
       }
       if (limiteUsos != null) datos['limiteUsos'] = limiteUsos;
+      datos['esSocio'] = esSocio;
+      if (tipoSocio != null) datos['tipoSocio'] = tipoSocio;
       await _repo.crear(datos);
       return codigo;
     } catch (e) {

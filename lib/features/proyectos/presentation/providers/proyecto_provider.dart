@@ -84,6 +84,12 @@ class ProyectoProvider extends ChangeNotifier {
     }
   }
 
+  List<Proyecto> proyectosPorEstado(String estado) => switch (estado) {
+        'en_curso' => enCurso,
+        'planificado' => planificados,
+        _ => finalizados,
+      };
+
   Future<void> agregar(Proyecto p) async {
     isSaving = true;
     error = null;

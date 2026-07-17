@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,7 +8,6 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/services/storage_service.dart';
 import '../../../admin/presentation/providers/categoria_provider.dart';
 import '../../../admin/presentation/providers/metodo_pago_provider.dart';
-import '../../../admin/presentation/providers/persona_provider.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -17,11 +17,8 @@ import '../../../proyectos/domain/models/presupuesto_proyecto.dart';
 import '../../../proyectos/presentation/providers/proyecto_provider.dart';
 import '../../../inventario/domain/models/bien_inventario.dart';
 import '../../../inventario/presentation/providers/inventario_provider.dart';
-import '../../../socios/domain/models/cuota.dart';
-import '../../../socios/domain/models/socio.dart';
 import '../../../socios/domain/models/tipo_cuota.dart';
 import '../../../socios/presentation/providers/cuota_provider.dart';
-import '../../../socios/presentation/providers/socio_provider.dart';
 import '../providers/frecuencia_provider.dart';
 import '../providers/movimientos_provider.dart';
 import '../../../../shared/widgets/numero_cheque_widget.dart';
@@ -140,14 +137,16 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   bool _recurrente = false;
   String? _frecuenciaId;
   String? _proyectoId;
-  Socio? _socioSeleccionado;
-  String? _tipoCuotaId;
+  Map<String, dynamic>? _socioSeleccionado;
+  Map<String, dynamic>? _personaSocioSeleccionada;
+  bool _cargandoSocios = false;
+  String _tipoCuota = 'mensual';
   double? _tarifaVigente;
   final _periodoCtrl = TextEditingController();
   // Presupuesto de proyecto
   String? _presupuestoProyectoId;
   List<PresupuestoProyecto> _presupuestos = [];
-  StreamSubscription<List<PresupuestoProyecto>>? _presupuestosSub;
+  bool _cargandoPresupuestos = false;
 
   // Inventario
   bool _registrarEnInventario = false;
@@ -190,14 +189,13 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
             const TipoCuota(id: '', nombre: '', orden: 0, activo: false),
       );
       if (tipoMensual.id.isNotEmpty) {
-        _tipoCuotaId = tipoMensual.id;
         final tarifa = await cuotaProv.obtenerTarifaVigente(tipoMensual.id);
         if (tarifa != null && mounted) {
           setState(() => _tarifaVigente = tarifa.monto);
         }
       }
       if (_proyectoId != null) {
-        _actualizarPresupuestos(_proyectoId);
+        await _actualizarPresupuestos(_proyectoId);
       }
     });
   }
@@ -249,7 +247,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
 
   @override
   void dispose() {
-    _presupuestosSub?.cancel();
     _montoController.dispose();
     _nroComprobanteController.dispose();
     _nroChequeController.dispose();
@@ -265,27 +262,50 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     super.dispose();
   }
 
-  void _actualizarPresupuestos(String? proyectoId) {
-    _presupuestosSub?.cancel();
+  Future<void> _actualizarPresupuestos(String? proyectoId) async {
     if (proyectoId == null) {
       setState(() {
         _presupuestos = [];
         _presupuestoProyectoId = null;
+        _cargandoPresupuestos = false;
       });
       return;
     }
-    _presupuestosSub = ProyectoRepository()
-        .obtenerPresupuestos(proyectoId)
-        .listen((list) {
+    setState(() => _cargandoPresupuestos = true);
+    try {
+      final todos = await ProyectoRepository()
+          .obtenerPresupuestos(proyectoId)
+          .first;
       if (!mounted) return;
+      if (todos.isEmpty) {
+        setState(() {
+          _presupuestos = [];
+          _presupuestoProyectoId = null;
+        });
+        return;
+      }
+      final ids = todos.map((p) => p.id).toList();
+      final votSnap = await FirebaseFirestore.instance
+          .collection('votaciones')
+          .where('objetoId', whereIn: ids)
+          .where('estado', isEqualTo: 'aprobada')
+          .where('tipo', isEqualTo: 'presupuesto')
+          .get();
+      if (!mounted) return;
+      final idsAprobados =
+          votSnap.docs.map((d) => d.data()['objetoId'] as String).toSet();
       setState(() {
-        _presupuestos = list;
+        _presupuestos = todos.where((p) => idsAprobados.contains(p.id)).toList();
         if (_presupuestoProyectoId != null &&
-            !list.any((p) => p.id == _presupuestoProyectoId)) {
+            !_presupuestos.any((p) => p.id == _presupuestoProyectoId)) {
           _presupuestoProyectoId = null;
         }
       });
-    });
+    } catch (_) {
+      if (mounted) setState(() => _presupuestos = []);
+    } finally {
+      if (mounted) setState(() => _cargandoPresupuestos = false);
+    }
   }
 
   Future<void> _cargarTarifaVigente() async {
@@ -307,7 +327,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           const TipoCuota(id: '', nombre: '', orden: 0, activo: false),
     );
     if (tipoMensual.id.isEmpty) return;
-    _tipoCuotaId = tipoMensual.id;
     final tarifa = await cuotaProv.obtenerTarifaVigente(tipoMensual.id);
     if (tarifa != null && mounted) {
       setState(() {
@@ -361,13 +380,11 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     final provider = context.read<MovimientosProvider>();
     final cuentaProvider = context.read<CuentaBancariaProvider>();
     final catProvider = context.read<CategoriaProvider>();
-    final cuotaProvider = context.read<CuotaProvider>();
     final inventarioProvider = context.read<InventarioProvider>();
     final messenger = ScaffoldMessenger.of(context);
     final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
     final now = DateTime.now();
     final socioSeleccionado = _socioSeleccionado;
-    final tipoCuotaId = _tipoCuotaId;
     final catNombreSeleccionada = catProvider
         .obtenerActivas(_tipo)
         .firstWhere((c) => c['id'] == _categoria,
@@ -504,18 +521,21 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           );
         }
         if (esCuotaSocial && socioSeleccionado != null && provider.error == null) {
-          await cuotaProvider.registrarPago(Cuota(
-            id: '',
-            socioId: socioSeleccionado.id,
-            tipoCuotaId: tipoCuotaId ?? '',
-            periodo: _periodoCtrl.text.trim(),
-            monto: monto,
-            moneda: 'ARS',
-            metodoPagoId: _metodoPago!,
-            usuarioId: uid,
-            fechaPago: _fecha,
-            fechaCreacion: now,
-          ));
+          final periodo = _tipoCuota == 'anual'
+              ? _periodoCtrl.text.trim()
+              : _periodoCtrl.text.trim();
+          await FirebaseFirestore.instance.collection('cuotas').add({
+            'socioId': socioSeleccionado['id'] as String? ?? '',
+            'tipoCuota': _tipoCuota,
+            'periodo': periodo,
+            'monto': monto,
+            'metodoPagoId': _metodoPago,
+            'estado': 'pagada',
+            'fechaPago': FieldValue.serverTimestamp(),
+            'ingresoId': ingresoId,
+            'usuarioId': uid,
+            'fechaCreacion': FieldValue.serverTimestamp(),
+          });
         }
         if (_registrarEnInventario &&
             catNombreSeleccionada == 'Donación' &&
@@ -723,8 +743,8 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     final catProvider = context.watch<CategoriaProvider>();
     final metodoProvider = context.watch<MetodoPagoProvider>();
     final proyectoProvider = context.watch<ProyectoProvider>();
-    final socioProvider = context.watch<SocioProvider>();
-    final personaProvider = context.watch<PersonaProvider>();
+
+
     final cats = catProvider.obtenerActivas(_tipo);
     final catSeleccionada = _categoria != null
         ? cats.firstWhere((c) => c['id'] == _categoria,
@@ -732,11 +752,13 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         : <String, dynamic>{};
     final esCuotaSocial = _esIngreso && catSeleccionada['nombre'] == 'Cuota Social';
     final metodos = metodoProvider.obtenerActivos();
-    final proyectos = [
-      ...proyectoProvider.enCurso,
-      ...proyectoProvider.planificados,
-      ...proyectoProvider.finalizados,
-    ];
+    final proyectos = _esIngreso
+        ? [
+            ...proyectoProvider.enCurso,
+            ...proyectoProvider.planificados,
+            ...proyectoProvider.finalizados,
+          ]
+        : proyectoProvider.enCurso;
 
     return Card(
       child: Padding(
@@ -877,7 +899,11 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                           : null;
                       setState(() {
                         _categoria = v;
-                        if (nom != 'Cuota Social') _socioSeleccionado = null;
+                        if (nom != 'Cuota Social') {
+                          _socioSeleccionado = null;
+                          _personaSocioSeleccionada = null;
+                          _tipoCuota = 'mensual';
+                        }
                         if (!_categoriasInventariables.contains(nom)) {
                           _registrarEnInventario = false;
                         }
@@ -920,61 +946,77 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                   _actualizarPresupuestos(v);
                 },
               ),
-              if (!_esIngreso && _proyectoId != null && _presupuestos.isNotEmpty) ...[
+              if (!_esIngreso && _proyectoId != null) ...[
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String?>(
-                  key: ValueKey('pres-$_proyectoId'),
-                  initialValue: _presupuestoProyectoId,
-                  decoration: const InputDecoration(
-                    labelText: 'Presupuesto del proyecto (opcional)',
-                  ),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text('Sin presupuesto asociado'),
-                      ),
+                if (_cargandoPresupuestos)
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Presupuesto del proyecto (opcional)',
                     ),
-                    ..._presupuestos.asMap().entries.map((e) =>
-                        DropdownMenuItem<String?>(
-                          value: e.value.id,
-                          child: ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.description,
-                                color: AppTheme.azulMedio),
-                            title: Text('Presupuesto ${e.key + 1}'),
-                            subtitle: e.value.descripcion.isNotEmpty
-                                ? Text(e.value.descripcion,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis)
-                                : null,
-                          ),
-                        )),
-                  ],
-                  selectedItemBuilder: (ctx) => [
-                    const Text('Sin presupuesto'),
-                    ..._presupuestos.asMap().entries
-                        .map((e) => Text('Presupuesto ${e.key + 1}')),
-                  ],
-                  onChanged: (v) => setState(() => _presupuestoProyectoId = v),
-                ),
+                    child: const SizedBox(
+                      height: 14,
+                      child: LinearProgressIndicator(),
+                    ),
+                  )
+                else if (_presupuestos.isEmpty)
+                  InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Presupuesto del proyecto (opcional)',
+                      enabled: false,
+                      suffixIcon: Icon(Icons.lock_outline,
+                          size: 16, color: AppTheme.textoSecundario),
+                    ),
+                    child: const Text(
+                      'Sin presupuestos aprobados',
+                      style: TextStyle(color: AppTheme.textoSecundario),
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String?>(
+                    key: ValueKey('pres-$_proyectoId'),
+                    initialValue: _presupuestoProyectoId,
+                    decoration: const InputDecoration(
+                      labelText: 'Presupuesto del proyecto (opcional)',
+                    ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Sin presupuesto asociado'),
+                        ),
+                      ),
+                      ..._presupuestos.asMap().entries.map((e) =>
+                          DropdownMenuItem<String?>(
+                            value: e.value.id,
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.description,
+                                  color: AppTheme.azulMedio),
+                              title: Text('Presupuesto ${e.key + 1}'),
+                              subtitle: e.value.descripcion.isNotEmpty
+                                  ? Text(e.value.descripcion,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis)
+                                  : null,
+                            ),
+                          )),
+                    ],
+                    selectedItemBuilder: (ctx) => [
+                      const Text('Sin presupuesto'),
+                      ..._presupuestos.asMap().entries
+                          .map((e) => Text('Presupuesto ${e.key + 1}')),
+                    ],
+                    onChanged: (v) => setState(() => _presupuestoProyectoId = v),
+                  ),
               ],
             ],
             if (_esIngreso) ...[
               if (!esCuotaSocial) ..._buildCamposIngreso(),
               if (esCuotaSocial)
-                ..._buildCamposCuotaSocial(
-                  opciones: socioProvider.todos
-                      .where((s) => s.activo)
-                      .map((s) => (
-                            socio: s,
-                            nombre: personaProvider.nombreCompleto(s.personaId),
-                          ))
-                      .toList(),
-                ),
+                ..._buildCamposCuotaSocial(),
             ],
             if (!esCuotaSocial) _buildRecurrencia(),
             _buildComprobante(),
@@ -1260,9 +1302,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     );
   }
 
-  List<Widget> _buildCamposCuotaSocial({
-    required List<({Socio socio, String nombre})> opciones,
-  }) {
+  List<Widget> _buildCamposCuotaSocial() {
     return [
       const SizedBox(height: 16),
       const Divider(),
@@ -1276,70 +1316,352 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         ),
       ),
       const SizedBox(height: 12),
-      Autocomplete<({Socio socio, String nombre})>(
-        displayStringForOption: (o) => o.nombre,
-        optionsBuilder: (val) {
-          if (val.text.isEmpty) return opciones.take(5);
-          final q = val.text.toLowerCase();
-          return opciones.where((o) => o.nombre.toLowerCase().contains(q));
-        },
-        onSelected: (o) => setState(() => _socioSeleccionado = o.socio),
-        fieldViewBuilder: (context, ctrl, focusNode, onSubmitted) {
-          return TextFormField(
-            controller: ctrl,
-            focusNode: focusNode,
-            decoration: const InputDecoration(
-              labelText: 'Socio',
-              hintText: 'Buscar por nombre',
-              suffixIcon: Icon(Icons.search),
+      FormField<Object>(
+        validator: (_) => _socioSeleccionado == null ? 'Seleccioná un socio' : null,
+        builder: (field) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onTap: _cargandoSocios ? null : _abrirSelectorSocio,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: field.hasError ? AppTheme.rojoGasto : AppTheme.celesteBorde,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    if (_cargandoSocios)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                    Expanded(
+                      child: _socioSeleccionado == null
+                          ? const Text(
+                              'Seleccioná un socio',
+                              style: TextStyle(
+                                  color: AppTheme.textoSecundario, fontSize: 14),
+                            )
+                          : Text(
+                              'N°${(_socioSeleccionado!['numeroSocio'] as int? ?? 0).toString().padLeft(3, '0')} — '
+                              '${_personaSocioSeleccionada?['apellido'] as String? ?? ''}, '
+                              '${_personaSocioSeleccionada?['nombre'] as String? ?? ''} '
+                              '(DNI ${_formatDni(_personaSocioSeleccionada?['dni'] as String?)})',
+                              style: const TextStyle(fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                    ),
+                    const Icon(Icons.arrow_drop_down,
+                        color: AppTheme.textoSecundario),
+                  ],
+                ),
+              ),
             ),
-            validator: (_) =>
-                _socioSeleccionado == null ? 'Seleccioná un socio' : null,
-          );
-        },
-        optionsViewBuilder: (context, onSelected, options) => Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            elevation: 4,
-            borderRadius: const BorderRadius.all(Radius.circular(8)),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 180),
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                shrinkWrap: true,
-                itemCount: options.length,
-                itemBuilder: (_, i) {
-                  final o = options.elementAt(i);
-                  return ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.people_outline, size: 18),
-                    title: Text(o.nombre),
-                    onTap: () => onSelected(o),
-                  );
-                },
+            if (field.hasError)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 12),
+                child: Text(
+                  field.errorText!,
+                  style: const TextStyle(
+                      color: AppTheme.rojoGasto, fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+      Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _tipoCuota = 'mensual'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _tipoCuota == 'mensual'
+                      ? AppTheme.azulMedio
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.azulMedio),
+                ),
+                child: Text(
+                  'Mensual',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _tipoCuota == 'mensual'
+                        ? Colors.white
+                        : AppTheme.azulMedio,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _tipoCuota = 'anual'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _tipoCuota == 'anual'
+                      ? AppTheme.azulMedio
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.azulMedio),
+                ),
+                child: Text(
+                  'Anual',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _tipoCuota == 'anual'
+                        ? Colors.white
+                        : AppTheme.azulMedio,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       const SizedBox(height: 16),
       TextFormField(
         controller: _periodoCtrl,
         keyboardType: TextInputType.number,
         inputFormatters: [_PeriodoFormatter()],
-        decoration: const InputDecoration(
-          labelText: 'Período (MM/AAAA)',
-          hintText: 'ej: 06/2026',
+        decoration: InputDecoration(
+          labelText: _tipoCuota == 'mensual'
+              ? 'Período (MM/AAAA)'
+              : 'Período (AAAA)',
+          hintText: _tipoCuota == 'mensual' ? 'ej: 06/2026' : 'ej: 2026',
         ),
         validator: (v) {
           if (v == null || v.isEmpty) return 'Ingresá el período';
-          if (!RegExp(r'^\d{2}/\d{4}$').hasMatch(v)) {
+          if (_tipoCuota == 'mensual' &&
+              !RegExp(r'^\d{2}/\d{4}$').hasMatch(v)) {
             return 'Formato: MM/AAAA';
+          }
+          if (_tipoCuota == 'anual' && !RegExp(r'^\d{4}$').hasMatch(v)) {
+            return 'Formato: AAAA';
           }
           return null;
         },
       ),
     ];
+  }
+
+  Future<void> _abrirSelectorSocio() async {
+    setState(() => _cargandoSocios = true);
+    try {
+      final sociosSnap = await FirebaseFirestore.instance
+          .collection('socios')
+          .where('activo', isEqualTo: true)
+          .orderBy('numeroSocio')
+          .get();
+
+      final personaIds = sociosSnap.docs
+          .map((d) => d.data()['personaId'] as String?)
+          .whereType<String>()
+          .toList();
+
+      final Map<String, Map<String, dynamic>> personasMap = {};
+      if (personaIds.isNotEmpty) {
+        // whereIn soporta hasta 30 — partir si es necesario
+        for (var i = 0; i < personaIds.length; i += 30) {
+          final chunk = personaIds.sublist(
+              i, i + 30 > personaIds.length ? personaIds.length : i + 30);
+          final snap = await FirebaseFirestore.instance
+              .collection('personas')
+              .where(FieldPath.documentId, whereIn: chunk)
+              .get();
+          for (final d in snap.docs) {
+            personasMap[d.id] = d.data();
+          }
+        }
+      }
+
+      final sociosConPersona = sociosSnap.docs.map((d) {
+        final socioData = {...d.data(), 'id': d.id};
+        final personaId = socioData['personaId'] as String? ?? '';
+        final personaData = personasMap[personaId] ?? {};
+        return (
+          socio: socioData,
+          persona: personaData,
+        );
+      }).toList();
+
+      // ignore: avoid_print
+      print('[SelectorSocio] cargados: ${sociosConPersona.length}');
+
+      if (mounted) {
+        setState(() => _cargandoSocios = false);
+        await _mostrarModalSocios(sociosConPersona);
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('[SelectorSocio] ERROR: $e');
+      if (mounted) setState(() => _cargandoSocios = false);
+    }
+  }
+
+  Future<void> _mostrarModalSocios(
+    List<({Map<String, dynamic> socio, Map<String, dynamic> persona})>
+        sociosConPersona,
+  ) async {
+    String busqueda = '';
+    bool ordenPorNumero = true;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateModal) {
+          final sociosFiltrados = sociosConPersona.where((sp) {
+            if (busqueda.isEmpty) return true;
+            final texto =
+                '${sp.socio['numeroSocio']} ${sp.persona['nombre'] ?? ''} ${sp.persona['apellido'] ?? ''} ${sp.persona['dni'] ?? ''}'
+                    .toLowerCase();
+            return texto.contains(busqueda.toLowerCase());
+          }).toList()
+            ..sort((a, b) => ordenPorNumero
+                ? ((a.socio['numeroSocio'] as int? ?? 0)
+                    .compareTo(b.socio['numeroSocio'] as int? ?? 0))
+                : ((a.persona['apellido'] as String? ?? '')
+                    .compareTo(b.persona['apellido'] as String? ?? '')));
+
+          return DraggableScrollableSheet(
+            initialChildSize: 0.7,
+            maxChildSize: 0.95,
+            minChildSize: 0.5,
+            expand: false,
+            builder: (_, scrollController) => Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.celesteBorde,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      const Text('Ordenar:',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textoSecundario)),
+                      const SizedBox(width: 8),
+                      ToggleButtons(
+                        isSelected: [ordenPorNumero, !ordenPorNumero],
+                        onPressed: (i) =>
+                            setStateModal(() => ordenPorNumero = i == 0),
+                        borderRadius: BorderRadius.circular(8),
+                        selectedColor: Colors.white,
+                        fillColor: AppTheme.azulMedio,
+                        color: AppTheme.textoSecundario,
+                        constraints: const BoxConstraints(
+                            minWidth: 80, minHeight: 32),
+                        children: const [
+                          Text('N° Socio', style: TextStyle(fontSize: 12)),
+                          Text('Alfabético', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  child: TextField(
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar por nombre, N° o DNI...',
+                      prefixIcon: const Icon(Icons.search,
+                          color: AppTheme.textoSecundario),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      isDense: true,
+                    ),
+                    onChanged: (v) => setStateModal(() => busqueda = v),
+                  ),
+                ),
+                Expanded(
+                  child: sociosFiltrados.isEmpty
+                      ? const Center(
+                          child: Text('Sin resultados',
+                              style: TextStyle(
+                                  color: AppTheme.textoSecundario)))
+                      : ListView.builder(
+                          controller: scrollController,
+                          itemCount: sociosFiltrados.length,
+                          itemBuilder: (_, i) {
+                            final sp = sociosFiltrados[i];
+                            final socioId = sp.socio['id'] as String? ?? '';
+                            final seleccionado =
+                                _socioSeleccionado?['id'] == socioId;
+                            final numero = (sp.socio['numeroSocio'] as int? ?? 0)
+                                .toString()
+                                .padLeft(3, '0');
+                            final apellido =
+                                sp.persona['apellido'] as String? ?? '';
+                            final nombre =
+                                sp.persona['nombre'] as String? ?? '';
+                            final dni = sp.persona['dni'] as String?;
+                            return ListTile(
+                              selected: seleccionado,
+                              selectedTileColor: AppTheme.celesteFondo,
+                              title: Text(
+                                'N°$numero — $apellido, $nombre',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                              subtitle: Text(
+                                'DNI ${_formatDni(dni)}',
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textoSecundario),
+                              ),
+                              trailing: seleccionado
+                                  ? const Icon(Icons.check_circle,
+                                      color: AppTheme.verdeTeal)
+                                  : null,
+                              onTap: () {
+                                setState(() {
+                                  _socioSeleccionado = sp.socio;
+                                  _personaSocioSeleccionada =
+                                      sp.persona.isEmpty ? null : sp.persona;
+                                });
+                                Navigator.pop(ctx);
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatDni(String? dni) {
+    if (dni == null || dni.isEmpty) return 'Sin DNI';
+    final numeros = dni.replaceAll('.', '').replaceAll(' ', '');
+    if (numeros.length <= 7) return numeros;
+    return '${numeros.substring(0, 2)}.${numeros.substring(2, 5)}.${numeros.substring(5)}';
   }
 
   List<Widget> _buildCamposIngreso() {

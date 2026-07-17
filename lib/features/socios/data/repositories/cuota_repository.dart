@@ -32,6 +32,14 @@ class CuotaRepository {
             s.docs.map((d) => Cuota.fromMap(d.data(), d.id)).toList());
   }
 
+  Stream<List<Cuota>> obtenerPorTipo(String tipoCuotaId) {
+    return _cuotasCol
+        .where('tipoCuotaId', isEqualTo: tipoCuotaId)
+        .snapshots()
+        .map((s) =>
+            s.docs.map((d) => Cuota.fromMap(d.data(), d.id)).toList());
+  }
+
   Stream<List<TarifaCuota>> obtenerTarifas() {
     return _tarifasCol.snapshots().map((s) {
       final list = s.docs
@@ -82,15 +90,141 @@ class CuotaRepository {
   }
 
   Future<bool> estaAlDia(String socioId) async {
-    final now = DateTime.now();
-    final periodo =
-        '${now.month.toString().padLeft(2, '0')}/${now.year}';
-    final snap = await FirebaseFirestore.instance
-        .collection('cuotas')
-        .where('socioId', isEqualTo: socioId)
-        .where('periodo', isEqualTo: periodo)
-        .get();
-    return snap.docs.isNotEmpty;
+    final ahora = DateTime.now();
+    final mesActual = DateTime(ahora.year, ahora.month);
+
+    // Resolución de tipos anuales (una sola query para todos)
+    final tiposSnap = await _tiposCuotaCol.get();
+    final tiposAnuales = tiposSnap.docs
+        .where((d) =>
+            (d.data()['nombre'] as String? ?? '')
+                .toLowerCase()
+                .contains('anual'))
+        .map((d) => d.id)
+        .toSet();
+
+    final cuotasSnap =
+        await _cuotasCol.where('socioId', isEqualTo: socioId).get();
+
+    for (final doc in cuotasSnap.docs) {
+      final data = doc.data();
+      final tipoCuotaId = data['tipoCuotaId'] as String? ?? '';
+      final fechaPagoRaw = data['fechaPago'];
+      if (fechaPagoRaw == null) continue;
+      final fechaPago = (fechaPagoRaw as Timestamp).toDate();
+      final periodo = data['periodo'] as String?;
+
+      if (tiposAnuales.contains(tipoCuotaId)) {
+        // Cuota anual: cubre 12 meses desde el mes de pago
+        final mesInicio = DateTime(fechaPago.year, fechaPago.month);
+        final mesFin = DateTime(fechaPago.year + 1, fechaPago.month);
+        if (!mesActual.isBefore(mesInicio) && mesActual.isBefore(mesFin)) {
+          return true;
+        }
+      } else {
+        // Cuota mensual: el período debe coincidir con el mes actual
+        if (periodo != null) {
+          final partes = periodo.split('/');
+          if (partes.length == 2) {
+            final mes = int.tryParse(partes[0]) ?? 0;
+            final anio = int.tryParse(partes[1]) ?? 0;
+            if (mes == ahora.month && anio == ahora.year) return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  Future<Map<String, dynamic>> calcularDeudaSocio(
+      String socioId, DateTime fechaIngreso) async {
+    try {
+      final ahora = DateTime.now();
+      final mesActual = DateTime(ahora.year, ahora.month);
+      final mesIngreso = DateTime(fechaIngreso.year, fechaIngreso.month);
+
+      final cuotasPagadasSnap = await _cuotasCol
+          .where('socioId', isEqualTo: socioId)
+          .where('estado', isEqualTo: 'pagada')
+          .get();
+
+      final tarifasSnap = await _tarifasCol.orderBy('vigenciaDesde').get();
+
+      if (tarifasSnap.docs.isEmpty) {
+        return {
+          'deudaTotal': 0.0,
+          'cuotasAdeudadas': 0,
+          'estaAlDia': false,
+          'sinTarifa': true,
+        };
+      }
+
+      final mesesCubiertos = <String>{};
+      for (final doc in cuotasPagadasSnap.docs) {
+        final data = doc.data();
+        final tipoCuota = data['tipoCuota'] as String? ?? 'mensual';
+
+        if (tipoCuota == 'anual') {
+          final fechaPago = (data['fechaPago'] as Timestamp).toDate();
+          for (var i = 0; i < 12; i++) {
+            final m = DateTime(fechaPago.year, fechaPago.month + i);
+            mesesCubiertos
+                .add('${m.month.toString().padLeft(2, '0')}/${m.year}');
+          }
+        } else {
+          final periodo = data['periodo'] as String? ?? '';
+          if (periodo.isNotEmpty) mesesCubiertos.add(periodo);
+        }
+      }
+
+      double deudaTotal = 0.0;
+      int cuotasAdeudadas = 0;
+      var mes = mesIngreso;
+
+      while (!mes.isAfter(mesActual)) {
+        final periodoStr =
+            '${mes.month.toString().padLeft(2, '0')}/${mes.year}';
+        if (!mesesCubiertos.contains(periodoStr)) {
+          final monto = _tarifaParaMes(tarifasSnap.docs, mes);
+          if (monto != null) {
+            deudaTotal += monto;
+            cuotasAdeudadas++;
+          }
+        }
+        mes = DateTime(mes.year, mes.month + 1);
+      }
+
+      return {
+        'deudaTotal': deudaTotal,
+        'cuotasAdeudadas': cuotasAdeudadas,
+        'estaAlDia': cuotasAdeudadas == 0,
+      };
+    } catch (e) {
+      // ignore: avoid_print
+      print('[calcularDeudaSocio] ERROR socioId=$socioId: $e');
+      return {
+        'deudaTotal': 0.0,
+        'cuotasAdeudadas': 0,
+        'estaAlDia': false,
+        'error': true,
+      };
+    }
+  }
+
+  double? _tarifaParaMes(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> tarifas,
+      DateTime mes) {
+    double? resultado;
+    for (final doc in tarifas) {
+      final data = doc.data();
+      final vigenciaDesde = (data['vigenciaDesde'] as Timestamp).toDate();
+      final vigencia = DateTime(vigenciaDesde.year, vigenciaDesde.month);
+      if (!vigencia.isAfter(mes)) {
+        resultado = (data['monto'] as num).toDouble();
+      }
+    }
+    return resultado;
   }
 
   Future<void> inicializarDatosDefault() async {

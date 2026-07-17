@@ -95,7 +95,6 @@ void mostrarModalProyecto(BuildContext context, [Proyecto? proyecto]) {
 
 class ProyectosScreen extends StatefulWidget {
   const ProyectosScreen({super.key, this.initialTab = 0});
-
   final int initialTab;
 
   @override
@@ -104,44 +103,26 @@ class ProyectosScreen extends StatefulWidget {
 
 class _ProyectosScreenState extends State<ProyectosScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+  late final TabController _tabCtrl;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(
+    _tabCtrl = TabController(
       length: 3,
-      vsync: this,
       initialIndex: widget.initialTab,
+      vsync: this,
     );
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabCtrl.dispose();
     super.dispose();
-  }
-
-  Tab _buildTab(String label, int count, IconData icon) {
-    final hasItems = count > 0;
-    return Tab(
-      icon: Icon(icon),
-      child: Text(
-        hasItems ? '$label ($count)' : label,
-        style: TextStyle(
-          fontWeight: hasItems ? FontWeight.w700 : FontWeight.w400,
-        ),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final puedeGestionar = context.select<AuthProvider, bool>(
-      (a) => a.esEditor || a.esAdmin,
-    );
-    final provider = context.watch<ProyectoProvider>();
-
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
@@ -154,74 +135,78 @@ class _ProyectosScreenState extends State<ProyectosScreen>
         ),
         titleSpacing: 0,
         title: Row(
-          mainAxisSize: MainAxisSize.max,
           children: [
             Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
-            SizedBox(
-              width: 48,
-              height: 48,
-              child: IconButton(
-                icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
-                padding: EdgeInsets.zero,
-                onPressed: () => Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => const HomeScreen()),
-                  (route) => false,
-                ),
+            IconButton(
+              icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+              constraints: const BoxConstraints(minWidth: 48, maxWidth: 48),
+              onPressed: () => Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
+                (route) => false,
               ),
             ),
             Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
             const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Proyectos',
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                overflow: TextOverflow.ellipsis,
-              ),
+            const Text(
+              'Proyectos',
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ],
         ),
-        actions: [AccionAuthWidget()],
+        actions: [const AccionAuthWidget()],
         bottom: TabBar(
-          controller: _tabController,
+          controller: _tabCtrl,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white,
           indicatorColor: const Color(0xFF00BCD4),
           indicatorWeight: 3,
-          tabs: [
-            _buildTab('En curso', provider.enCurso.length, Icons.play_circle),
-            _buildTab('Planificados', provider.planificados.length, Icons.pending),
-            _buildTab('Finalizados', provider.finalizados.length, Icons.check_circle),
+          tabs: const [
+            Tab(icon: Icon(Icons.play_circle, size: 18), text: 'En curso'),
+            Tab(icon: Icon(Icons.pending, size: 18), text: 'Planificados'),
+            Tab(icon: Icon(Icons.check_circle, size: 18), text: 'Finalizados'),
           ],
         ),
       ),
       body: TabBarView(
-        controller: _tabController,
-        children: const [
-          _TabProyectos(estado: 'en_curso'),
-          _TabProyectos(estado: 'planificado'),
-          _TabProyectos(estado: 'finalizado'),
+        controller: _tabCtrl,
+        children: [
+          _ListaProyectos(estado: 'en_curso', onTabSelected: _tabCtrl.animateTo),
+          _ListaProyectos(estado: 'planificado', onTabSelected: _tabCtrl.animateTo),
+          _ListaProyectos(estado: 'finalizado', onTabSelected: _tabCtrl.animateTo),
         ],
       ),
-      floatingActionButton: puedeGestionar
-          ? FloatingActionButton.extended(
-              backgroundColor: AppTheme.verdeTeal,
-              foregroundColor: AppTheme.blanco,
-              onPressed: () => mostrarModalProyecto(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Nuevo proyecto'),
-            )
-          : null,
+      floatingActionButton: _BotonAgregarProyecto(),
     );
   }
 }
 
-// ── Tab ───────────────────────────────────────────────────────────────────────
+Widget _BotonAgregarProyecto() {
+  return Builder(builder: (context) {
+    final auth = context.watch<AuthProvider>();
+    if (!auth.esEditor && !auth.esAdmin) return const SizedBox.shrink();
+    return FloatingActionButton(
+      backgroundColor: AppTheme.verdeTeal,
+      onPressed: () => mostrarModalProyecto(context),
+      child: const Icon(Icons.add, color: Colors.white),
+    );
+  });
+}
 
-class _TabProyectos extends StatelessWidget {
-  const _TabProyectos({required this.estado});
+// ── _ListaProyectos ───────────────────────────────────────────────────────────
+
+class _ListaProyectos extends StatelessWidget {
+  const _ListaProyectos({required this.estado, required this.onTabSelected});
 
   final String estado;
+  final void Function(int) onTabSelected;
+
+  String _labelEstado(String e) => switch (e) {
+        'en_curso' => 'en curso',
+        'planificado' => 'planificados',
+        'finalizado' => 'finalizados',
+        _ => e,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -234,17 +219,21 @@ class _TabProyectos extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final proyectos = switch (estado) {
-      'en_curso' => provider.enCurso,
-      'planificado' => provider.planificados,
-      _ => provider.finalizados,
-    };
+    final proyectos = provider.proyectosPorEstado(estado);
 
     if (proyectos.isEmpty) {
-      return const Center(
-        child: Text(
-          'Sin proyectos',
-          style: TextStyle(color: AppTheme.textoSecundario),
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.folder_open,
+                size: 48, color: AppTheme.textoSecundario),
+            const SizedBox(height: 12),
+            Text(
+              'No hay proyectos ${_labelEstado(estado)}',
+              style: const TextStyle(color: AppTheme.textoSecundario),
+            ),
+          ],
         ),
       );
     }
@@ -255,6 +244,7 @@ class _TabProyectos extends StatelessWidget {
       itemBuilder: (_, i) => _ProyectoCard(
         proyecto: proyectos[i],
         puedeGestionar: puedeGestionar,
+        onTabSelected: onTabSelected,
       ),
     );
   }
@@ -263,17 +253,25 @@ class _TabProyectos extends StatelessWidget {
 // ── ProyectoCard ──────────────────────────────────────────────────────────────
 
 class _ProyectoCard extends StatelessWidget {
-  const _ProyectoCard({required this.proyecto, required this.puedeGestionar});
+  const _ProyectoCard({
+    required this.proyecto,
+    required this.puedeGestionar,
+    required this.onTabSelected,
+  });
 
   final Proyecto proyecto;
   final bool puedeGestionar;
+  final void Function(int) onTabSelected;
 
-  void _irADetalle(BuildContext context) => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
-        ),
-      );
+  Future<void> _irADetalle(BuildContext context) async {
+    final result = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
+      ),
+    );
+    if (result != null) onTabSelected(result);
+  }
 
   @override
   Widget build(BuildContext context) {

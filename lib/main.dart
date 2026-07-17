@@ -19,6 +19,7 @@ import 'features/ingresos/presentation/providers/movimientos_provider.dart';
 import 'features/proyectos/presentation/providers/proyecto_provider.dart';
 import 'features/admin/presentation/providers/rubro_provider.dart';
 import 'features/informes/presentation/providers/informes_provider.dart';
+import 'features/votaciones/presentation/providers/votacion_provider.dart';
 import 'features/inventario/presentation/providers/inventario_provider.dart';
 import 'features/socios/presentation/providers/cuota_provider.dart';
 import 'features/socios/presentation/providers/socio_provider.dart';
@@ -79,6 +80,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => InventarioProvider()),
         ChangeNotifierProvider(create: (_) => RubroProvider()),
         ChangeNotifierProvider(create: (_) => InformesProvider()),
+        ChangeNotifierProvider(create: (_) => VotacionProvider()),
       ],
       child: MaterialApp(
         navigatorKey: navigatorKey,

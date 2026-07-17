@@ -32,6 +32,7 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
     ('item_proyecto', 'Ítem de proyecto'),
     ('cuenta_bancaria', 'Cuenta bancaria'),
     ('caja_chica', 'Caja chica'),
+    ('confirmacion_deposito', 'Confirmación de depósito'),
     ('inventario', 'Inventario'),
     ('presupuesto_proyecto', 'Presupuesto de proyecto'),
   ];

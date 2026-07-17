@@ -12,6 +12,10 @@ class MovimientoBancario {
   final String? observaciones;
   final String usuarioId;
   final DateTime fechaCreacion;
+  final String? tipoOrigen;
+  final bool? confirmado;
+  final String? usuarioConfirmacionId;
+  final DateTime? fechaConfirmacion;
 
   const MovimientoBancario({
     required this.id,
@@ -23,6 +27,10 @@ class MovimientoBancario {
     this.observaciones,
     required this.usuarioId,
     required this.fechaCreacion,
+    this.tipoOrigen,
+    this.confirmado,
+    this.usuarioConfirmacionId,
+    this.fechaConfirmacion,
   });
 
   Map<String, dynamic> toMap() => {
@@ -49,6 +57,12 @@ class MovimientoBancario {
         fechaCreacion: map['fechaCreacion'] != null
             ? (map['fechaCreacion'] as Timestamp).toDate()
             : DateTime.now(),
+        tipoOrigen: map['tipo_origen'] as String?,
+        confirmado: map['confirmado'] as bool?,
+        usuarioConfirmacionId: map['usuarioConfirmacionId'] as String?,
+        fechaConfirmacion: map['fechaConfirmacion'] != null
+            ? (map['fechaConfirmacion'] as Timestamp).toDate()
+            : null,
       );
 
   MovimientoBancario copyWith({
@@ -60,6 +74,10 @@ class MovimientoBancario {
     Object? observaciones = _unsetMov,
     String? usuarioId,
     DateTime? fechaCreacion,
+    Object? tipoOrigen = _unsetMov,
+    Object? confirmado = _unsetMov,
+    Object? usuarioConfirmacionId = _unsetMov,
+    Object? fechaConfirmacion = _unsetMov,
   }) =>
       MovimientoBancario(
         id: id,
@@ -76,5 +94,15 @@ class MovimientoBancario {
             : observaciones as String?,
         usuarioId: usuarioId ?? this.usuarioId,
         fechaCreacion: fechaCreacion ?? this.fechaCreacion,
+        tipoOrigen:
+            tipoOrigen == _unsetMov ? this.tipoOrigen : tipoOrigen as String?,
+        confirmado:
+            confirmado == _unsetMov ? this.confirmado : confirmado as bool?,
+        usuarioConfirmacionId: usuarioConfirmacionId == _unsetMov
+            ? this.usuarioConfirmacionId
+            : usuarioConfirmacionId as String?,
+        fechaConfirmacion: fechaConfirmacion == _unsetMov
+            ? this.fechaConfirmacion
+            : fechaConfirmacion as DateTime?,
       );
 }

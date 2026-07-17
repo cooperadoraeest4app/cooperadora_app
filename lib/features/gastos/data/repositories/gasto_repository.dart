@@ -44,6 +44,10 @@ class GastoRepository {
         nuevoEstado: 'comprado',
         gastoId: ref.id,
       );
+      await _marcarPresupuestoComoComprado(
+        presupuestoId: gasto.presupuestoProyectoId!,
+        gastoId: ref.id,
+      );
     }
     return ref.id;
   }
@@ -67,8 +71,10 @@ class GastoRepository {
     final anterior = snap.data();
     final usuarioId = anterior?['usuarioId'] as String? ?? 'desconocido';
 
-    if (anterior?['presupuestoProyectoId'] != null) {
+    final presupuestoId = anterior?['presupuestoProyectoId'] as String?;
+    if (presupuestoId != null) {
       await _revertirItemsPresupuesto(gastoId: id);
+      await _revertirVotacionComprada(presupuestoId: presupuestoId);
     }
 
     await _collection.doc(id).delete();
@@ -103,6 +109,37 @@ class GastoRepository {
       });
     }
     await batch.commit();
+  }
+
+  Future<void> _marcarPresupuestoComoComprado({
+    required String presupuestoId,
+    required String gastoId,
+  }) async {
+    final snap = await FirebaseFirestore.instance
+        .collection('votaciones')
+        .where('objetoId', isEqualTo: presupuestoId)
+        .where('estado', isEqualTo: 'aprobada')
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return;
+    await snap.docs.first.reference.update({
+      'estado': 'comprado',
+      'gastoId': gastoId,
+    });
+  }
+
+  Future<void> _revertirVotacionComprada({required String presupuestoId}) async {
+    final snap = await FirebaseFirestore.instance
+        .collection('votaciones')
+        .where('objetoId', isEqualTo: presupuestoId)
+        .where('estado', isEqualTo: 'comprado')
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return;
+    await snap.docs.first.reference.update({
+      'estado': 'aprobada',
+      'gastoId': FieldValue.delete(),
+    });
   }
 
   Future<void> _revertirItemsPresupuesto({required String gastoId}) async {

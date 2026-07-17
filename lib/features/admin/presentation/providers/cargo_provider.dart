@@ -34,4 +34,17 @@ class CargoProvider extends ChangeNotifier {
 
   Future<void> asignarPersona(String cargoId, String? personaId) =>
       _repo.asignarPersona(cargoId, personaId);
+
+  Map<String, dynamic>? cargoDePersona(String personaId) {
+    if (cargos.isEmpty || personaId.isEmpty) return null;
+    try {
+      return cargos.firstWhere((c) => c['personaId'] == personaId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String nombreCargoDePersona(String personaId) {
+    return cargoDePersona(personaId)?['nombre'] as String? ?? '';
+  }
 }

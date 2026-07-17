@@ -172,6 +172,15 @@ class _PerfilScreenState extends State<PerfilScreen> {
   }
 
   Future<void> _guardar() async {
+    if (!_esFiscal && _dniCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El DNI es obligatorio'),
+          backgroundColor: AppTheme.rojoGasto,
+        ),
+      );
+      return;
+    }
     setState(() => _guardando = true);
     try {
       await context.read<AuthProvider>().actualizarPerfil(
@@ -256,9 +265,6 @@ class _PerfilScreenState extends State<PerfilScreen> {
     final fotoUrl = auth.datosPersona?['fotoUrl'] as String?;
     final rol = auth.rol ?? '';
     final personaId = auth.datosPersona?['id'] as String? ?? '';
-    final cargos = context.watch<CargoProvider>().cargos;
-    final cargo = cargos.firstWhere((c) => c['personaId'] == personaId, orElse: () => {});
-    final cargoTexto = cargo['nombre'] as String?;
 
     return PopScope(
       canPop: !_hayCambios,
@@ -434,7 +440,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _dniCtrl,
-                            decoration: const InputDecoration(labelText: 'DNI'),
+                            decoration: const InputDecoration(labelText: 'DNI *'),
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly
@@ -468,11 +474,32 @@ class _PerfilScreenState extends State<PerfilScreen> {
                           const SizedBox(height: 12),
                           _CampoSoloLectura(label: 'Tipo', valor: _subtipo!),
                         ],
-                        if (cargoTexto != null && cargoTexto.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          _CampoSoloLectura(
-                              label: 'Cargo institucional', valor: cargoTexto),
-                        ],
+                        const SizedBox(height: 12),
+                        Builder(
+                          builder: (ctx) {
+                            final cargoProvider = ctx.watch<CargoProvider>();
+                            if (!cargoProvider.cargado) {
+                              return InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Cargo institucional',
+                                  helperText: 'No editable',
+                                ),
+                                child: const SizedBox(
+                                  height: 14,
+                                  child: LinearProgressIndicator(
+                                    color: AppTheme.celesteAccento,
+                                    backgroundColor: AppTheme.celesteFondo,
+                                  ),
+                                ),
+                              );
+                            }
+                            final nombre = cargoProvider.nombreCargoDePersona(personaId);
+                            return _CampoSoloLectura(
+                              label: 'Cargo institucional',
+                              valor: nombre.isNotEmpty ? nombre : 'Sin cargo institucional',
+                            );
+                          },
+                        ),
                         const SizedBox(height: 12),
                         _CampoSoloLectura(
                             label: 'Rol en la app',

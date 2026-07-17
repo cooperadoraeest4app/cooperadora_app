@@ -5,7 +5,6 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../providers/auth_provider.dart' as ap;
 import 'registro_screen.dart';
-import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -88,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ],
         ),
-        actions: [const AccionAuthWidget()],
+        actions: const [SizedBox.shrink()],
       ),
       body: SingleChildScrollView(
         child: Center(
