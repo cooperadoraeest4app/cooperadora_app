@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,10 +9,8 @@ import 'package:flutter/material.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../admin/presentation/screens/usuario_detalle_screen.dart';
 import '../../../../shared/services/storage_service.dart';
-import '../../../../shared/utils/metodo_pago_icon.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../admin/data/repositories/persona_repository.dart';
 import '../../../admin/domain/models/persona.dart';
@@ -20,17 +18,19 @@ import '../../../admin/presentation/providers/metodo_pago_provider.dart';
 import '../../../admin/presentation/providers/persona_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/widgets/nombre_usuario_widget.dart';
-import '../../../../shared/widgets/numero_cheque_widget.dart';
 import '../../../../shared/services/log_cambio_service.dart';
-import '../../data/repositories/cuota_repository.dart';
+import '../../../admin/presentation/providers/categoria_provider.dart';
+import '../../../ingresos/presentation/screens/agregar_movimiento_screen.dart';
+import '../../data/repositories/pago_cuota_repository.dart';
 import '../../data/repositories/socio_repository.dart';
-import '../../domain/models/cuota.dart';
+import '../../domain/models/pago_cuota.dart';
 import '../../domain/models/socio.dart';
 import '../../domain/models/subtipo_socio.dart';
 import '../../domain/models/tipo_socio.dart';
-import '../providers/cuota_provider.dart';
+import '../../domain/services/cuota_calculo_service.dart';
 import '../providers/socio_provider.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import '../../../../shared/widgets/seccion_hijos_widget.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -592,8 +592,15 @@ class _SocioDetalleScreenState extends State<SocioDetalleScreen> {
                     ),
                   if (auth.esAdmin) const SizedBox(height: 12),
                   _CuotasCard(
-                      socioId: widget.socio.id,
-                      puedeGestionar: puedeGestionar),
+                    socio: liveSocio,
+                    puedeGestionar: puedeGestionar,
+                  ),
+                  if (persona.tipoPersona != 'fiscal' &&
+                      persona.subtipo != 'alumno') ...[
+                    const SizedBox(height: 12),
+                    SeccionHijosWidget(
+                        personaId: persona.id, puedeEditar: puedeGestionar),
+                  ],
                   if (_hayCambios && puedeGestionar) const SizedBox(height: 72),
                   const SizedBox(height: 20),
                 ],
@@ -1204,9 +1211,11 @@ class _RolChip extends StatelessWidget {
 // ── _CuotasCard ───────────────────────────────────────────────────────────────
 
 class _CuotasCard extends StatefulWidget {
-  const _CuotasCard(
-      {required this.socioId, required this.puedeGestionar});
-  final String socioId;
+  const _CuotasCard({
+    required this.socio,
+    required this.puedeGestionar,
+  });
+  final Socio socio;
   final bool puedeGestionar;
 
   @override
@@ -1214,165 +1223,269 @@ class _CuotasCard extends StatefulWidget {
 }
 
 class _CuotasCardState extends State<_CuotasCard> {
-  final _cuotaRepo = CuotaRepository();
-  late final Stream<List<Cuota>> _stream;
-  bool _expandido = true;
+  late Future<CuotaEstado> _estadoFuture;
 
   @override
   void initState() {
     super.initState();
-    _stream = _cuotaRepo.obtenerPorSocio(widget.socioId);
+    _calcular();
   }
 
-  void _abrirModalPago() {
-    showModalBottomSheet(
+  void _calcular() {
+    _estadoFuture = CuotaCalculoService().calcularEstado(
+      socioId: widget.socio.id,
+      fechaIngreso: widget.socio.fechaIngreso,
+    );
+  }
+
+  void _refresh() {
+    if (mounted) setState(() => _calcular());
+  }
+
+  Future<void> _eliminarPago(String pagoId) async {
+    final confirm = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _ModalPago(
-        socioId: widget.socioId,
-        onGuardar: (c) => context.read<CuotaProvider>().registrarPago(c),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar pago'),
+        content: const Text('¿Eliminás este pago? Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.rojoGasto,
+                foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
       ),
     );
+    if (confirm != true || !mounted) return;
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      await PagoCuotaRepository().eliminarPago(pagoId, uid);
+      _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.rojoGasto));
+      }
+    }
   }
 
-  void _abrirModalEditar(Cuota cuota) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _ModalEditarCuota(cuota: cuota),
+  String? _obtenerIdCategoriaCuotaSocial() {
+    final cats = context.read<CategoriaProvider>().categorias;
+    final match = cats.firstWhere(
+      (c) => c['nombre']?.toString().toLowerCase() == 'cuota social',
+      orElse: () => {},
     );
+    return match['id'] as String?;
+  }
+
+  void _navegarAPago() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AgregarMovimientoScreen(
+          tipoInicial: 'ingreso',
+          categoriaInicial: _obtenerIdCategoriaCuotaSocial(),
+          socioInicial: widget.socio,
+        ),
+      ),
+    ).then((_) => _refresh());
   }
 
   @override
   Widget build(BuildContext context) {
-    final cuotaProv = context.watch<CuotaProvider>();
-    final metodosPago = context.watch<MetodoPagoProvider>().metodosPago;
-
     return Card(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: () => setState(() => _expandido = !_expandido),
-            borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-              child: Row(
-                children: [
-                  const Icon(Icons.receipt_long_outlined,
-                      size: 18, color: AppTheme.verdeIngreso),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Historial de cuotas',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                        color: AppTheme.textoPrincipal,
-                      ),
-                    ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Row(
+              children: [
+                Icon(Icons.receipt_long_outlined,
+                    size: 18, color: AppTheme.verdeIngreso),
+                SizedBox(width: 8),
+                Text(
+                  'Cuotas',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: AppTheme.textoPrincipal,
                   ),
-                  if (widget.puedeGestionar)
-                    TextButton.icon(
-                      onPressed: _abrirModalPago,
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('Registrar'),
-                      style: TextButton.styleFrom(
-                          foregroundColor: AppTheme.verdeTeal,
-                          visualDensity: VisualDensity.compact),
-                    ),
-                  Icon(
-                    _expandido
-                        ? Icons.expand_less
-                        : Icons.expand_more,
-                    color: AppTheme.textoSecundario,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          if (_expandido) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: StreamBuilder<List<Cuota>>(
-                stream: _stream,
-                builder: (_, snap) {
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(),
+          const Divider(height: 1),
+          FutureBuilder<CuotaEstado>(
+            future: _estadoFuture,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (snap.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text('Error al calcular cuotas: ${snap.error}',
+                      style: const TextStyle(
+                          color: AppTheme.rojoGasto, fontSize: 13)),
+                );
+              }
+              final estado = snap.data!;
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: estado.estaAlDia
+                            ? AppTheme.verdeIngreso.withValues(alpha: 0.08)
+                            : AppTheme.rojoGasto.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: estado.estaAlDia
+                              ? AppTheme.verdeIngreso
+                              : AppTheme.rojoGasto,
+                        ),
                       ),
-                    );
-                  }
-                  final cuotas = snap.data ?? [];
-                  if (cuotas.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'Sin pagos registrados.',
-                        style:
-                            TextStyle(color: AppTheme.textoSecundario),
+                      child: Row(
+                        children: [
+                          Icon(
+                            estado.estaAlDia
+                                ? Icons.check_circle_outline
+                                : Icons.warning_amber_outlined,
+                            color: estado.estaAlDia
+                                ? AppTheme.verdeIngreso
+                                : AppTheme.rojoGasto,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  estado.estaAlDia ? 'Al día' : 'En deuda',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: estado.estaAlDia
+                                        ? AppTheme.verdeIngreso
+                                        : AppTheme.rojoGasto,
+                                  ),
+                                ),
+                                if (estado.deuda > 0)
+                                  Text(
+                                    'Debe ${_fmtMonto(estado.deuda)}',
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppTheme.rojoGasto),
+                                  ),
+                                if (estado.creditoAFavor > 0)
+                                  Text(
+                                    'Crédito a favor: ${_fmtMonto(estado.creditoAFavor)}',
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppTheme.verdeIngreso),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (widget.puedeGestionar)
+                            TextButton.icon(
+                              onPressed: _navegarAPago,
+                              icon: const Icon(Icons.add, size: 16),
+                              label: const Text('Registrar'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.verdeTeal,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                        ],
                       ),
-                    );
-                  }
-                  return Column(
-                    children: cuotas.map((c) {
-                      final tipoNombre =
-                          cuotaProv.nombreTipoCuota(c.tipoCuotaId);
-                      final metodo = metodosPago
-                          .where((m) => m['id'] == c.metodoPagoId)
-                          .firstOrNull;
-                      final metodoNombre =
-                          metodo?['nombre'] as String? ?? c.metodoPagoId;
-                      return _CuotaTile(
-                        cuota: c,
-                        tipoNombre: tipoNombre,
-                        metodoNombre: metodoNombre,
-                        onTap: widget.puedeGestionar
-                            ? () => _abrirModalEditar(c)
-                            : null,
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-            ),
-          ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Pagos registrados',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textoPrincipal),
+                    ),
+                    const SizedBox(height: 8),
+                    if (estado.pagos.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          'Sin pagos registrados.',
+                          style: TextStyle(
+                              color: AppTheme.textoSecundario, fontSize: 13),
+                        ),
+                      )
+                    else
+                      ...estado.pagos.map((p) => _PagoTile(
+                            pago: p,
+                            puedeEliminar: widget.puedeGestionar,
+                            onEliminar: () => _eliminarPago(p.id),
+                          )),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Cobertura mensual',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textoPrincipal),
+                    ),
+                    const SizedBox(height: 8),
+                    if (estado.mesesCubiertos.isEmpty)
+                      const Text('—',
+                          style: TextStyle(color: AppTheme.textoSecundario))
+                    else
+                      ...estado.mesesCubiertos.reversed.map((m) => _MesTile(mes: m)),
+                  ],
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
   }
 }
 
-class _CuotaTile extends StatelessWidget {
-  const _CuotaTile({
-    required this.cuota,
-    required this.tipoNombre,
-    required this.metodoNombre,
-    this.onTap,
-  });
+// ── _PagoTile ─────────────────────────────────────────────────────────────────
 
-  final Cuota cuota;
-  final String tipoNombre;
-  final String metodoNombre;
-  final VoidCallback? onTap;
+class _PagoTile extends StatelessWidget {
+  const _PagoTile({
+    required this.pago,
+    required this.puedeEliminar,
+    required this.onEliminar,
+  });
+  final PagoCuota pago;
+  final bool puedeEliminar;
+  final VoidCallback onEliminar;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: const BorderRadius.all(Radius.circular(8)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
+    final metodos = context.watch<MetodoPagoProvider>().metodosPago;
+    final metodo = metodos.where((m) => m['id'] == pago.metodoPagoId).firstOrNull;
+    final metodoNombre = metodo?['nombre'] as String? ?? pago.metodoPagoId;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.check_circle_outline,
-              size: 18, color: AppTheme.verdeIngreso),
+          const Icon(Icons.payments_outlined, size: 18, color: AppTheme.verdeIngreso),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -1381,624 +1494,88 @@ class _CuotaTile extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      cuota.periodo,
+                      _fmtMonto(pago.monto),
                       style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: AppTheme.textoPrincipal,
-                      ),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: AppTheme.verdeIngreso),
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _fmtMonto(cuota.monto),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: AppTheme.verdeIngreso,
-                      ),
+                      _fmtFecha(pago.fechaPago),
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textoPrincipal),
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '$tipoNombre · $metodoNombre · ${_fmtFecha(cuota.fechaPago)}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textoSecundario,
-                  ),
+                Text(metodoNombre,
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textoSecundario)),
+                NombreUsuarioWidget(
+                  usuarioId: pago.usuarioId,
+                  prefijo: 'Por: ',
+                  style: const TextStyle(fontSize: 11, color: AppTheme.textoSecundario),
                 ),
-                if (cuota.usuarioId.isNotEmpty)
-                  NombreUsuarioWidget(
-                    usuarioId: cuota.usuarioId,
-                    prefijo: 'Registrado por: ',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppTheme.textoSecundario),
-                  ),
-                if (cuota.observaciones != null &&
-                    cuota.observaciones!.isNotEmpty)
+                if (pago.observaciones?.isNotEmpty == true)
                   Text(
-                    cuota.observaciones!,
+                    pago.observaciones!,
                     style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textoSecundario,
-                      fontStyle: FontStyle.italic,
-                    ),
+                        fontSize: 12,
+                        color: AppTheme.textoSecundario,
+                        fontStyle: FontStyle.italic),
                   ),
               ],
             ),
           ),
-          if (cuota.comprobante != null)
+          if (puedeEliminar)
             IconButton(
-              icon: const Icon(Icons.receipt, size: 20),
-              color: AppTheme.azulMedio,
-              tooltip: 'Ver comprobante',
+              icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.rojoGasto),
+              onPressed: onEliminar,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              onPressed: () async {
-                final uri = Uri.parse(cuota.comprobante!);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri,
-                      mode: LaunchMode.externalApplication);
-                }
-              },
             ),
         ],
       ),
-      ),
     );
   }
 }
 
-// ── _ModalPago ────────────────────────────────────────────────────────────────
+// ── _MesTile ──────────────────────────────────────────────────────────────────
 
-class _ModalPago extends StatefulWidget {
-  const _ModalPago({required this.socioId, required this.onGuardar});
-  final String socioId;
-  final Future<void> Function(Cuota) onGuardar;
-
-  @override
-  State<_ModalPago> createState() => _ModalPagoState();
-}
-
-class _ModalPagoState extends State<_ModalPago> {
-  final _form = GlobalKey<FormState>();
-  final _montoCtrl = TextEditingController();
-  final _periodoCtrl = TextEditingController();
-  final _observacionesCtrl = TextEditingController();
-  final _nroChequeCtrl = TextEditingController();
-
-  String? _tipoCuotaId;
-  String? _metodoPagoId;
-  DateTime _fechaPago = DateTime.now();
-  bool _saving = false;
-  bool _cargandoTarifa = false;
-  bool _subiendo = false;
-  String? _nombreComprobante;
-  Uint8List? _comprobanteBytes;
-
-  @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _periodoCtrl.text =
-        '${now.month.toString().padLeft(2, '0')}/${now.year}';
-  }
-
-  @override
-  void dispose() {
-    _montoCtrl.dispose();
-    _periodoCtrl.dispose();
-    _observacionesCtrl.dispose();
-    _nroChequeCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _adjuntarComprobante() async {
-    final result = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-      withData: true,
-    );
-    if (result != null && result.files.isNotEmpty) {
-      setState(() {
-        _nombreComprobante = result.files.first.name;
-        _comprobanteBytes = result.files.first.bytes;
-      });
-    }
-  }
-
-  Future<void> _onTipoCuotaChanged(String? tipoCuotaId) async {
-    setState(() {
-      _tipoCuotaId = tipoCuotaId;
-      _cargandoTarifa = true;
-    });
-    if (tipoCuotaId == null) {
-      setState(() => _cargandoTarifa = false);
-      return;
-    }
-    try {
-      final tarifa = await context
-          .read<CuotaProvider>()
-          .obtenerTarifaVigente(tipoCuotaId);
-      if (mounted) {
-        _montoCtrl.text = tarifa != null
-            ? NumberFormat('#,##0.##', 'es_AR').format(tarifa.monto)
-            : '';
-      }
-    } finally {
-      if (mounted) setState(() => _cargandoTarifa = false);
-    }
-  }
-
-  Future<void> _guardar() async {
-    if (!_form.currentState!.validate()) return;
-    final monto = double.tryParse(
-        _montoCtrl.text.replaceAll('.', '').replaceAll(',', '.'));
-    // Capturar uid y messenger antes de cualquier gap asíncrono
-    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
-    if (monto == null || monto <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresá un monto válido')),
-      );
-      return;
-    }
-    // Subir comprobante si hay archivo seleccionado
-    String? comprobanteUrl;
-    if (_comprobanteBytes != null && _nombreComprobante != null) {
-      final messenger = ScaffoldMessenger.of(context);
-      setState(() => _subiendo = true);
-      try {
-        final now2 = DateTime.now();
-        final path =
-            'cuotas/${now2.year}/${now2.month.toString().padLeft(2, '0')}';
-        comprobanteUrl = await StorageService().subirComprobante(
-            path, _comprobanteBytes!, _nombreComprobante!);
-      } catch (e) {
-        messenger.showSnackBar(SnackBar(
-          content: Text('No se pudo subir el comprobante: $e'),
-          backgroundColor: AppTheme.rojoGasto,
-        ));
-      } finally {
-        if (mounted) setState(() => _subiendo = false);
-      }
-    }
-
-    setState(() => _saving = true);
-    try {
-      final cuota = Cuota(
-        id: '',
-        socioId: widget.socioId,
-        tipoCuotaId: _tipoCuotaId!,
-        periodo: _periodoCtrl.text.trim(),
-        moneda: 'ARS',
-        metodoPagoId: _metodoPagoId!,
-        usuarioId: uid,
-        observaciones:
-            _observacionesCtrl.text.trim().isEmpty
-                ? null
-                : _observacionesCtrl.text.trim(),
-        comprobante: comprobanteUrl,
-        nroCheque: _nroChequeCtrl.text.trim().isEmpty
-            ? null
-            : _nroChequeCtrl.text.trim(),
-        monto: monto,
-        fechaPago: _fechaPago,
-        fechaCreacion: DateTime.now(),
-      );
-      await widget.onGuardar(cuota);
-      if (mounted) Navigator.pop(context);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
+class _MesTile extends StatelessWidget {
+  const _MesTile({required this.mes});
+  final MesCuota mes;
 
   @override
   Widget build(BuildContext context) {
-    final tiposCuota = context.watch<CuotaProvider>().tiposCuota;
-    final metodos =
-        context.watch<MetodoPagoProvider>().obtenerActivos();
-    final metodoPagoNombre = _metodoPagoId != null
-        ? metodos.firstWhere(
-            (m) => m['id'] == _metodoPagoId,
-            orElse: () => <String, dynamic>{})['nombre'] as String?
-        : null;
+    final (color, icono) = switch (mes.estado) {
+      'cubierto' => (AppTheme.verdeIngreso, Icons.check_circle_outline),
+      'parcial' => (AppTheme.amarilloAlerta, Icons.warning_amber_outlined),
+      'sin_tarifa' => (AppTheme.textoSecundario, Icons.help_outline),
+      _ => (AppTheme.rojoGasto, Icons.cancel_outlined),
+    };
+    final label = switch (mes.estado) {
+      'cubierto' => 'Cubierto',
+      'parcial' => 'Parcial (${_fmtMonto(mes.pagado)} de ${_fmtMonto(mes.tarifa)})',
+      'sin_tarifa' => 'Sin tarifa',
+      _ => 'Sin cubrir',
+    };
 
     return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Form(
-        key: _form,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Registrar pago',
-                style: TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _tipoCuotaId,
-                decoration: const InputDecoration(
-                    labelText: 'Tipo de cuota *'),
-                items: tiposCuota
-                    .map((t) => DropdownMenuItem(
-                        value: t.id, child: Text(t.nombre)))
-                    .toList(),
-                onChanged: _onTipoCuotaChanged,
-                validator: (v) => v == null ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _periodoCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Período *',
-                  helperText: 'Formato: MM/AAAA',
-                  hintText: '06/2026',
-                ),
-                keyboardType: TextInputType.number,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Requerido';
-                  final parts = v.split('/');
-                  if (parts.length != 2) return 'Formato: MM/AAAA';
-                  final mes = int.tryParse(parts[0]);
-                  final anio = int.tryParse(parts[1]);
-                  if (mes == null || mes < 1 || mes > 12) {
-                    return 'Mes inválido (01-12)';
-                  }
-                  if (anio == null || anio < 2000) return 'Año inválido';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _montoCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Monto *',
-                  prefixText: '\$ ',
-                  suffixIcon: _cargandoTarifa
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: Padding(
-                            padding: EdgeInsets.all(12),
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2),
-                          ),
-                        )
-                      : null,
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _metodoPagoId,
-                decoration: const InputDecoration(
-                    labelText: 'Método de pago *'),
-                items: metodos
-                    .map((m) => DropdownMenuItem(
-                          value: m['id'] as String,
-                          child: MetodoPagoRow(
-                              nombre: m['nombre'] as String),
-                        ))
-                    .toList(),
-                selectedItemBuilder: (context) => metodos
-                    .map((m) => Text(m['nombre'] as String,
-                        overflow: TextOverflow.ellipsis))
-                    .toList(),
-                onChanged: (v) => setState(() => _metodoPagoId = v),
-                validator: (v) => v == null ? 'Requerido' : null,
-              ),
-              NumeroChequeWidget(
-                metodoPago: metodoPagoNombre,
-                controller: _nroChequeCtrl,
-              ),
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: () async {
-                  final d = await showDatePicker(
-                    context: context,
-                    initialDate: _fechaPago,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime.now(),
-                  );
-                  if (d != null) setState(() => _fechaPago = d);
-                },
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                      labelText: 'Fecha de pago'),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(_fmtFecha(_fechaPago)),
-                      const Icon(Icons.calendar_today_outlined,
-                          size: 18, color: AppTheme.azulMedio),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _observacionesCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Observaciones'),
-                maxLines: 2,
-                textCapitalization: TextCapitalization.sentences,
-              ),
-              const SizedBox(height: 12),
-              if (_nombreComprobante == null)
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.attach_file, size: 18),
-                  label: const Text('Adjuntar comprobante'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.azulMedio,
-                    side: const BorderSide(color: AppTheme.azulMedio),
-                  ),
-                  onPressed: _adjuntarComprobante,
-                )
-              else
-                Row(
-                  children: [
-                    const Icon(Icons.insert_drive_file_outlined,
-                        size: 18, color: AppTheme.azulMedio),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _nombreComprobante!,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            color: AppTheme.textoPrincipal),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      color: AppTheme.rojoGasto,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: () => setState(() {
-                        _nombreComprobante = null;
-                        _comprobanteBytes = null;
-                      }),
-                    ),
-                  ],
-                ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _saving || _subiendo ? null : _guardar,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2),
-                        )
-                      : const Text('Registrar pago'),
-                ),
-              ),
-            ],
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Icon(icono, color: color, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              DateFormat('MMMM yyyy', 'es').format(mes.mes),
+              style: const TextStyle(fontSize: 13),
+            ),
           ),
-        ),
+          Text(label, style: TextStyle(fontSize: 12, color: color)),
+        ],
       ),
     );
   }
 }
 
-// ── _ModalEditarCuota ─────────────────────────────────────────────────────────
 
-class _ModalEditarCuota extends StatefulWidget {
-  const _ModalEditarCuota({required this.cuota});
-  final Cuota cuota;
-
-  @override
-  State<_ModalEditarCuota> createState() => _ModalEditarCuotaState();
-}
-
-class _ModalEditarCuotaState extends State<_ModalEditarCuota> {
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _montoCtrl;
-  late DateTime _fechaPago;
-  String? _metodoPagoId;
-  String _estado = 'pagada';
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _montoCtrl =
-        TextEditingController(text: widget.cuota.monto.toStringAsFixed(2));
-    _fechaPago = widget.cuota.fechaPago;
-    _metodoPagoId = widget.cuota.metodoPagoId.isNotEmpty
-        ? widget.cuota.metodoPagoId
-        : null;
-    _estado = 'pagada';
-  }
-
-  @override
-  void dispose() {
-    _montoCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _guardar() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
-    try {
-      final monto = double.parse(_montoCtrl.text.trim().replaceAll(',', '.'));
-      final cambios = <String, dynamic>{
-        'monto': monto,
-        'fechaPago': Timestamp.fromDate(_fechaPago),
-        'metodoPagoId': _metodoPagoId ?? '',
-        'estado': _estado,
-      };
-      final anterior = {
-        'monto': widget.cuota.monto,
-        'fechaPago': Timestamp.fromDate(widget.cuota.fechaPago),
-        'metodoPagoId': widget.cuota.metodoPagoId,
-        'estado': 'pagada',
-      };
-      await FirebaseFirestore.instance
-          .collection('cuotas')
-          .doc(widget.cuota.id)
-          .update(cambios);
-      final uid =
-          FirebaseAuth.instance.currentUser?.uid ?? '';
-      await LogCambioService().registrar(
-        entidadTipo: 'cuota',
-        entidadId: widget.cuota.id,
-        usuarioId: uid,
-        accion: 'modificacion',
-        anterior: anterior,
-        nuevo: cambios,
-      );
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final metodos =
-        context.watch<MetodoPagoProvider>().obtenerActivos();
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Editar cuota',
-                      style: TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Período: ${widget.cuota.periodo}',
-                style: const TextStyle(
-                    fontSize: 13, color: AppTheme.textoSecundario),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _montoCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Monto *',
-                  prefixText: '\$ ',
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Requerido';
-                  if (double.tryParse(v.trim().replaceAll(',', '.')) == null) {
-                    return 'Número inválido';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: () async {
-                  final d = await showDatePicker(
-                    context: context,
-                    initialDate: _fechaPago,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime.now(),
-                  );
-                  if (d != null) setState(() => _fechaPago = d);
-                },
-                child: InputDecorator(
-                  decoration:
-                      const InputDecoration(labelText: 'Fecha de pago'),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(_fmtFecha(_fechaPago)),
-                      const Icon(Icons.calendar_today_outlined,
-                          size: 18, color: AppTheme.azulMedio),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _metodoPagoId,
-                decoration:
-                    const InputDecoration(labelText: 'Método de pago'),
-                items: metodos
-                    .map((m) => DropdownMenuItem(
-                          value: m['id'] as String,
-                          child: Text(m['nombre'] as String),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _metodoPagoId = v),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _estado,
-                decoration: const InputDecoration(labelText: 'Estado'),
-                items: const [
-                  DropdownMenuItem(value: 'pagada', child: Text('Pagada')),
-                  DropdownMenuItem(
-                      value: 'pendiente', child: Text('Pendiente')),
-                  DropdownMenuItem(value: 'anulada', child: Text('Anulada')),
-                ],
-                onChanged: (v) {
-                  if (v != null) setState(() => _estado = v);
-                },
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _saving ? null : _guardar,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Guardar cambios'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

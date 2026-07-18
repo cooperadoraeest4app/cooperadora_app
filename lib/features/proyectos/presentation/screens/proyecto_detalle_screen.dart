@@ -698,14 +698,16 @@ class _InfoCard extends StatelessWidget {
               items: tipos
                   .map((t) => DropdownMenuItem(
                         value: t.id,
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
-                          leading: Icon(_iconForTipo(t.nombre),
+                        child: Row(children: [
+                          Icon(_iconForTipo(t.nombre),
                               size: 18, color: AppTheme.azulMedio),
-                          title: Text(t.nombre,
-                              style: const TextStyle(fontSize: 14)),
-                        ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(t.nombre,
+                                style: const TextStyle(fontSize: 14),
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ]),
                       ))
                   .toList(),
               selectedItemBuilder: (_) => tipos
@@ -725,36 +727,32 @@ class _InfoCard extends StatelessWidget {
               items: const [
                 DropdownMenuItem(
                     value: 'planificado',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      leading: Text('🟡', style: TextStyle(fontSize: 16)),
-                      title: Text('Planificado', style: TextStyle(fontSize: 14)),
-                    )),
+                    child: Row(children: [
+                      Text('🟡', style: TextStyle(fontSize: 16)),
+                      SizedBox(width: 8),
+                      Text('Planificado', style: TextStyle(fontSize: 14)),
+                    ])),
                 DropdownMenuItem(
                     value: 'en_curso',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      leading: Text('🟢', style: TextStyle(fontSize: 16)),
-                      title: Text('En curso', style: TextStyle(fontSize: 14)),
-                    )),
+                    child: Row(children: [
+                      Text('🟢', style: TextStyle(fontSize: 16)),
+                      SizedBox(width: 8),
+                      Text('En curso', style: TextStyle(fontSize: 14)),
+                    ])),
                 DropdownMenuItem(
                     value: 'finalizado',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      leading: Text('✅', style: TextStyle(fontSize: 16)),
-                      title: Text('Finalizado', style: TextStyle(fontSize: 14)),
-                    )),
+                    child: Row(children: [
+                      Text('✅', style: TextStyle(fontSize: 16)),
+                      SizedBox(width: 8),
+                      Text('Finalizado', style: TextStyle(fontSize: 14)),
+                    ])),
                 DropdownMenuItem(
                     value: 'cancelado',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      leading: Text('❌', style: TextStyle(fontSize: 16)),
-                      title: Text('Cancelado', style: TextStyle(fontSize: 14)),
-                    )),
+                    child: Row(children: [
+                      Text('❌', style: TextStyle(fontSize: 16)),
+                      SizedBox(width: 8),
+                      Text('Cancelado', style: TextStyle(fontSize: 14)),
+                    ])),
               ],
               selectedItemBuilder: (_) => const [
                 Text('Planificado', style: TextStyle(fontSize: 14)),

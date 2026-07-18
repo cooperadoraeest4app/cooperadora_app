@@ -118,6 +118,11 @@ service cloud.firestore {
       allow write: if esEditor() && estaActivo();
     }
 
+    match /pagos_cuota/{doc} {
+      allow read: if estaAutenticado();
+      allow write: if (esAdmin() || esEditor()) && estaActivo();
+    }
+
     match /tarifas_cuota/{doc} {
       allow read: if true;
       allow write: if (esAdmin() || esEditor()) && estaActivo();

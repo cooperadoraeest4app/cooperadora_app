@@ -55,6 +55,14 @@ class CursoProvider extends ChangeNotifier {
     }
   }
 
+  Curso? obtenerPorId(String id) {
+    try {
+      return todos.firstWhere((c) => c.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> actualizar(Curso curso) async {
     try {
       await _repo.actualizar(curso);

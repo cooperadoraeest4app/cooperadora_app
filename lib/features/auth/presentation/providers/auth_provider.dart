@@ -49,6 +49,9 @@ class AuthProvider extends ChangeNotifier {
   bool get esSoloLectura => rol == 'solo_lectura';
   bool get esConsultante => rol == 'consultante';
 
+  String? get socioId => datosUsuario?['socioId'] as String?;
+  String? get personaId => datosUsuario?['personaId'] as String?;
+
   Future<void> _cargarDatosUsuario(String uid) async {
     final firestore = FirebaseFirestore.instance;
     try {

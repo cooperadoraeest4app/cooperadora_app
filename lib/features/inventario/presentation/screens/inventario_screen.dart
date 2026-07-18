@@ -660,39 +660,35 @@ class _ModalAltaState extends State<_ModalAlta> {
                     items: const [
                       DropdownMenuItem(
                         value: 'bueno',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.check_circle, color: AppTheme.verdeIngreso, size: 20),
-                          title: Text('Bueno'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.check_circle, color: AppTheme.verdeIngreso, size: 20),
+                          SizedBox(width: 8),
+                          Text('Bueno'),
+                        ]),
                       ),
                       DropdownMenuItem(
                         value: 'regular',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.warning_amber, color: AppTheme.amarilloAlerta, size: 20),
-                          title: Text('Regular'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.warning_amber, color: AppTheme.amarilloAlerta, size: 20),
+                          SizedBox(width: 8),
+                          Text('Regular'),
+                        ]),
                       ),
                       DropdownMenuItem(
                         value: 'malo',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.error_outline, color: Color(0xFFE67E22), size: 20),
-                          title: Text('Malo'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.error_outline, color: Color(0xFFE67E22), size: 20),
+                          SizedBox(width: 8),
+                          Text('Malo'),
+                        ]),
                       ),
                       DropdownMenuItem(
                         value: 'dado_de_baja',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.remove_circle_outline, color: AppTheme.textoSecundario, size: 20),
-                          title: Text('Dado de baja'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.remove_circle_outline, color: AppTheme.textoSecundario, size: 20),
+                          SizedBox(width: 8),
+                          Text('Dado de baja'),
+                        ]),
                       ),
                     ],
                     selectedItemBuilder: (ctx) => [
@@ -1015,66 +1011,59 @@ class _ModalBajaState extends State<_ModalBaja> {
                     items: const [
                       DropdownMenuItem(
                         value: 'venta',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.sell_outlined, size: 18),
-                          title: Text('Venta'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.sell_outlined, size: 18),
+                          SizedBox(width: 8),
+                          Text('Venta'),
+                        ]),
                       ),
                       DropdownMenuItem(
                         value: 'deterioro',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.warning_outlined, size: 18),
-                          title: Text('Deterioro'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.warning_outlined, size: 18),
+                          SizedBox(width: 8),
+                          Text('Deterioro'),
+                        ]),
                       ),
                       DropdownMenuItem(
                         value: 'rotura',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.broken_image_outlined, size: 18),
-                          title: Text('Rotura'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.broken_image_outlined, size: 18),
+                          SizedBox(width: 8),
+                          Text('Rotura'),
+                        ]),
                       ),
                       DropdownMenuItem(
                         value: 'robo',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.security_outlined, size: 18),
-                          title: Text('Robo'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.security_outlined, size: 18),
+                          SizedBox(width: 8),
+                          Text('Robo'),
+                        ]),
                       ),
                       DropdownMenuItem(
                         value: 'donacion',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.volunteer_activism_outlined, size: 18),
-                          title: Text('Donación'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.volunteer_activism_outlined, size: 18),
+                          SizedBox(width: 8),
+                          Text('Donación'),
+                        ]),
                       ),
                       DropdownMenuItem(
                         value: 'permuta',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.swap_horiz, size: 18),
-                          title: Text('Permuta'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.swap_horiz, size: 18),
+                          SizedBox(width: 8),
+                          Text('Permuta'),
+                        ]),
                       ),
                       DropdownMenuItem(
                         value: 'otro',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.more_horiz, size: 18),
-                          title: Text('Otro'),
-                        ),
+                        child: Row(children: [
+                          Icon(Icons.more_horiz, size: 18),
+                          SizedBox(width: 8),
+                          Text('Otro'),
+                        ]),
                       ),
                     ],
                     selectedItemBuilder: (ctx) => [

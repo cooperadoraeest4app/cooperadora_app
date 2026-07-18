@@ -5,12 +5,17 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../../../admin/presentation/providers/cargo_provider.dart';
+import '../../../socios/data/repositories/socio_repository.dart';
+import '../../../socios/domain/models/socio.dart';
+import '../../../socios/domain/services/cuota_calculo_service.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import '../../../../shared/widgets/seccion_hijos_widget.dart';
 
 class PerfilScreen extends StatefulWidget {
   const PerfilScreen({super.key});
@@ -48,6 +53,9 @@ class _PerfilScreenState extends State<PerfilScreen> {
   bool _guardando = false;
   bool _initialized = false;
 
+  late final Future<CuotaEstado?> _cuotaEstadoFuture;
+  String? _socioIdResuelto;
+
   static bool _sameDia(DateTime? a, DateTime? b) {
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
@@ -78,6 +86,59 @@ class _PerfilScreenState extends State<PerfilScreen> {
       _telefonoCtrl, _direccionCtrl,
     ]) {
       c.addListener(() => setState(() {}));
+    }
+    _cuotaEstadoFuture = _fetchCuotaEstado();
+  }
+
+  Future<CuotaEstado?> _fetchCuotaEstado() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    print('[Perfil] authUid: $uid');
+    if (uid == null) return null;
+    final userDoc = await FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(uid)
+        .get();
+    print('[Perfil] userDoc.exists: ${userDoc.exists}, data: ${userDoc.data()}');
+    String? socioId = userDoc.data()?['socioId'] as String?;
+    print('[Perfil] socioId del usuario: $socioId');
+
+    if (socioId == null) {
+      final personaId = userDoc.data()?['personaId'] as String?;
+      if (personaId != null) {
+        final socioSnap = await FirebaseFirestore.instance
+            .collection('socios')
+            .where('personaId', isEqualTo: personaId)
+            .limit(1)
+            .get();
+        if (socioSnap.docs.isNotEmpty) {
+          socioId = socioSnap.docs.first.id;
+          await FirebaseFirestore.instance
+              .collection('usuarios')
+              .doc(uid)
+              .update({'socioId': socioId});
+        }
+      }
+    }
+    print('[Perfil] socioId resuelto: $socioId');
+    if (mounted) setState(() => _socioIdResuelto = socioId);
+    if (socioId == null) return null;
+    final socioDoc = await FirebaseFirestore.instance
+        .collection('socios')
+        .doc(socioId)
+        .get();
+    print('[Perfil] socioDoc.exists: ${socioDoc.exists}');
+    if (!socioDoc.exists) return null;
+    final socio = Socio.fromMap(socioDoc.data()!, socioDoc.id);
+    try {
+      final estado = await CuotaCalculoService().calcularEstado(
+        socioId: socioId,
+        fechaIngreso: socio.fechaIngreso,
+      );
+      print('[Perfil] calcularEstado OK: totalPagado=${estado.totalPagado}, estaAlDia=${estado.estaAlDia}');
+      return estado;
+    } catch (e, st) {
+      print('[Perfil] ERROR en calcularEstado: $e\n$st');
+      return null;
     }
   }
 
@@ -238,6 +299,80 @@ class _PerfilScreenState extends State<PerfilScreen> {
     super.dispose();
   }
 
+  static String _formatMonto(double m) =>
+      NumberFormat.currency(locale: 'es_AR', symbol: '\$', decimalDigits: 2)
+          .format(m);
+
+  void _verHistorialCompleto(CuotaEstado estado) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, ctrl) => Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.textoSecundario.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Historial completo',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView(
+                controller: ctrl,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                children: estado.mesesCubiertos.reversed.map((mes) {
+                  final (color, icono) = switch (mes.estado) {
+                    'cubierto' => (AppTheme.verdeIngreso, Icons.check_circle_outline),
+                    'parcial' => (AppTheme.amarilloAlerta, Icons.warning_amber_outlined),
+                    'sin_tarifa' => (AppTheme.textoSecundario, Icons.help_outline),
+                    _ => (AppTheme.rojoGasto, Icons.cancel_outlined),
+                  };
+                  final label = switch (mes.estado) {
+                    'cubierto' => 'Al día',
+                    'parcial' => 'Parcial',
+                    'sin_tarifa' => 'Sin tarifa',
+                    _ => 'Sin cubrir',
+                  };
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading: Icon(icono, color: color, size: 18),
+                    title: Text(
+                      DateFormat('MMMM yyyy', 'es').format(mes.mes),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    trailing: Text(label,
+                        style: TextStyle(fontSize: 12, color: color)),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   static String _nombreRol(String rol) => switch (rol) {
         'admin' => 'Administrador',
         'editor' => 'Editor',
@@ -312,12 +447,12 @@ class _PerfilScreenState extends State<PerfilScreen> {
           title: Row(
             mainAxisSize: MainAxisSize.max,
             children: [
-              Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+              Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.3)),
               SizedBox(
                 width: 48,
                 height: 48,
                 child: IconButton(
-                  icon: Icon(Icons.home, color: Colors.white.withOpacity(0.8), size: 20),
+                  icon: Icon(Icons.home, color: Colors.white.withValues(alpha: 0.8), size: 20),
                   padding: EdgeInsets.zero,
                   onPressed: () => Navigator.pushAndRemoveUntil(
                     context,
@@ -326,7 +461,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
                   ),
                 ),
               ),
-              Container(width: 1, height: 20, color: Colors.white.withOpacity(0.3)),
+              Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.3)),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -535,6 +670,297 @@ class _PerfilScreenState extends State<PerfilScreen> {
                     ),
                   ),
                 ),
+
+                // Hijos/as en la institución (solo si tiene persona vinculada, no alumno ni fiscal)
+                Builder(builder: (context) {
+                  final auth = context.watch<AuthProvider>();
+                  final personaId = auth.personaId;
+                  final tipoPersona =
+                      auth.datosPersona?['tipoPersona'] as String?;
+                  final subtipo = auth.datosPersona?['subtipo'] as String?;
+                  if (personaId == null ||
+                      tipoPersona == 'fiscal' ||
+                      subtipo == 'alumno') {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: SeccionHijosWidget(
+                      personaId: personaId,
+                      puedeEditar: true,
+                    ),
+                  );
+                }),
+
+                // Membresía (solo si tiene socio vinculado)
+                if (_socioIdResuelto != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: FutureBuilder<Socio?>(
+                      future: SocioRepository().obtenerPorId(_socioIdResuelto!),
+                      builder: (context, snap) {
+                        if (!snap.hasData) {
+                          return const LinearProgressIndicator();
+                        }
+                        final socio = snap.data!;
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppTheme.celesteFondo,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppTheme.celesteBorde),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.badge,
+                                      color: AppTheme.azulMedio),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'Mi membresía',
+                                      style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.azulOscuro),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                          color: AppTheme.azulOscuro),
+                                    ),
+                                    child: Text(
+                                      'N° ${socio.numeroSocio.toString().padLeft(3, '0')}',
+                                      style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.azulOscuro),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              _filaDato('Tipo de socio',
+                                  _nombreTipoSocio(socio.tipoSocio)),
+                              _filaDato(
+                                'Fecha de ingreso',
+                                DateFormat('dd/MM/yyyy')
+                                    .format(socio.fechaIngreso),
+                              ),
+                              _filaDato(
+                                'Estado',
+                                socio.activo ? 'Activo' : 'Inactivo',
+                                color: socio.activo
+                                    ? AppTheme.verdeIngreso
+                                    : AppTheme.rojoGasto,
+                              ),
+                              if (socio.observaciones != null &&
+                                  socio.observaciones!.isNotEmpty)
+                                _filaDato(
+                                    'Observaciones', socio.observaciones!),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                // Historial de cuotas (solo si tiene socio vinculado)
+                FutureBuilder<CuotaEstado?>(
+                  future: _cuotaEstadoFuture,
+                  builder: (context, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.only(top: 16),
+                        child: LinearProgressIndicator(),
+                      );
+                    }
+                    final estado = snap.data;
+                    if (estado == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Mi historial de cuotas',
+                                style: TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Chip de estado
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: estado.estaAlDia
+                                      ? AppTheme.verdeIngreso.withValues(alpha: 0.08)
+                                      : AppTheme.rojoGasto.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: estado.estaAlDia
+                                        ? AppTheme.verdeIngreso
+                                        : AppTheme.rojoGasto,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      estado.estaAlDia
+                                          ? Icons.check_circle_outline
+                                          : Icons.warning_amber_outlined,
+                                      color: estado.estaAlDia
+                                          ? AppTheme.verdeIngreso
+                                          : AppTheme.rojoGasto,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            estado.estaAlDia
+                                                ? 'Estás al día'
+                                                : 'Tenés deuda pendiente',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: estado.estaAlDia
+                                                  ? AppTheme.verdeIngreso
+                                                  : AppTheme.rojoGasto,
+                                            ),
+                                          ),
+                                          if (estado.deuda > 0)
+                                            Text(
+                                              'Deuda: ${_formatMonto(estado.deuda)}',
+                                              style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppTheme.rojoGasto),
+                                            ),
+                                          if (estado.creditoAFavor > 0)
+                                            Text(
+                                              'Crédito a favor: ${_formatMonto(estado.creditoAFavor)}',
+                                              style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppTheme.verdeIngreso),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+
+                              // Pagos realizados
+                              if (estado.pagos.isNotEmpty) ...[
+                                const Text(
+                                  'Pagos realizados',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppTheme.textoSecundario),
+                                ),
+                                const SizedBox(height: 4),
+                                ...estado.pagos.map((pago) => ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                      leading: const Icon(
+                                          Icons.payments_outlined,
+                                          color: AppTheme.verdeIngreso,
+                                          size: 20),
+                                      title: Text(
+                                        _formatMonto(pago.monto),
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500),
+                                      ),
+                                      subtitle: Text(
+                                        DateFormat('dd/MM/yyyy')
+                                            .format(pago.fechaPago),
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                    )),
+                                const SizedBox(height: 10),
+                              ],
+
+                              // Cobertura mensual (últimos 6)
+                              const Text(
+                                'Cobertura mensual',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.textoSecundario),
+                              ),
+                              const SizedBox(height: 4),
+                              ...estado.mesesCubiertos.reversed
+                                  .take(6)
+                                  .map((mes) {
+                                final (color, icono) = switch (mes.estado) {
+                                  'cubierto' => (
+                                      AppTheme.verdeIngreso,
+                                      Icons.check_circle_outline
+                                    ),
+                                  'parcial' => (
+                                      AppTheme.amarilloAlerta,
+                                      Icons.warning_amber_outlined
+                                    ),
+                                  'sin_tarifa' => (
+                                      AppTheme.textoSecundario,
+                                      Icons.help_outline
+                                    ),
+                                  _ => (
+                                      AppTheme.rojoGasto,
+                                      Icons.cancel_outlined
+                                    ),
+                                };
+                                final label = switch (mes.estado) {
+                                  'cubierto' => 'Al día',
+                                  'parcial' => 'Parcial',
+                                  'sin_tarifa' => 'Sin tarifa',
+                                  _ => 'Sin cubrir',
+                                };
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                  leading: Icon(icono, color: color, size: 18),
+                                  title: Text(
+                                    DateFormat('MMMM yyyy', 'es')
+                                        .format(mes.mes),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  trailing: Text(label,
+                                      style: TextStyle(
+                                          fontSize: 11, color: color)),
+                                );
+                              }),
+
+                              if (estado.mesesCubiertos.length > 6)
+                                TextButton(
+                                  onPressed: () =>
+                                      _verHistorialCompleto(estado),
+                                  child: Text(
+                                    'Ver historial completo (${estado.mesesCubiertos.length} meses)',
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
 
@@ -579,6 +1005,38 @@ class _PerfilScreenState extends State<PerfilScreen> {
 }
 
 // ── Widgets auxiliares ────────────────────────────────────────────────────────
+
+Widget _filaDato(String label, String valor, {Color? color}) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$label: ',
+          style: const TextStyle(
+              fontSize: 13, color: AppTheme.textoSecundario),
+        ),
+        Flexible(
+          child: Text(
+            valor,
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: color ?? AppTheme.textoPrincipal),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+String _nombreTipoSocio(String tipo) => switch (tipo) {
+      'activo' => 'Socio Activo',
+      'adherente' => 'Socio Adherente',
+      'honorario' => 'Socio Honorario',
+      _ => tipo,
+    };
 
 class _CampoSoloLectura extends StatelessWidget {
   const _CampoSoloLectura({required this.label, required this.valor});

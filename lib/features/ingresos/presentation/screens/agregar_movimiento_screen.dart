@@ -17,8 +17,10 @@ import '../../../proyectos/domain/models/presupuesto_proyecto.dart';
 import '../../../proyectos/presentation/providers/proyecto_provider.dart';
 import '../../../inventario/domain/models/bien_inventario.dart';
 import '../../../inventario/presentation/providers/inventario_provider.dart';
+import '../../../socios/domain/models/socio.dart';
 import '../../../socios/domain/models/tipo_cuota.dart';
 import '../../../socios/presentation/providers/cuota_provider.dart';
+import '../../../admin/presentation/providers/persona_provider.dart';
 import '../providers/frecuencia_provider.dart';
 import '../providers/movimientos_provider.dart';
 import '../../../../shared/widgets/numero_cheque_widget.dart';
@@ -108,11 +110,15 @@ class AgregarMovimientoScreen extends StatefulWidget {
     this.tipoInicial = 'ingreso',
     this.ingresoEditar,
     this.gastoEditar,
+    this.categoriaInicial,
+    this.socioInicial,
   });
 
   final String tipoInicial;
   final Ingreso? ingresoEditar;
   final Gasto? gastoEditar;
+  final String? categoriaInicial;
+  final Socio? socioInicial;
 
   @override
   State<AgregarMovimientoScreen> createState() =>
@@ -140,9 +146,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
   Map<String, dynamic>? _socioSeleccionado;
   Map<String, dynamic>? _personaSocioSeleccionada;
   bool _cargandoSocios = false;
-  String _tipoCuota = 'mensual';
   double? _tarifaVigente;
-  final _periodoCtrl = TextEditingController();
   // Presupuesto de proyecto
   String? _presupuestoProyectoId;
   List<PresupuestoProyecto> _presupuestos = [];
@@ -172,16 +176,33 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     super.initState();
     _tipo = widget.tipoInicial;
     _fechaController.text = _formatFecha(DateTime.now());
-    final now = DateTime.now();
-    _periodoCtrl.text =
-        '${now.month.toString().padLeft(2, '0')}/${now.year}';
     if (widget.ingresoEditar != null) {
       _cargarIngreso(widget.ingresoEditar!);
     } else if (widget.gastoEditar != null) {
       _cargarGasto(widget.gastoEditar!);
+    } else {
+      if (widget.categoriaInicial != null) _categoria = widget.categoriaInicial;
+      if (widget.socioInicial != null) {
+        final s = widget.socioInicial!;
+        _socioSeleccionado = {'id': s.id, 'numeroSocio': s.numeroSocio};
+      }
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      if (widget.socioInicial != null) {
+        final persona = context
+            .read<PersonaProvider>()
+            .todas
+            .where((p) => p.id == widget.socioInicial!.personaId)
+            .firstOrNull;
+        if (persona != null && mounted) {
+          setState(() => _personaSocioSeleccionada = {
+                'nombre': persona.nombre,
+                'apellido': persona.apellido,
+                'dni': persona.dni ?? '',
+              });
+        }
+      }
       final cuotaProv = context.read<CuotaProvider>();
       final tipoMensual = cuotaProv.tiposCuota.firstWhere(
         (t) => t.nombre.toLowerCase().contains('mensual'),
@@ -191,7 +212,17 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
       if (tipoMensual.id.isNotEmpty) {
         final tarifa = await cuotaProv.obtenerTarifaVigente(tipoMensual.id);
         if (tarifa != null && mounted) {
-          setState(() => _tarifaVigente = tarifa.monto);
+          setState(() {
+            _tarifaVigente = tarifa.monto;
+            if (widget.socioInicial != null &&
+                widget.categoriaInicial != null &&
+                _montoController.text.isEmpty) {
+              _montoController.text =
+                  tarifa.monto == tarifa.monto.truncateToDouble()
+                      ? tarifa.monto.toInt().toString()
+                      : tarifa.monto.toString();
+            }
+          });
         }
       }
       if (_proyectoId != null) {
@@ -255,7 +286,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     _donanteController.dispose();
     _emailController.dispose();
     _telefonoController.dispose();
-    _periodoCtrl.dispose();
     _descripcionBienCtrl.dispose();
     _nroActaBienCtrl.dispose();
     _ubicacionBienCtrl.dispose();
@@ -381,6 +411,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     final cuentaProvider = context.read<CuentaBancariaProvider>();
     final catProvider = context.read<CategoriaProvider>();
     final inventarioProvider = context.read<InventarioProvider>();
+    final metodosPago = context.read<MetodoPagoProvider>().metodosPago;
     final messenger = ScaffoldMessenger.of(context);
     final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
     final now = DateTime.now();
@@ -521,17 +552,15 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           );
         }
         if (esCuotaSocial && socioSeleccionado != null && provider.error == null) {
-          final periodo = _tipoCuota == 'anual'
-              ? _periodoCtrl.text.trim()
-              : _periodoCtrl.text.trim();
-          await FirebaseFirestore.instance.collection('cuotas').add({
+          final metodoPagoId = metodosPago
+              .where((m) => m['nombre'] == _metodoPago)
+              .map((m) => m['id'] as String)
+              .firstOrNull ?? _metodoPago ?? '';
+          await FirebaseFirestore.instance.collection('pagos_cuota').add({
             'socioId': socioSeleccionado['id'] as String? ?? '',
-            'tipoCuota': _tipoCuota,
-            'periodo': periodo,
             'monto': monto,
-            'metodoPagoId': _metodoPago,
-            'estado': 'pagada',
-            'fechaPago': FieldValue.serverTimestamp(),
+            'metodoPagoId': metodoPagoId,
+            'fechaPago': Timestamp.fromDate(_fecha),
             'ingresoId': ingresoId,
             'usuarioId': uid,
             'fechaCreacion': FieldValue.serverTimestamp(),
@@ -815,26 +844,24 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                       : [
                           ...metodos.map((m) => DropdownMenuItem<String>(
                                 value: m['nombre'] as String,
-                                child: ListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: Icon(
+                                child: Row(children: [
+                                  Icon(
                                       _iconoMetodoPago(m['nombre'] as String),
                                       size: 20,
                                       color: AppTheme.azulMedio),
-                                  title: Text(m['nombre'] as String),
-                                ),
+                                  const SizedBox(width: 8),
+                                  Text(m['nombre'] as String),
+                                ]),
                               )),
                           if (!_esIngreso)
                             const DropdownMenuItem<String>(
                               value: 'Caja Chica',
-                              child: ListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                leading: Icon(Icons.wallet,
+                              child: Row(children: [
+                                Icon(Icons.wallet,
                                     size: 20, color: AppTheme.verdeTeal),
-                                title: Text('Caja Chica'),
-                              ),
+                                SizedBox(width: 8),
+                                Text('Caja Chica'),
+                              ]),
                             ),
                         ],
               selectedItemBuilder: metodoProvider.isLoading
@@ -865,15 +892,12 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                               (c['color'] as String).replaceAll('#', '0xFF')));
                           return DropdownMenuItem<String>(
                             value: c['id'] as String,
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: Container(
+                            child: Row(children: [
+                              Container(
                                 width: 28,
                                 height: 28,
                                 decoration: BoxDecoration(
-                                  // ignore: deprecated_member_use
-                                  color: color.withOpacity(0.15),
+                                  color: color.withValues(alpha: 0.15),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
@@ -882,8 +906,9 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                                   color: color,
                                 ),
                               ),
-                              title: Text(c['nombre'] as String),
-                            ),
+                              const SizedBox(width: 8),
+                              Flexible(child: Text(c['nombre'] as String, overflow: TextOverflow.ellipsis)),
+                            ]),
                           );
                         }).toList(),
               selectedItemBuilder: catProvider.isLoading || cats.isEmpty
@@ -902,7 +927,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                         if (nom != 'Cuota Social') {
                           _socioSeleccionado = null;
                           _personaSocioSeleccionada = null;
-                          _tipoCuota = 'mensual';
                         }
                         if (!_categoriasInventariables.contains(nom)) {
                           _registrarEnInventario = false;
@@ -925,16 +949,15 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                   ),
                   ...proyectos.map((p) => DropdownMenuItem<String?>(
                         value: p.id,
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
+                        child: Row(children: [
+                          Icon(
                             _iconoEstadoProyecto(p.estado),
                             size: 18,
                             color: _colorEstadoProyecto(p.estado),
                           ),
-                          title: Text(p.nombre),
-                        ),
+                          const SizedBox(width: 8),
+                          Flexible(child: Text(p.nombre, overflow: TextOverflow.ellipsis)),
+                        ]),
                       )),
                 ],
                 selectedItemBuilder: (ctx) => [
@@ -981,27 +1004,24 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
                     items: [
                       const DropdownMenuItem<String?>(
                         value: null,
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text('Sin presupuesto asociado'),
-                        ),
+                        child: Text('Sin presupuesto asociado'),
                       ),
                       ..._presupuestos.asMap().entries.map((e) =>
                           DropdownMenuItem<String?>(
                             value: e.value.id,
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.description,
-                                  color: AppTheme.azulMedio),
-                              title: Text('Presupuesto ${e.key + 1}'),
-                              subtitle: e.value.descripcion.isNotEmpty
-                                  ? Text(e.value.descripcion,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis)
-                                  : null,
-                            ),
+                            child: Row(children: [
+                              const Icon(Icons.description,
+                                  color: AppTheme.azulMedio, size: 16),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  e.value.descripcion.isNotEmpty
+                                      ? 'Pres. ${e.key + 1} – ${e.value.descripcion}'
+                                      : 'Presupuesto ${e.key + 1}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ]),
                           )),
                     ],
                     selectedItemBuilder: (ctx) => [
@@ -1373,85 +1393,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
               ),
           ],
         ),
-      ),
-      const SizedBox(height: 16),
-      Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _tipoCuota = 'mensual'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _tipoCuota == 'mensual'
-                      ? AppTheme.azulMedio
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.azulMedio),
-                ),
-                child: Text(
-                  'Mensual',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _tipoCuota == 'mensual'
-                        ? Colors.white
-                        : AppTheme.azulMedio,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _tipoCuota = 'anual'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _tipoCuota == 'anual'
-                      ? AppTheme.azulMedio
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.azulMedio),
-                ),
-                child: Text(
-                  'Anual',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _tipoCuota == 'anual'
-                        ? Colors.white
-                        : AppTheme.azulMedio,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 16),
-      TextFormField(
-        controller: _periodoCtrl,
-        keyboardType: TextInputType.number,
-        inputFormatters: [_PeriodoFormatter()],
-        decoration: InputDecoration(
-          labelText: _tipoCuota == 'mensual'
-              ? 'Período (MM/AAAA)'
-              : 'Período (AAAA)',
-          hintText: _tipoCuota == 'mensual' ? 'ej: 06/2026' : 'ej: 2026',
-        ),
-        validator: (v) {
-          if (v == null || v.isEmpty) return 'Ingresá el período';
-          if (_tipoCuota == 'mensual' &&
-              !RegExp(r'^\d{2}/\d{4}$').hasMatch(v)) {
-            return 'Formato: MM/AAAA';
-          }
-          if (_tipoCuota == 'anual' && !RegExp(r'^\d{4}$').hasMatch(v)) {
-            return 'Formato: AAAA';
-          }
-          return null;
-        },
       ),
     ];
   }
@@ -1905,28 +1846,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _PeriodoFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.length <= 2) {
-      return newValue.copyWith(
-        text: digits,
-        selection: TextSelection.collapsed(offset: digits.length),
-      );
-    }
-    final result =
-        '${digits.substring(0, 2)}/${digits.substring(2, digits.length.clamp(2, 6))}';
-    return TextEditingValue(
-      text: result,
-      selection: TextSelection.collapsed(offset: result.length),
     );
   }
 }

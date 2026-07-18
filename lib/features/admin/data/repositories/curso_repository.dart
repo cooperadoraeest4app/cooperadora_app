@@ -25,17 +25,24 @@ class CursoRepository {
       _col.doc(curso.id).update(curso.toMap());
 
   Future<void> inicializarDatosDefault() async {
-    final snap = await _col.limit(1).get();
-    if (snap.docs.isNotEmpty) return;
+    final snap = await _col.get();
+    // Build set of existing (numero_turno) combinations to avoid duplicates
+    final existentes = <String>{
+      for (final doc in snap.docs)
+        '${doc.data()['numero']}_${doc.data()['turno']}',
+    };
 
     final batch = FirebaseFirestore.instance.batch();
+    var hayNuevos = false;
     for (final numero in ['1', '2', '3', '4', '5', '6']) {
       for (final turno in ['manana', 'tarde']) {
+        if (existentes.contains('${numero}_$turno')) continue;
         final curso = Curso.crear(numero: numero, turno: turno);
-        final ref = _col.doc();
-        batch.set(ref, curso.toMap());
+        // Use fixed ID so future calls remain idempotent
+        batch.set(_col.doc('${numero}_$turno'), curso.toMap());
+        hayNuevos = true;
       }
     }
-    await batch.commit();
+    if (hayNuevos) await batch.commit();
   }
 }

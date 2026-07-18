@@ -18,6 +18,7 @@ import 'usuarios_screen.dart';
 import '../../../comision/presentation/screens/comision_directiva_admin_screen.dart';
 import '../../../votaciones/presentation/screens/votacion_config_screen.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import '../../../socios/data/repositories/pago_cuota_repository.dart';
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({super.key});
@@ -106,6 +107,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       subtitulo: 'Auditoría de modificaciones',
       esLogCambios: true,
     ),
+    _OpcionPanel(
+      icono: Icons.swap_horiz,
+      titulo: 'Migrar cuotas',
+      subtitulo: 'Importar cuotas pagadas al nuevo sistema de pagos libres',
+      esMigracion: true,
+    ),
   ];
 
   static const _opcionesAuditor = [
@@ -133,6 +140,53 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         );
       }
     });
+  }
+
+  Future<void> _confirmarMigracion() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Migrar cuotas'),
+        content: const Text(
+            'Esto copia todas las cuotas pagadas al nuevo sistema de pagos libres. '
+            'Podés ejecutarlo más de una vez sin duplicar datos (los nuevos pagos llevan referencia al ID original). '
+            '¿Querés continuar?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.verdeTeal,
+                foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Migrar'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await PagoCuotaRepository().migrarCuotasAPagos();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Migración completada'),
+            backgroundColor: AppTheme.verdeIngreso,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error en la migración: $e'),
+            backgroundColor: AppTheme.rojoGasto,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -290,6 +344,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     MaterialPageRoute(
                         builder: (_) => const LogCambiosScreen()),
                   );
+                } else if (opcion.esMigracion) {
+                  _confirmarMigracion();
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Próximamente')),
@@ -321,6 +377,7 @@ class _OpcionPanel {
   final bool esComision;
   final bool esVotaciones;
   final bool esLogCambios;
+  final bool esMigracion;
 
   const _OpcionPanel({
     required this.icono,
@@ -339,5 +396,6 @@ class _OpcionPanel {
     this.esComision = false,
     this.esVotaciones = false,
     this.esLogCambios = false,
+    this.esMigracion = false,
   });
 }

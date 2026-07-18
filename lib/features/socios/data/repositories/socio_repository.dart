@@ -28,6 +28,12 @@ class SocioRepository {
     });
   }
 
+  Future<Socio?> obtenerPorId(String id) async {
+    final doc = await _col.doc(id).get();
+    if (!doc.exists) return null;
+    return Socio.fromMap(doc.data()!, doc.id);
+  }
+
   Future<int> siguienteNumeroSocio() async {
     final snap = await _col.get();
     return snap.docs.length + 1;
@@ -47,6 +53,18 @@ class SocioRepository {
     final numeroSocio = await siguienteNumeroSocio();
     final conNumero = socio.copyWith(numeroSocio: numeroSocio);
     final ref = await _col.add(conNumero.toMap());
+
+    if (socio.personaId.isNotEmpty) {
+      final usuariosSnap = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .where('personaId', isEqualTo: socio.personaId)
+          .limit(1)
+          .get();
+      if (usuariosSnap.docs.isNotEmpty) {
+        await usuariosSnap.docs.first.reference.update({'socioId': ref.id});
+      }
+    }
+
     await LogCambioService().registrar(
       entidadTipo: 'socio',
       entidadId: ref.id,

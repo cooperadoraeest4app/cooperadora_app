@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import '../../../admin/domain/models/rubro.dart';
 import '../../data/repositories/informes_repository.dart';
 import '../../data/repositories/snapshot_repository.dart';
@@ -34,10 +34,24 @@ class InformesProvider extends ChangeNotifier {
   // ── Permiso para cerrar balance ──────────────────────────────────────────
   bool puedeCerrarBalance = false;
 
+  bool _disposed = false;
+
   InformesProvider() {
     final now = DateTime.now();
     _fechaDesde = DateTime(now.year, now.month, 1);
     _fechaHasta = DateTime(now.year, now.month + 1, 0); // último día del mes
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  void _notificarCambios() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_disposed) notifyListeners();
+    });
   }
 
   DateTime get fechaDesde => _fechaDesde;
@@ -48,7 +62,7 @@ class InformesProvider extends ChangeNotifier {
     _fechaDesde = DateTime(anio, mes, 1);
     _fechaHasta = DateTime(anio, mes + 1, 0);
     resultado = null;
-    notifyListeners();
+    _notificarCambios();
   }
 
   void setRangoAnual(int anio) {
@@ -56,7 +70,7 @@ class InformesProvider extends ChangeNotifier {
     _fechaDesde = DateTime(anio, 1, 1);
     _fechaHasta = DateTime(anio, 12, 31);
     resultado = null;
-    notifyListeners();
+    _notificarCambios();
   }
 
   void setRangoLibre(DateTime desde, DateTime hasta) {
@@ -64,7 +78,7 @@ class InformesProvider extends ChangeNotifier {
     _fechaDesde = desde;
     _fechaHasta = hasta;
     resultado = null;
-    notifyListeners();
+    _notificarCambios();
   }
 
   void setSaldoAnterior(double v) {
@@ -90,12 +104,12 @@ class InformesProvider extends ChangeNotifier {
         saldoBancoExacto: r.saldoBancoExacto,
       );
     }
-    notifyListeners();
+    _notificarCambios();
   }
 
   Future<void> verificarPermiso(String? uid) async {
     puedeCerrarBalance = await ComisionService.esMiembroComisionDirectiva(uid);
-    notifyListeners();
+    _notificarCambios();
   }
 
   Future<void> calcular(
@@ -109,7 +123,7 @@ class InformesProvider extends ChangeNotifier {
     tipoRango = TipoRango.libre;
     isCalculating = true;
     error = null;
-    notifyListeners();
+    _notificarCambios();
     try {
       resultado = await _repo.calcular(
         fechaDesde: _fechaDesde,
@@ -123,7 +137,7 @@ class InformesProvider extends ChangeNotifier {
       error = e.toString();
     } finally {
       isCalculating = false;
-      notifyListeners();
+      _notificarCambios();
     }
   }
 
@@ -131,7 +145,7 @@ class InformesProvider extends ChangeNotifier {
     resultado = null;
     error = null;
     snapshotsPeriodo = [];
-    notifyListeners();
+    _notificarCambios();
   }
 
   Future<void> calcularEvolucion({
@@ -139,7 +153,7 @@ class InformesProvider extends ChangeNotifier {
     DateTime? hasta,
   }) async {
     isCalculatingEvolucion = true;
-    notifyListeners();
+    _notificarCambios();
     try {
       evolucion = await _repo.calcularEvolucionMensual(
         fechaHasta: hasta ?? _fechaHasta,
@@ -149,13 +163,13 @@ class InformesProvider extends ChangeNotifier {
       evolucion = [];
     } finally {
       isCalculatingEvolucion = false;
-      notifyListeners();
+      _notificarCambios();
     }
   }
 
   Future<void> cargarSnapshotsPeriodo() async {
     isLoadingSnapshots = true;
-    notifyListeners();
+    _notificarCambios();
     try {
       snapshotsPeriodo =
           await _snapRepo.obtenerParaPeriodo(_fechaDesde, _fechaHasta);
@@ -163,7 +177,7 @@ class InformesProvider extends ChangeNotifier {
       snapshotsPeriodo = [];
     } finally {
       isLoadingSnapshots = false;
-      notifyListeners();
+      _notificarCambios();
     }
   }
 
@@ -176,7 +190,7 @@ class InformesProvider extends ChangeNotifier {
     if (r == null) return;
     isCalculating = true;
     error = null;
-    notifyListeners();
+    _notificarCambios();
     try {
       final snapshot = BalanceSnapshot(
         id: '',
@@ -203,7 +217,7 @@ class InformesProvider extends ChangeNotifier {
       error = e.toString();
     } finally {
       isCalculating = false;
-      notifyListeners();
+      _notificarCambios();
     }
   }
 }

@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
@@ -9,23 +9,21 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../admin/domain/models/persona.dart';
 import '../../../admin/presentation/providers/curso_provider.dart';
-import '../../../admin/presentation/providers/metodo_pago_provider.dart';
+import '../../../admin/presentation/providers/categoria_provider.dart';
 import '../../../admin/presentation/providers/persona_provider.dart';
+import '../../../ingresos/presentation/screens/agregar_movimiento_screen.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
-import '../../../../shared/widgets/numero_cheque_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/socio.dart';
 import '../../domain/models/subtipo_socio.dart';
-import '../../domain/models/cuota.dart';
-import '../../domain/models/tarifa_cuota.dart';
-import '../providers/cuota_provider.dart';
+import '../../domain/services/cuota_calculo_service.dart';
 import '../providers/socio_provider.dart';
 import 'socio_detalle_screen.dart';
 import 'tarifas_screen.dart';
-import '../../../../shared/utils/metodo_pago_icon.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 String _formatMonto(dynamic monto) {
   final n = (monto as num? ?? 0).toDouble();
@@ -35,6 +33,15 @@ String _formatMonto(dynamic monto) {
   return '\$${fmt.format(n)}';
 }
 
+String? _obtenerIdCategoriaCuotaSocial(BuildContext context) {
+  final cats = context.read<CategoriaProvider>().categorias;
+  final match = cats.firstWhere(
+    (c) => c['nombre']?.toString().toLowerCase() == 'cuota social',
+    orElse: () => {},
+  );
+  return match['id'] as String?;
+}
+
 Color _colorTipo(String tipoSocio) => switch (tipoSocio) {
       'activo' => AppTheme.azulMedio,
       'honorario' => const Color(0xFF8E44AD),
@@ -42,21 +49,6 @@ Color _colorTipo(String tipoSocio) => switch (tipoSocio) {
       _ => AppTheme.textoSecundario,
     };
 
-// ── _ResumenData ──────────────────────────────────────────────────────────────
-
-class _ResumenData {
-  final Map<String, double> deudas;
-  final double deudaTotal;
-  final int alDia;
-  final int enDeuda;
-
-  const _ResumenData({
-    required this.deudas,
-    required this.deudaTotal,
-    required this.alDia,
-    required this.enDeuda,
-  });
-}
 
 // ── SociosScreen ──────────────────────────────────────────────────────────────
 
@@ -72,9 +64,9 @@ class _SociosScreenState extends State<SociosScreen> {
   String _busqueda = '';
   String _filtroTipo = 'todos';
   String _filtroEstado = 'todos';
-  _ResumenData? _resumen;
-  bool _cargandoResumen = false;
-  bool _resumenSolicitado = false;
+  List<Socio> _socios = [];
+  Map<String, Map<String, dynamic>> _deudas = {};
+  bool _recalculando = false;
 
   @override
   void dispose() {
@@ -82,125 +74,43 @@ class _SociosScreenState extends State<SociosScreen> {
     super.dispose();
   }
 
-  Future<void> _cargarResumen(List<Socio> socios) async {
-    if (_cargandoResumen || socios.isEmpty) return;
-    setState(() => _cargandoResumen = true);
-    try {
-      final db = FirebaseFirestore.instance;
+  Future<void> _recalcularDeudas() async {
+    if (_recalculando || _socios.isEmpty) return;
+    _recalculando = true;
 
-      final tiposSnap = await db.collection('tipos_cuota').get();
-      final tiposAnuales = tiposSnap.docs
-          .where((d) => (d.data()['nombre'] as String? ?? '')
-              .toLowerCase()
-              .contains('anual'))
-          .map((d) => d.id)
-          .toSet();
-
-      final tarifasSnap = await db.collection('tarifas_cuota').get();
-      final tarifasMensuales = tarifasSnap.docs
-          .where((d) => !tiposAnuales
-              .contains(d.data()['tipoCuotaId'] as String? ?? ''))
-          .map((d) => TarifaCuota.fromMap(d.data(), d.id))
-          .toList()
-        ..sort((a, b) => a.vigenciaDesde.compareTo(b.vigenciaDesde));
-
-      final socioIds = socios.map((s) => s.id).toList();
-      final Map<String, List<Map<String, dynamic>>> cuotasPorSocio = {};
-      for (var i = 0; i < socioIds.length; i += 30) {
-        final chunk =
-            socioIds.sublist(i, (i + 30).clamp(0, socioIds.length));
-        final snap = await db
-            .collection('cuotas')
-            .where('socioId', whereIn: chunk)
-            .get();
-        for (final doc in snap.docs) {
-          final data = doc.data();
-          final sid = data['socioId'] as String? ?? '';
-          cuotasPorSocio.putIfAbsent(sid, () => []).add(data);
-        }
+    final nuevasDeudas = <String, Map<String, dynamic>>{};
+    for (final socio in _socios) {
+      try {
+        final estado = await CuotaCalculoService().calcularEstado(
+          socioId: socio.id,
+          fechaIngreso: socio.fechaIngreso,
+        );
+        nuevasDeudas[socio.id] = {
+          'deudaTotal': estado.deuda,
+          'cuotasAdeudadas': estado.mesesCubiertos
+              .where((m) => m.estado != 'cubierto')
+              .length,
+          'estaAlDia': estado.estaAlDia,
+          'creditoAFavor': estado.creditoAFavor,
+        };
+      } catch (_) {
+        nuevasDeudas[socio.id] = {
+          'deudaTotal': 0.0,
+          'cuotasAdeudadas': 0,
+          'estaAlDia': true,
+          'creditoAFavor': 0.0,
+        };
       }
-
-      final ahora = DateTime.now();
-      final mesActual = DateTime(ahora.year, ahora.month);
-      final Map<String, double> deudas = {};
-
-      for (final socio in socios) {
-        final mesIngreso =
-            DateTime(socio.fechaIngreso.year, socio.fechaIngreso.month);
-        if (!mesIngreso.isBefore(mesActual) || tarifasMensuales.isEmpty) {
-          deudas[socio.id] = 0.0;
-          continue;
-        }
-
-        final cuotas = cuotasPorSocio[socio.id] ?? [];
-        final periodosPagados = <String>{};
-
-        for (final data in cuotas) {
-          final tipoCuotaId = data['tipoCuotaId'] as String? ?? '';
-          final tipoCuotaStr = data['tipoCuota'] as String?;
-          final esAnual = tiposAnuales.contains(tipoCuotaId) ||
-              tipoCuotaStr == 'anual';
-          final periodo = data['periodo'] as String?;
-          final fechaPagoRaw = data['fechaPago'];
-
-          if (esAnual) {
-            if (fechaPagoRaw != null) {
-              final fechaPago = (fechaPagoRaw as Timestamp).toDate();
-              for (var j = 0; j < 12; j++) {
-                final m = DateTime(fechaPago.year, fechaPago.month + j);
-                periodosPagados.add(
-                    '${m.month.toString().padLeft(2, '0')}/${m.year}');
-              }
-            }
-          } else if (periodo != null) {
-            periodosPagados.add(periodo);
-          }
-        }
-
-        double deuda = 0.0;
-        var mes =
-            DateTime(socio.fechaIngreso.year, socio.fechaIngreso.month);
-        while (!mes.isAfter(mesActual)) {
-          final periodoStr =
-              '${mes.month.toString().padLeft(2, '0')}/${mes.year}';
-          if (!periodosPagados.contains(periodoStr)) {
-            final tarifa = _tarifaParaMes(tarifasMensuales, mes);
-            if (tarifa != null) deuda += tarifa.monto;
-          }
-          mes = DateTime(mes.year, mes.month + 1);
-        }
-        deudas[socio.id] = deuda;
-      }
-
-      final alDia = deudas.values.where((d) => d <= 0).length;
-      final enDeuda = deudas.values.where((d) => d > 0).length;
-      final deudaTotal =
-          deudas.values.fold(0.0, (acc, d) => acc + (d > 0 ? d : 0));
-
-      if (mounted) {
-        setState(() {
-          _resumen = _ResumenData(
-            deudas: deudas,
-            deudaTotal: deudaTotal,
-            alDia: alDia,
-            enDeuda: enDeuda,
-          );
-          _cargandoResumen = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _cargandoResumen = false);
     }
-  }
 
-  TarifaCuota? _tarifaParaMes(List<TarifaCuota> tarifas, DateTime mes) {
-    TarifaCuota? resultado;
-    for (final t in tarifas) {
-      final vigencia =
-          DateTime(t.vigenciaDesde.year, t.vigenciaDesde.month);
-      if (!vigencia.isAfter(mes)) resultado = t;
+    if (mounted) {
+      setState(() {
+        _deudas = nuevasDeudas;
+        _recalculando = false;
+      });
+    } else {
+      _recalculando = false;
     }
-    return resultado;
   }
 
   void _abrirModal() {
@@ -219,12 +129,11 @@ class _SociosScreenState extends State<SociosScreen> {
     final personaProvider = context.watch<PersonaProvider>();
     final puedeGestionar = auth.esAdmin || auth.esEditor;
 
-    if (!provider.isLoading &&
-        !_resumenSolicitado &&
-        provider.todos.isNotEmpty) {
-      _resumenSolicitado = true;
+    final allSocios = provider.todos;
+    if (allSocios.length != _socios.length && !_recalculando) {
+      _socios = allSocios;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _cargarResumen(provider.todos);
+        if (mounted) _recalcularDeudas();
       });
     }
 
@@ -232,10 +141,10 @@ class _SociosScreenState extends State<SociosScreen> {
     if (_filtroTipo != 'todos') {
       socios = socios.where((s) => s.tipoSocio == _filtroTipo).toList();
     }
-    if (_filtroEstado != 'todos' && _resumen != null) {
+    if (_filtroEstado != 'todos') {
       socios = socios.where((s) {
-        final d = _resumen!.deudas[s.id] ?? 0.0;
-        return _filtroEstado == 'al_dia' ? d <= 0 : d > 0;
+        final estaAlDia = _deudas[s.id]?['estaAlDia'] as bool? ?? true;
+        return _filtroEstado == 'al_dia' ? estaAlDia : !estaAlDia;
       }).toList();
     }
     if (_busqueda.isNotEmpty) {
@@ -356,29 +265,27 @@ class _SociosScreenState extends State<SociosScreen> {
                 Expanded(
                   child: _ResumenChip(
                     titulo: 'Al día',
-                    valor: '${_resumen?.alDia ?? 0}',
+                    valor: '${_deudas.values.where((d) => d['estaAlDia'] == true).length}',
                     color: AppTheme.verdeIngreso,
-                    loading: _cargandoResumen && _resumen == null,
+                    loading: _recalculando && _deudas.isEmpty,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: _ResumenChip(
                     titulo: 'En deuda',
-                    valor: '${_resumen?.enDeuda ?? 0}',
+                    valor: '${_deudas.values.where((d) => d['estaAlDia'] == false).length}',
                     color: AppTheme.amarilloAlerta,
-                    loading: _cargandoResumen && _resumen == null,
+                    loading: _recalculando && _deudas.isEmpty,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: _ResumenChip(
                     titulo: 'Deuda total',
-                    valor: _resumen != null
-                        ? fmt.format(_resumen!.deudaTotal)
-                        : '\$0',
+                    valor: fmt.format(_deudas.values.fold(0.0, (acc, d) => acc + (d['deudaTotal'] as double? ?? 0.0))),
                     color: AppTheme.rojoGasto,
-                    loading: _cargandoResumen && _resumen == null,
+                    loading: _recalculando && _deudas.isEmpty,
                   ),
                 ),
               ],
@@ -466,60 +373,64 @@ class _SociosScreenState extends State<SociosScreen> {
           const Divider(height: 1),
           // List
           Expanded(
-            child: provider.isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : provider.error != null && provider.todos.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Text(
-                            'Error al cargar socios:\n${provider.error}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                color: AppTheme.rojoGasto),
-                          ),
-                        ),
-                      )
-                    : socios.isEmpty
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('pagos_cuota')
+                  .snapshots(),
+              builder: (context, _) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && _socios.isNotEmpty) _recalcularDeudas();
+                });
+                return provider.isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : provider.error != null && provider.todos.isEmpty
                         ? Center(
                             child: Padding(
                               padding: const EdgeInsets.all(32),
                               child: Text(
-                                _busqueda.isNotEmpty
-                                    ? 'Sin resultados para "$_busqueda"'
-                                    : 'No hay socios que coincidan con los filtros.',
+                                'Error al cargar socios:\n${provider.error}',
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
-                                    color: AppTheme.textoSecundario),
+                                    color: AppTheme.rojoGasto),
                               ),
                             ),
                           )
-                        : RefreshIndicator(
-                            onRefresh: () async {
-                              setState(() {
-                                _resumen = null;
-                                _resumenSolicitado = false;
-                              });
-                              _resumenSolicitado = true;
-                              await _cargarResumen(provider.todos);
-                            },
-                            child: ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(
-                                  16, 8, 16, 80),
-                              itemCount: socios.length,
-                              itemBuilder: (_, i) => _SocioCard(
-                                socio: socios[i],
-                                tipoNombre: provider
-                                    .nombreTipo(socios[i].tipoSocio),
-                                nombrePersona: personaProvider
-                                    .nombreCompleto(
-                                        socios[i].personaId),
-                                puedeGestionar: puedeGestionar,
-                                deuda:
-                                    _resumen?.deudas[socios[i].id],
-                              ),
-                            ),
-                          ),
+                        : socios.isEmpty
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(32),
+                                  child: Text(
+                                    _busqueda.isNotEmpty
+                                        ? 'Sin resultados para "$_busqueda"'
+                                        : 'No hay socios que coincidan con los filtros.',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                        color: AppTheme.textoSecundario),
+                                  ),
+                                ),
+                              )
+                            : RefreshIndicator(
+                                onRefresh: () async => _recalcularDeudas(),
+                                child: ListView.builder(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      16, 8, 16, 80),
+                                  itemCount: socios.length,
+                                  itemBuilder: (_, i) => _SocioCard(
+                                    socio: socios[i],
+                                    tipoNombre: provider
+                                        .nombreTipo(socios[i].tipoSocio),
+                                    nombrePersona: personaProvider
+                                        .nombreCompleto(
+                                            socios[i].personaId),
+                                    puedeGestionar: puedeGestionar,
+                                    deuda: (_deudas[socios[i].id]?['deudaTotal']
+                                        as double?),
+                                    onPagoRegistrado: _recalcularDeudas,
+                                  ),
+                                ),
+                              );
+              },
+            ),
           ),
         ],
       ),
@@ -592,6 +503,7 @@ class _SocioCard extends StatelessWidget {
     required this.nombrePersona,
     required this.puedeGestionar,
     this.deuda,
+    this.onPagoRegistrado,
   });
 
   final Socio socio;
@@ -599,6 +511,7 @@ class _SocioCard extends StatelessWidget {
   final String nombrePersona;
   final bool puedeGestionar;
   final double? deuda; // null = loading, 0 = al día, >0 = en deuda
+  final VoidCallback? onPagoRegistrado;
 
   @override
   Widget build(BuildContext context) {
@@ -684,15 +597,17 @@ class _SocioCard extends StatelessWidget {
                           icon: const Icon(Icons.payment, size: 18),
                           color: AppTheme.verdeTeal,
                           tooltip: 'Registrar pago',
-                          onPressed: () => showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            useSafeArea: true,
-                            builder: (_) => _ModalPagoRapido(
-                              socio: s,
-                              nombre: nombrePersona,
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AgregarMovimientoScreen(
+                                tipoInicial: 'ingreso',
+                                categoriaInicial:
+                                    _obtenerIdCategoriaCuotaSocial(context),
+                                socioInicial: s,
+                              ),
                             ),
-                          ),
+                          ).then((_) => onPagoRegistrado?.call()),
                         ),
                       ),
                   ],
@@ -755,255 +670,6 @@ class _Chip extends StatelessWidget {
   }
 }
 
-// ── _ModalPagoRapido ──────────────────────────────────────────────────────────
-
-class _ModalPagoRapido extends StatefulWidget {
-  const _ModalPagoRapido({required this.socio, required this.nombre});
-  final Socio socio;
-  final String nombre;
-
-  @override
-  State<_ModalPagoRapido> createState() => _ModalPagoRapidoState();
-}
-
-class _ModalPagoRapidoState extends State<_ModalPagoRapido> {
-  final _form = GlobalKey<FormState>();
-  final _montoCtrl = TextEditingController();
-  final _periodoCtrl = TextEditingController();
-  final _observacionesCtrl = TextEditingController();
-  final _nroChequeCtrl = TextEditingController();
-
-  String? _tipoCuotaId;
-  String? _metodoPagoId;
-  bool _saving = false;
-  bool _cargandoTarifa = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _periodoCtrl.text =
-        '${now.month.toString().padLeft(2, '0')}/${now.year}';
-  }
-
-  @override
-  void dispose() {
-    _montoCtrl.dispose();
-    _periodoCtrl.dispose();
-    _observacionesCtrl.dispose();
-    _nroChequeCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _onTipoCuotaChanged(String? tipoCuotaId) async {
-    setState(() {
-      _tipoCuotaId = tipoCuotaId;
-      _cargandoTarifa = true;
-    });
-    if (tipoCuotaId == null) {
-      setState(() => _cargandoTarifa = false);
-      return;
-    }
-    try {
-      final tarifa = await context
-          .read<CuotaProvider>()
-          .obtenerTarifaVigente(tipoCuotaId);
-      if (mounted) {
-        _montoCtrl.text = tarifa != null
-            ? NumberFormat('#,##0.##', 'es_AR').format(tarifa.monto)
-            : '';
-      }
-    } finally {
-      if (mounted) setState(() => _cargandoTarifa = false);
-    }
-  }
-
-  Future<void> _guardar() async {
-    if (!_form.currentState!.validate()) return;
-    final monto = double.tryParse(
-        _montoCtrl.text.replaceAll('.', '').replaceAll(',', '.'));
-    if (monto == null || monto <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresá un monto válido')),
-      );
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
-      await context.read<CuotaProvider>().registrarPago(Cuota(
-        id: '',
-        socioId: widget.socio.id,
-        tipoCuotaId: _tipoCuotaId!,
-        periodo: _periodoCtrl.text.trim(),
-        moneda: 'ARS',
-        metodoPagoId: _metodoPagoId!,
-        usuarioId: uid,
-        observaciones: _observacionesCtrl.text.trim().isEmpty
-            ? null
-            : _observacionesCtrl.text.trim(),
-        comprobante: null,
-        nroCheque: _nroChequeCtrl.text.trim().isEmpty
-            ? null
-            : _nroChequeCtrl.text.trim(),
-        monto: monto,
-        fechaPago: DateTime.now(),
-        fechaCreacion: DateTime.now(),
-      ));
-      if (mounted) Navigator.pop(context);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final tiposCuota = context.watch<CuotaProvider>().tiposCuota;
-    final metodos = context.watch<MetodoPagoProvider>().obtenerActivos();
-    final metodoPagoNombre = _metodoPagoId != null
-        ? metodos
-                .firstWhere((m) => m['id'] == _metodoPagoId,
-                    orElse: () => <String, dynamic>{})['nombre']
-            as String?
-        : null;
-
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Form(
-        key: _form,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.nombre,
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const Text(
-                'Registrar pago',
-                style: TextStyle(color: AppTheme.textoSecundario),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _tipoCuotaId,
-                decoration:
-                    const InputDecoration(labelText: 'Tipo de cuota *'),
-                items: tiposCuota
-                    .map((t) => DropdownMenuItem(
-                        value: t.id, child: Text(t.nombre)))
-                    .toList(),
-                onChanged: _onTipoCuotaChanged,
-                validator: (v) => v == null ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _periodoCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Período *',
-                  helperText: 'Formato: MM/AAAA',
-                  hintText: '06/2026',
-                ),
-                keyboardType: TextInputType.number,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Requerido';
-                  final parts = v.split('/');
-                  if (parts.length != 2) return 'Formato: MM/AAAA';
-                  final mes = int.tryParse(parts[0]);
-                  final anio = int.tryParse(parts[1]);
-                  if (mes == null || mes < 1 || mes > 12) {
-                    return 'Mes inválido (01-12)';
-                  }
-                  if (anio == null || anio < 2000) return 'Año inválido';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _montoCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Monto *',
-                  prefixText: '\$ ',
-                  suffixIcon: _cargandoTarifa
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: Padding(
-                            padding: EdgeInsets.all(12),
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2),
-                          ),
-                        )
-                      : null,
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _metodoPagoId,
-                decoration: const InputDecoration(
-                    labelText: 'Método de pago *'),
-                items: metodos
-                    .map((m) => DropdownMenuItem(
-                          value: m['id'] as String,
-                          child:
-                              MetodoPagoRow(nombre: m['nombre'] as String),
-                        ))
-                    .toList(),
-                selectedItemBuilder: (context) => metodos
-                    .map((m) => Text(m['nombre'] as String,
-                        overflow: TextOverflow.ellipsis))
-                    .toList(),
-                onChanged: (v) => setState(() => _metodoPagoId = v),
-                validator: (v) => v == null ? 'Requerido' : null,
-              ),
-              NumeroChequeWidget(
-                metodoPago: metodoPagoNombre,
-                controller: _nroChequeCtrl,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _observacionesCtrl,
-                decoration:
-                    const InputDecoration(labelText: 'Observaciones'),
-                maxLines: 2,
-                textCapitalization: TextCapitalization.sentences,
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.verdeTeal,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: _saving ? null : _guardar,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Registrar pago'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 // ── _ModalSocio ───────────────────────────────────────────────────────────────
 
@@ -1629,8 +1295,6 @@ class _ModalSocioState extends State<_ModalSocio> {
                               child: Text(c.nombre),
                             ))
                         .toList(),
-                    selectedItemBuilder: (context) =>
-                        cursos.map((c) => Text(c.nombre)).toList(),
                     onChanged: (v) => setState(() => _cursoId = v),
                   );
                 }),

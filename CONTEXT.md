@@ -1019,3 +1019,97 @@ En `socio_repository.dart` al crear un socio, verificar que no existe otro con e
 - Presupuestos en gastos: solo con votación `aprobada`
 - Votación cerrada: no muestra íconos de votación en presupuestos aprobados/comprados
 
+
+---
+
+## 28. Sistema de Cuotas Rediseñado — Pagos Libres
+
+### Modelo anterior (eliminado)
+La colección `cuotas` con períodos específicos fue reemplazada por `pagos_cuota` con montos libres.
+
+### Nueva colección: `pagos_cuota`
+Campos: `socioId`, `monto` (double), `metodoPagoId`, `fechaPago` (timestamp), `observaciones` (nullable), `ingresoId` (nullable — vincula con ingreso si se registró por ahí), `usuarioId`, `fechaCreacion`.
+
+### Servicio de cálculo: `CuotaCalculoService`
+Calcula el estado completo de cuotas on-the-fly:
+1. Suma todos los pagos del socio ordenados por fecha
+2. Distribuye el total pagado mes por mes desde la fecha de ingreso usando tarifas históricas
+3. Cada mes queda en estado: `cubierto` / `parcial` / `sin_cubrir` / `sin_tarifa`
+4. El sobrante queda como `creditoAFavor`
+
+**Regla de tarifa histórica:** para cada mes se usa la tarifa vigente en ese momento (no la actual), buscando en `tarifas_cuota` la de mayor `vigenciaDesde` que no supere ese mes.
+
+### Clase `CuotaEstado`
+Contiene: `totalPagado`, `totalRequerido`, `deuda`, `creditoAFavor`, `estaAlDia`, `List<MesCuota> mesesCubiertos`, `List<PagoCuota> pagos`.
+
+### UI en `socio_detalle_screen.dart`
+- Resumen de deuda/crédito con botón "Registrar pago"
+- Historial de pagos con fecha, monto, método y quién lo registró
+- Cobertura mensual: lista de meses con ícono y estado (✅ Cubierto / ⚠️ Parcial / ❌ Sin cubrir)
+- Modal de registro: monto libre (precargado con deuda actual), método de pago, fecha
+- Si método es efectivo → suma automáticamente a Caja Chica
+
+### Integración con Caja Chica
+Pago de cuota en efectivo → suma automáticamente a Caja Chica con observación "Cuota socio N°XXX"
+
+### Migración de datos
+Método `migrarCuotasAPagos()` migra los pagos anteriores de `cuotas` a `pagos_cuota`. Se ejecuta una sola vez desde panel Admin. Los documentos migrados tienen campo `migradoDeCuotaId` para trazabilidad.
+
+### Tarifas de cuota — UI en socios_screen.dart
+Sección "Valor de la cuota social" arriba del resumen, con:
+- Valor mensual y anual vigentes con fecha de vigencia
+- Ícono de lápiz para editar (Editor/Admin) — crea nueva tarifa, no edita la existente
+- Link "Ver historial" → modal con todas las tarifas históricas (Vigente/Vencida)
+
+---
+
+## 29. Cursos y Hijos de Socios
+
+### Entidad Curso
+Colección `cursos`. Campos: `numero` (string '1'-'6'), `turno` ('manana'/'tarde'), `nombre` (generado: '1° 1 (Mañana)'), `orden` (calculado: numero*10 + turno), `activo`.
+
+12 documentos por defecto inicializados automáticamente. Dropdown en formulario de Persona cuando `subtipo == 'alumno'`.
+
+### Hijos de socios
+Campo `hijosIds` (array de personaIds) en Persona. Solo aparece la sección en personas que NO son alumno ni fiscal.
+
+**Flujo de vinculación:**
+1. Buscar por DNI primero
+2. Si existe: mostrar datos y vincular
+3. Si no existe: crear nueva Persona con subtipo 'alumno' y vincular
+
+**Widget `_HijoTile`:** muestra nombre, apellido y curso del alumno. Botón desvincular (Editor/Admin).
+
+---
+
+## 30. Socios — Pantalla Rediseñada
+
+### Una sola pantalla sin solapas
+- Header con resumen: Total / Al día / En deuda / Deuda total acumulada
+- Filtros: dropdown tipo de socio + dropdown estado cuota
+- Barra de búsqueda por nombre, N° de socio o DNI
+- Lista con estado de cuota inline (deuda en pesos y cantidad de meses)
+
+### Sección de tarifas
+Arriba del resumen de socios. Muestra mensual y anual vigentes. Editor/Admin puede actualizar (crea nueva tarifa preservando el historial).
+
+### Reglas Firestore nuevas
+```javascript
+match /pagos_cuota/{doc} {
+  allow read: if estaAutenticado();
+  allow write: if (esAdmin() || esEditor()) && estaActivo();
+}
+match /tarifas_cuota/{doc} {
+  allow read: if true;
+  allow write: if (esAdmin() || esEditor()) && estaActivo();
+}
+match /tipos_cuota/{doc} {
+  allow read: if true;
+  allow write: if esAdmin() && estaActivo();
+}
+match /cursos/{doc} {
+  allow read: if true;
+  allow write: if esAdmin() && estaActivo();
+}
+```
+
