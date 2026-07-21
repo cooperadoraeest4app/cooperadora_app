@@ -17,6 +17,7 @@ import '../../features/ingresos/presentation/screens/agregar_movimiento_screen.d
 import '../../features/ingresos/presentation/screens/movimientos_screen.dart';
 import '../../features/inventario/presentation/screens/inventario_screen.dart';
 import '../../features/proyectos/presentation/screens/proyectos_screen.dart';
+import '../../features/socios/presentation/screens/declarar_pago_cuota_screen.dart';
 import '../../features/socios/presentation/screens/socios_screen.dart';
 
 class AppDrawer extends StatelessWidget {
@@ -190,6 +191,20 @@ class AppDrawer extends StatelessWidget {
             ],
 
             const Divider(height: 1),
+            if (auth.esSocioActivo)
+              ListTile(
+                leading: const Icon(Icons.credit_card_outlined,
+                    color: AppTheme.azulMedio),
+                title: const Text('Pagar mi cuota'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const DeclararPagoCuotaScreen()),
+                  );
+                },
+              ),
             itemMenu(Icons.person_outline, 'Mi perfil',
                 () => const PerfilScreen()),
             ListTile(

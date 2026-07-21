@@ -51,6 +51,9 @@ class AuthProvider extends ChangeNotifier {
 
   String? get socioId => datosUsuario?['socioId'] as String?;
   String? get personaId => datosUsuario?['personaId'] as String?;
+  String? get tipoSocio => datosUsuario?['_tipoSocioResuelto'] as String?;
+  bool get esSocioActivo =>
+      tipoSocio == 'activo' || tipoSocio == 'adherente';
 
   Future<void> _cargarDatosUsuario(String uid) async {
     final firestore = FirebaseFirestore.instance;
@@ -61,6 +64,7 @@ class AuthProvider extends ChangeNotifier {
         datosUsuario = {...byId.data()!, 'id': byId.id};
         rol = datosUsuario!['rol'] as String?;
         await _cargarPersona(firestore);
+        await _cargarSocio(firestore);
         notifyListeners();
         return;
       }
@@ -107,6 +111,7 @@ class AuthProvider extends ChangeNotifier {
             datosUsuario = {...migrated.data()!, 'id': migrated.id};
             rol = datosUsuario!['rol'] as String?;
             await _cargarPersona(firestore);
+            await _cargarSocio(firestore);
             notifyListeners();
             return;
           }
@@ -116,11 +121,26 @@ class AuthProvider extends ChangeNotifier {
         datosUsuario = {...datos, 'id': uid};
         rol = datosUsuario!['rol'] as String?;
         await _cargarPersona(firestore);
+        await _cargarSocio(firestore);
       }
     } catch (_) {
       // Error loading role — no permissions assigned
     }
     notifyListeners();
+  }
+
+  Future<void> _cargarSocio(FirebaseFirestore firestore) async {
+    final sId = datosUsuario?['socioId'] as String?;
+    if (sId == null) return;
+    try {
+      final doc = await firestore.collection('socios').doc(sId).get();
+      if (doc.exists) {
+        datosUsuario = {
+          ...?datosUsuario,
+          '_tipoSocioResuelto': doc.data()?['tipoSocio'],
+        };
+      }
+    } catch (_) {}
   }
 
   Future<void> _cargarPersona(FirebaseFirestore firestore) async {

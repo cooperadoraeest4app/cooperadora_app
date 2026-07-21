@@ -706,7 +706,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
                         return Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppTheme.celesteFondo,
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: AppTheme.celesteBorde),
                           ),
@@ -770,6 +770,11 @@ class _PerfilScreenState extends State<PerfilScreen> {
                       },
                     ),
                   ),
+
+                // Pagos pendientes de confirmación
+                if (_socioIdResuelto != null)
+                  _PagosPendientesSection(
+                      socioId: _socioIdResuelto!),
 
                 // Historial de cuotas (solo si tiene socio vinculado)
                 FutureBuilder<CuotaEstado?>(
@@ -1053,6 +1058,105 @@ class _CampoSoloLectura extends StatelessWidget {
         helperText: 'No editable',
       ),
       style: const TextStyle(color: AppTheme.textoSecundario),
+    );
+  }
+}
+
+class _PagosPendientesSection extends StatelessWidget {
+  final String socioId;
+  const _PagosPendientesSection({required this.socioId});
+
+  static String _fmt(double m) =>
+      NumberFormat.currency(locale: 'es_AR', symbol: '\$', decimalDigits: 2)
+          .format(m);
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('pagos_pendientes')
+          .where('socioId', isEqualTo: socioId)
+          .where('estado', isEqualTo: 'pendiente')
+          .orderBy('creadoEn', descending: true)
+          .snapshots(),
+      builder: (context, snap) {
+        final docs = snap.data?.docs ?? [];
+        if (docs.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Card(
+            color: AppTheme.amarilloAlerta.withValues(alpha: 0.08),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                  color: AppTheme.amarilloAlerta.withValues(alpha: 0.6)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time,
+                          color: AppTheme.amarilloAlerta, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Pagos pendientes de confirmación (${docs.length})',
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textoPrincipal),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ...docs.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final monto =
+                        (data['monto'] as num? ?? 0).toDouble();
+                    final fechaPago = data['fechaPago'] is Timestamp
+                        ? (data['fechaPago'] as Timestamp).toDate()
+                        : DateTime.now();
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      leading: const Icon(Icons.receipt_long_outlined,
+                          color: AppTheme.amarilloAlerta, size: 20),
+                      title: Text(_fmt(monto),
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w500)),
+                      subtitle: Text(
+                        'Declarado para el ${DateFormat('dd/MM/yyyy').format(fechaPago)}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppTheme.amarilloAlerta.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text('En revisión',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textoPrincipal)),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Un editor de la cooperadora revisará tu comprobante y confirmará el pago.',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textoSecundario),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

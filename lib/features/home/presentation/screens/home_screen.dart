@@ -13,6 +13,7 @@ import '../../../cuenta_bancaria/presentation/providers/cuenta_bancaria_provider
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import '../../../../shared/widgets/campana_notificaciones_widget.dart';
 import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
@@ -159,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
-        actions: const [AccionAuthWidget()],
+        actions: const [CampanaNotificacionesWidget(), AccionAuthWidget()],
       ),
       drawer: const AppDrawer(esInicio: true),
       body: StreamBuilder<List<Ingreso>>(

@@ -198,5 +198,17 @@ service cloud.firestore {
       allow read: if estaAutenticado();
       allow write: if estaAutenticado();
     }
+
+    match /pagos_pendientes/{doc} {
+      allow read: if estaAutenticado();
+      allow create: if estaAutenticado();
+      allow update: if esEditor() && estaActivo();
+    }
+
+    match /notificaciones/{doc} {
+      allow read: if estaAutenticado();
+      allow create: if estaAutenticado();
+      allow update: if estaAutenticado();
+    }
   }
 }
