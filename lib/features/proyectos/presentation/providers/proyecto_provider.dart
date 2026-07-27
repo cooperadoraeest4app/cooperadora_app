@@ -10,11 +10,13 @@ class ProyectoProvider extends ChangeNotifier {
   StreamSubscription<List<Proyecto>>? _enCursoSub;
   StreamSubscription<List<Proyecto>>? _planificadosSub;
   StreamSubscription<List<Proyecto>>? _finalizadosSub;
+  StreamSubscription<List<Proyecto>>? _canceladosSub;
   StreamSubscription<List<TipoProyecto>>? _tiposSub;
 
   List<Proyecto> enCurso = [];
   List<Proyecto> planificados = [];
   List<Proyecto> finalizados = [];
+  List<Proyecto> cancelados = [];
   List<TipoProyecto> tipos = [];
   bool isLoading = true;
   bool isSaving = false;
@@ -45,6 +47,12 @@ class ProyectoProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+    _canceladosSub = _repo.obtenerPorEstado('cancelado').listen(
+      (list) {
+        cancelados = list;
+        notifyListeners();
+      },
+    );
     _tiposSub = _repo.obtenerTipos().listen(
       (list) {
         tipos = list;
@@ -63,6 +71,7 @@ class ProyectoProvider extends ChangeNotifier {
     _enCursoSub?.cancel();
     _planificadosSub?.cancel();
     _finalizadosSub?.cancel();
+    _canceladosSub?.cancel();
     _tiposSub?.cancel();
     super.dispose();
   }
@@ -76,7 +85,7 @@ class ProyectoProvider extends ChangeNotifier {
   }
 
   Proyecto? obtenerPorId(String id) {
-    final todos = [...enCurso, ...planificados, ...finalizados];
+    final todos = [...enCurso, ...planificados, ...finalizados, ...cancelados];
     try {
       return todos.firstWhere((p) => p.id == id);
     } catch (_) {
@@ -87,8 +96,11 @@ class ProyectoProvider extends ChangeNotifier {
   List<Proyecto> proyectosPorEstado(String estado) => switch (estado) {
         'en_curso' => enCurso,
         'planificado' => planificados,
+        'cancelado' => cancelados,
         _ => finalizados,
       };
+
+  int contarPorEstado(String estado) => proyectosPorEstado(estado).length;
 
   Future<void> agregar(Proyecto p) async {
     isSaving = true;

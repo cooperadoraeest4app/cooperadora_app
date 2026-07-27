@@ -19,6 +19,7 @@ import '../../features/inventario/presentation/screens/inventario_screen.dart';
 import '../../features/proyectos/presentation/screens/proyectos_screen.dart';
 import '../../features/socios/presentation/screens/declarar_pago_cuota_screen.dart';
 import '../../features/socios/presentation/screens/socios_screen.dart';
+import 'logo_cooperadora_widget.dart';
 
 class AppDrawer extends StatelessWidget {
   final bool esInicio;
@@ -57,7 +58,7 @@ class AppDrawer extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  const Icon(Icons.school, color: Colors.white, size: 40),
+                  const LogoCooperadoraWidget(size: 48, borderRadius: 8),
                   const SizedBox(height: 8),
                   Text(
                     config.nombreCooperadora.isNotEmpty

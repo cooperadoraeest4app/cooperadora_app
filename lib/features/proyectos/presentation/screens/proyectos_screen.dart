@@ -9,6 +9,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/proyecto.dart';
 import '../providers/proyecto_provider.dart';
 import 'proyecto_detalle_screen.dart';
+import 'proyectos_cancelados_screen.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -123,6 +124,7 @@ class _ProyectosScreenState extends State<ProyectosScreen>
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<ProyectoProvider>();
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
@@ -154,17 +156,28 @@ class _ProyectosScreenState extends State<ProyectosScreen>
             ),
           ],
         ),
-        actions: [const AccionAuthWidget()],
+        actions: [
+          IconButton(
+            tooltip: 'Proyectos cancelados',
+            icon: const Icon(Icons.folder_off_outlined, color: Colors.white),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const ProyectosCanceladosScreen()),
+            ),
+          ),
+          const AccionAuthWidget(),
+        ],
         bottom: TabBar(
           controller: _tabCtrl,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white,
           indicatorColor: const Color(0xFF00BCD4),
           indicatorWeight: 3,
-          tabs: const [
-            Tab(icon: Icon(Icons.play_circle, size: 18), text: 'En curso'),
-            Tab(icon: Icon(Icons.pending, size: 18), text: 'Planificados'),
-            Tab(icon: Icon(Icons.check_circle, size: 18), text: 'Finalizados'),
+          tabs: [
+            Tab(icon: const Icon(Icons.play_circle, size: 18), text: 'En curso (${provider.contarPorEstado('en_curso')})'),
+            Tab(icon: const Icon(Icons.pending, size: 18), text: 'Planificados (${provider.contarPorEstado('planificado')})'),
+            Tab(icon: const Icon(Icons.check_circle, size: 18), text: 'Finalizados (${provider.contarPorEstado('finalizado')})'),
           ],
         ),
       ),
@@ -264,13 +277,15 @@ class _ProyectoCard extends StatelessWidget {
   final void Function(int) onTabSelected;
 
   Future<void> _irADetalle(BuildContext context) async {
-    final result = await Navigator.push<int>(
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
+        builder: (_) => ProyectoDetalleScreen(
+          proyecto: proyecto,
+          onTabSelected: onTabSelected,
+        ),
       ),
     );
-    if (result != null) onTabSelected(result);
   }
 
   @override
@@ -303,6 +318,11 @@ class _ProyectoCard extends StatelessWidget {
                     Row(
                       children: [
                         _EstadoChip(color: chipColor, label: chipLabel),
+                        if (proyecto.votacionId != null) ...[
+                          const SizedBox(width: 6),
+                          _EstadoChip(
+                              color: AppTheme.azulMedio, label: '🗳️ Votación'),
+                        ],
                         if (!proyecto.publico) ...[
                           const SizedBox(width: 6),
                           const Icon(Icons.lock_outline,
@@ -645,15 +665,14 @@ class _ModalProyectoState extends State<_ModalProyecto> {
               DropdownButtonFormField<String>(
                 initialValue: _estado,
                 decoration: const InputDecoration(labelText: 'Estado'),
-                items: const [
-                  DropdownMenuItem(
+                items: [
+                  const DropdownMenuItem(
                       value: 'planificado', child: Text('Planificado')),
-                  DropdownMenuItem(
+                  const DropdownMenuItem(
                       value: 'en_curso', child: Text('En curso')),
-                  DropdownMenuItem(
-                      value: 'finalizado', child: Text('Finalizado')),
-                  DropdownMenuItem(
-                      value: 'cancelado', child: Text('Cancelado')),
+                  if (_esEdicion)
+                    const DropdownMenuItem(
+                        value: 'finalizado', child: Text('Finalizado')),
                 ],
                 onChanged: (v) => setState(() => _estado = v!),
               ),

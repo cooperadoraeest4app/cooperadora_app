@@ -1113,3 +1113,124 @@ match /cursos/{doc} {
 }
 ```
 
+
+---
+
+## 31. Credencial de Socio Imprimible con QR
+
+### Accesos
+- Menú lateral: visible para socios (activo/adherente/honorario) — "Mi credencial"
+- Mi Perfil: botón "Ver credencial" en la sección "Mi membresía"
+- Avatar en AppBar: acceso directo
+
+### Diseño
+Credencial horizontal (540×300px), apta para billetera. Fondo blanco, borde azulOscuro 2px, border-radius 16px.
+
+**Secciones:**
+- Header: fondo azulOscuro con logo de la cooperadora, nombre institución y año de vigencia
+- Cuerpo: foto del socio cuadrada (88×88px) + datos del socio + QR
+- Footer: "Miembro desde" + "Vence 31/12/XXXX"
+
+**Datos mostrados:** Nombre (apellido, nombre), DNI, tipo de socio, N° de socio
+
+**Foto:** si tiene cargada en Storage muestra la foto, si no muestra ícono genérico de persona
+
+### QR
+Generado con paquete `qr_flutter`. Codifica JSON:
+```json
+{
+  "socioId": "...",
+  "numeroSocio": 7,
+  "nombre": "Juan García",
+  "dni": "28456789"
+}
+```
+- En pantalla: 116×116px, presionar abre modal con QR ampliado (220×220px), leyenda "Presionar para ampliar"
+- En impresión/PDF: misma escala, leyenda "Escanear para validar", sin ícono de zoom, sin modal
+
+### Impresión y PDF
+Paquetes: `printing: ^5.12.0` + `pdf: ^3.10.8`
+- Botón "Imprimir": abre diálogo de impresión del sistema
+- Botón "Descargar PDF": genera PDF y permite compartir/guardar
+- Al imprimir: `paraImprimir: true` oculta elementos interactivos
+
+### Vigencia
+Año calendario actual. Se renueva automáticamente cada año.
+
+### Usos futuros del QR
+- Escanear desde la app para autocompletar datos al registrar un pago de cuota
+- Control de acceso a eventos de la cooperadora
+- Validación de membresía en actos escolares
+- Registro de asistencia a asambleas/votaciones
+
+---
+
+## 32. Votación de Proyectos Planificados
+
+### Flujo
+1. Editor/Admin habilita la votación desde el detalle del proyecto planificado
+2. Al habilitar → notificación interna a todos los socios
+3. Socios Activos votan 👍/👎/✋ desde barra fija en la parte inferior del detalle del proyecto
+4. Resultados ocultos hasta alcanzar el quórum
+5. Al alcanzar quórum y mayoría → proyecto pasa a `en_curso`
+6. Si se rechaza → proyecto pasa a `cancelado` + notificación a todos los socios
+
+### Barra fija de votación
+`bottomNavigationBar` en `proyecto_detalle_screen.dart`. Visible solo cuando:
+- Hay votación activa (`estado == 'en_curso'`)
+- El usuario es Socio Activo
+- No ha votado todavía
+
+Después de votar: muestra ícono + texto del voto emitido (bloqueado).
+
+### Resultados
+Visibles en el detalle del proyecto cuando la votación está cerrada. Muestra:
+- Estado (aprobado/rechazado) con color
+- Desglose: a favor / en contra / abstenciones / total
+- Fecha de cierre
+
+### Proyectos cancelados
+Pantalla separada `ProyectosCanceladosScreen` accesible desde ícono de carpeta en AppBar de ProyectosScreen. No tiene la misma preponderancia que las tabs principales.
+
+### Tipos de notificaciones implementados
+- `pago_cuota_pendiente` — ícono payment, amarillo
+- `pago_cuota_confirmado` — ícono check_circle, verde
+- `pago_cuota_rechazado` — ícono cancel, rojo
+- `votacion_proyecto_habilitada` — ícono how_to_vote, verdeTeal
+- `proyecto_aprobado` — ícono thumb_up, verde
+- `proyecto_rechazado` — ícono thumb_down, rojo
+
+Cada notificación navega a la pantalla correspondiente al presionar.
+
+---
+
+## 33. Mejoras Generales
+
+### Logo de la Cooperadora
+- Subida desde Configuración General en Panel Admin (solo Admin)
+- Almacenado en Firebase Storage: `configuracion/logo/logo_cooperadora.{ext}`
+- URL guardada en `configuracion/config` → campo `logoUrl`
+- Widget reutilizable `LogoCooperadoraWidget(size, borderRadius)` usado en HomeScreen y donde corresponda
+- CORS configurado en Firebase Storage via `gsutil cors set`
+
+### Iconos de contacto en HomeScreen
+- WhatsApp: abre `https://wa.me/54{numero}?text=Hola%20Coope!`
+- Email: abre cliente de mail con asunto "Hola Coope!"
+- Assets: `assets/icons/icons8-whatsapp-96.png` y `assets/icons/icons8-mail-96.png`
+- Datos leídos desde `configuracion/config` (campos `telefono` y `email`)
+
+### Navegación de Proyectos mejorada
+- Tabs con contador: "En curso (N)" / "Planificados (N)" / "Finalizados (N)"
+- Mismo contador en HomeScreen y ProyectosScreen
+- Una sola instancia de ProyectosScreen en toda la app
+
+### Pantalla de Socios — mejoras
+- Dropdown de tipo de socio y estado de cuota (reemplaza chips)
+- Barra de búsqueda por nombre, N° de socio o DNI
+- Sección de tarifas integrada con historial filtrable (Todos/Mensual/Anual)
+- Cálculo de deuda con tarifa histórica (Opción A)
+- Recálculo automático al registrar un pago via StreamBuilder en `pagos_cuota`
+
+### Registro de pago de cuota unificado
+"Registrar pago" desde sección de socios navega a `AgregarMovimientoScreen` con categoría y socio prellenados, monto precargado con tarifa mensual vigente. Permite adjuntar comprobante.
+

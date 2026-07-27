@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/services/log_cambio_service.dart';
+import '../../../../shared/widgets/nombre_usuario_widget.dart';
 
 class ConfirmarPagoCuotaScreen extends StatefulWidget {
   final String pagoPendienteId;
@@ -31,6 +32,7 @@ class _ConfirmarPagoCuotaScreenState
       final fechaPago = (data['fechaPago'] as Timestamp).toDate();
       final observaciones = data['observaciones'] as String?;
       final usuarioUid = data['usuarioUid'] as String? ?? '';
+      final editorUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
       final batch = FirebaseFirestore.instance.batch();
 
@@ -40,7 +42,8 @@ class _ConfirmarPagoCuotaScreenState
           .doc(widget.pagoPendienteId);
       batch.update(pagoRef, {
         'estado': 'confirmado',
-        'confirmadoEn': FieldValue.serverTimestamp(),
+        'usuarioConfirmacionId': editorUid,
+        'fechaConfirmacion': FieldValue.serverTimestamp(),
       });
 
       // 2. Create pagos_cuota
@@ -76,7 +79,7 @@ class _ConfirmarPagoCuotaScreenState
       await LogCambioService().registrar(
         entidadTipo: 'pago_cuota_pendiente',
         entidadId: widget.pagoPendienteId,
-        usuarioId: FirebaseAuth.instance.currentUser?.uid ?? '',
+        usuarioId: editorUid,
         accion: 'confirmacion',
         nuevo: {'estado': 'confirmado', 'monto': monto},
       );
@@ -151,6 +154,7 @@ class _ConfirmarPagoCuotaScreenState
       final socioId = data['socioId'] as String;
       final monto = (data['monto'] as num).toDouble();
       final usuarioUid = data['usuarioUid'] as String? ?? '';
+      final editorUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
       final batch = FirebaseFirestore.instance.batch();
 
@@ -160,7 +164,8 @@ class _ConfirmarPagoCuotaScreenState
       batch.update(pagoRef, {
         'estado': 'rechazado',
         'motivoRechazo': motivo,
-        'rechazadoEn': FieldValue.serverTimestamp(),
+        'usuarioConfirmacionId': editorUid,
+        'fechaConfirmacion': FieldValue.serverTimestamp(),
       });
 
       final notifRef =
@@ -182,7 +187,7 @@ class _ConfirmarPagoCuotaScreenState
       await LogCambioService().registrar(
         entidadTipo: 'pago_cuota_pendiente',
         entidadId: widget.pagoPendienteId,
-        usuarioId: FirebaseAuth.instance.currentUser?.uid ?? '',
+        usuarioId: editorUid,
         accion: 'rechazo',
         nuevo: {'estado': 'rechazado', 'motivoRechazo': motivo},
       );
@@ -240,18 +245,25 @@ class _ConfirmarPagoCuotaScreenState
               : DateTime.now();
           final comprobanteUrl = data['comprobanteUrl'] as String?;
           final observaciones = data['observaciones'] as String?;
+          final motivoRechazo = data['motivoRechazo'] as String?;
+          final usuarioConfirmacionId =
+              data['usuarioConfirmacionId'] as String?;
+          final fechaConfirmacion =
+              data['fechaConfirmacion'] is Timestamp
+                  ? (data['fechaConfirmacion'] as Timestamp).toDate()
+                  : null;
 
           final yaResuelto = estado != 'pendiente';
 
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Estado
-              if (yaResuelto)
+              // Chip de estado resuelto
+              if (yaResuelto) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 8),
-                  margin: const EdgeInsets.only(bottom: 16),
+                  margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
                     color: estado == 'confirmado'
                         ? AppTheme.verdeIngreso.withValues(alpha: 0.1)
@@ -276,7 +288,89 @@ class _ConfirmarPagoCuotaScreenState
                   ),
                 ),
 
-              // Datos del socio
+                // Quién procesó
+                if (usuarioConfirmacionId != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Icon(
+                          estado == 'confirmado'
+                              ? Icons.check_circle
+                              : Icons.cancel,
+                          size: 14,
+                          color: estado == 'confirmado'
+                              ? AppTheme.verdeIngreso
+                              : AppTheme.rojoGasto,
+                        ),
+                        const SizedBox(width: 6),
+                        NombreUsuarioWidget(
+                          usuarioId: usuarioConfirmacionId,
+                          prefijo: estado == 'confirmado'
+                              ? 'Confirmado por: '
+                              : 'Rechazado por: ',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: AppTheme.textoSecundario),
+                        ),
+                        if (fechaConfirmacion != null) ...[
+                          const Text(' · ',
+                              style: TextStyle(
+                                  color: AppTheme.textoSecundario)),
+                          Text(
+                            DateFormat('dd/MM/yyyy')
+                                .format(fechaConfirmacion),
+                            style: const TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.textoSecundario),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                // Motivo de rechazo
+                if (estado == 'rechazado' && motivoRechazo != null)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.rojoGasto.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color:
+                              AppTheme.rojoGasto.withValues(alpha: 0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.cancel,
+                                color: AppTheme.rojoGasto, size: 16),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Motivo del rechazo',
+                              style: TextStyle(
+                                  color: AppTheme.rojoGasto,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          motivoRechazo,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: AppTheme.textoPrincipal),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+
+              // Datos del pago
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -292,7 +386,8 @@ class _ConfirmarPagoCuotaScreenState
                       _fila('Monto', _fmt(monto)),
                       _fila('Fecha declarada',
                           DateFormat('dd/MM/yyyy').format(fechaPago)),
-                      if (observaciones != null && observaciones.isNotEmpty)
+                      if (observaciones != null &&
+                          observaciones.isNotEmpty)
                         _fila('Observaciones', observaciones),
                     ],
                   ),
@@ -317,8 +412,8 @@ class _ConfirmarPagoCuotaScreenState
                     } else if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content: Text(
-                                'No se pudo abrir el comprobante')),
+                            content:
+                                Text('No se pudo abrir el comprobante')),
                       );
                     }
                   },
@@ -326,7 +421,7 @@ class _ConfirmarPagoCuotaScreenState
                 const SizedBox(height: 16),
               ],
 
-              // Botones
+              // Botones de acción
               if (!yaResuelto && !_procesando) ...[
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(

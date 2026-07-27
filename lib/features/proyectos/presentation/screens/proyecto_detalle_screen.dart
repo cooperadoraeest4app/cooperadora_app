@@ -192,9 +192,14 @@ void _mostrarPopupEstadoItem(BuildContext context, String estadoActual) {
 // ── ProyectoDetalleScreen ─────────────────────────────────────────────────────
 
 class ProyectoDetalleScreen extends StatefulWidget {
-  const ProyectoDetalleScreen({super.key, required this.proyecto});
+  const ProyectoDetalleScreen({
+    super.key,
+    required this.proyecto,
+    this.onTabSelected,
+  });
 
   final Proyecto proyecto;
+  final void Function(int)? onTabSelected;
 
   @override
   State<ProyectoDetalleScreen> createState() => _ProyectoDetalleScreenState();
@@ -217,6 +222,12 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
 
   Future<void> Function(String)? _scrollToPresupuesto;
 
+  Votacion? _votacionActiva;
+  List<Voto> _votosProyecto = [];
+  bool _emitiendo = false;
+  StreamSubscription<Votacion?>? _votacionSub;
+  StreamSubscription<List<Voto>>? _votosSub;
+
   @override
   void initState() {
     super.initState();
@@ -224,10 +235,27 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
     _nombreCtrl.addListener(_marcarCambios);
     _descripcionCtrl.addListener(_marcarCambios);
     _presupuestoCtrl.addListener(_marcarCambios);
+    _votacionSub = VotacionRepository()
+        .obtenerPorObjeto(widget.proyecto.id, 'proyecto')
+        .listen((v) {
+      if (!mounted) return;
+      setState(() => _votacionActiva = v);
+      _votosSub?.cancel();
+      if (v != null) {
+        _votosSub = VotacionRepository().obtenerVotos(v.id).listen((lista) {
+          if (!mounted) return;
+          setState(() => _votosProyecto = lista);
+        });
+      } else {
+        if (mounted) setState(() => _votosProyecto = []);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _votacionSub?.cancel();
+    _votosSub?.cancel();
     _nombreCtrl.dispose();
     _descripcionCtrl.dispose();
     _presupuestoCtrl.dispose();
@@ -321,19 +349,247 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
     }
   }
 
+  Socio? _resolverMiSocio(BuildContext context, AuthProvider auth) {
+    final uid = auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return null;
+    final usuarios = context.read<UsuariosProvider>().usuarios;
+    Map<String, dynamic>? miUsuario;
+    for (final u in usuarios) {
+      if (u['id'] == uid) {
+        miUsuario = u;
+        break;
+      }
+    }
+    final miPersonaId = miUsuario?['personaId'] as String?;
+    if (miPersonaId == null || miPersonaId.isEmpty) return null;
+    final socios = context.read<SocioProvider>().todos;
+    for (final s in socios) {
+      if (s.personaId == miPersonaId && s.activo) return s;
+    }
+    return null;
+  }
+
+  Widget _FilaResultado(String label, int cantidad, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Text('$label:',
+              style: const TextStyle(
+                  fontSize: 13, color: AppTheme.textoSecundario)),
+          const Spacer(),
+          Text('$cantidad',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: color)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _habilitarVotacion(Proyecto p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Habilitar votación'),
+        content: const Text(
+          'Se abrirá una votación para que los socios activos aprueben o rechacen '
+          'este proyecto. Los socios recibirán una notificación.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Habilitar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    try {
+      final socios = context.read<SocioProvider>().todos;
+      final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+      final repo = VotacionRepository();
+      final quorum = await repo.calcularQuorum();
+      final mayoria = await repo.calcularMayoriaRequerida();
+      final sociosActivos =
+          socios.where((s) => s.activo && s.tipoSocio == 'activo').length;
+
+      final votacion = Votacion(
+        id: '',
+        tipo: 'proyecto',
+        objetoId: p.id,
+        titulo: 'Votación — ${p.nombre}',
+        estado: 'en_curso',
+        fechaInicio: DateTime.now(),
+        totalSociosActivos: sociosActivos,
+        totalMiembrosCD: 0,
+        quorumRequerido: quorum,
+        mayoriaRequerida: mayoria,
+        usuarioId: uid,
+        fechaCreacion: DateTime.now(),
+      );
+
+      final votacionId = await repo.crear(votacion);
+
+      await FirebaseFirestore.instance
+          .collection('proyectos')
+          .doc(p.id)
+          .update({'votacionId': votacionId});
+
+      await FirebaseFirestore.instance.collection('notificaciones').add({
+        'tipo': 'votacion_proyecto_habilitada',
+        'referenciaId': p.id,
+        'proyectoId': p.id,
+        'votacionId': votacionId,
+        'titulo': 'Votación habilitada',
+        'mensaje': 'Se abrió la votación para el proyecto "${p.nombre}"',
+        'destinatarioRol': 'editor',
+        'destinatarioUid': null,
+        'leida': false,
+        'creadoEn': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Votación habilitada'),
+            backgroundColor: AppTheme.verdeIngreso,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al habilitar votación: $e'),
+            backgroundColor: AppTheme.rojoGasto,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _emitirVotoProyecto(String valor, Socio miSocio) async {
+    final v = _votacionActiva;
+    if (v == null || v.estado != 'en_curso' || _emitiendo) return;
+    setState(() => _emitiendo = true);
+    try {
+      final voto = Voto(
+        id: '',
+        votacionId: v.id,
+        objetoId: widget.proyecto.id,
+        socioId: miSocio.id,
+        tipoSocio: miSocio.tipoSocio,
+        valor: valor,
+        fecha: DateTime.now(),
+      );
+      await VotacionRepository().emitirVoto(voto, v);
+      await _recalcularEstadoVotacion(v);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al emitir voto: $e'),
+            backgroundColor: AppTheme.rojoGasto,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _emitiendo = false);
+    }
+  }
+
+  Future<void> _recalcularEstadoVotacion(Votacion votacion) async {
+    final snap = await FirebaseFirestore.instance
+        .collection('votaciones')
+        .doc(votacion.id)
+        .get();
+    if (!snap.exists) return;
+    final estado = snap.data()?['estado'] as String? ?? 'en_curso';
+    if (estado == 'en_curso') return;
+
+    final pid = widget.proyecto.id;
+    final nombre = widget.proyecto.nombre;
+
+    if (estado == 'aprobada') {
+      await FirebaseFirestore.instance
+          .collection('proyectos')
+          .doc(pid)
+          .update({'estado': 'en_curso', 'votacionId': null});
+    } else {
+      await FirebaseFirestore.instance
+          .collection('proyectos')
+          .doc(pid)
+          .update({'estado': 'cancelado', 'votacionId': null});
+    }
+
+    final tipoResultado =
+        estado == 'aprobada' ? 'proyecto_aprobado' : 'proyecto_rechazado';
+    final mensajeResultado = estado == 'aprobada'
+        ? 'El proyecto "$nombre" fue aprobado por votación'
+        : 'El proyecto "$nombre" fue rechazado por votación';
+
+    await FirebaseFirestore.instance.collection('notificaciones').add({
+      'tipo': tipoResultado,
+      'referenciaId': pid,
+      'proyectoId': pid,
+      'votacionId': votacion.id,
+      'titulo': estado == 'aprobada' ? 'Proyecto aprobado' : 'Proyecto rechazado',
+      'mensaje': mensajeResultado,
+      'destinatarioRol': 'editor',
+      'destinatarioUid': null,
+      'leida': false,
+      'creadoEn': FieldValue.serverTimestamp(),
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final p = context.select<ProyectoProvider, Proyecto>((prov) {
-      final all = [...prov.enCurso, ...prov.planificados, ...prov.finalizados];
+    final proyectoProvider = context.watch<ProyectoProvider>();
+    final p = (() {
+      final all = [
+        ...proyectoProvider.enCurso,
+        ...proyectoProvider.planificados,
+        ...proyectoProvider.finalizados,
+        ...proyectoProvider.cancelados,
+      ];
       try {
         return all.firstWhere((e) => e.id == widget.proyecto.id);
       } catch (_) {
         return widget.proyecto;
       }
-    });
+    })();
 
     final auth = context.watch<AuthProvider>();
     final puedeEditar = auth.esAdmin || auth.esEditor;
+
+    context.watch<SocioProvider>();
+    context.watch<UsuariosProvider>();
+    final miSocio = _resolverMiSocio(context, auth);
+    final puedeVotarProyecto = miSocio?.tipoSocio == 'activo' &&
+        _votacionActiva?.estado == 'en_curso';
+    final miVotoProyecto = miSocio != null
+        ? _votosProyecto
+            .where((v) => v.socioId == miSocio.id)
+            .cast<Voto?>()
+            .firstOrNull
+        : null;
+
+    final votosActivosProyecto =
+        _votosProyecto.where((v) => v.tipoSocio == 'activo').toList();
+    final votosAFavor =
+        votosActivosProyecto.where((v) => v.valor == 'a_favor').length;
+    final votosEnContra =
+        votosActivosProyecto.where((v) => v.valor == 'en_contra').length;
+    final abstenciones =
+        votosActivosProyecto.where((v) => v.valor == 'abstencion').length;
+    final totalVotosActivos = votosActivosProyecto.length;
 
     final estadoLabel = switch (p.estado) {
       'en_curso' => 'En curso',
@@ -452,15 +708,31 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
                 if (accion == 'cancelar' || accion == null) return;
                 if (accion == 'guardar') await _guardar(p);
               }
-              if (context.mounted) Navigator.pop(context, index);
+              if (!context.mounted) return;
+              if (widget.onTabSelected != null) {
+                Navigator.pop(context);
+                widget.onTabSelected!(index);
+              } else {
+                Navigator.pop(context, index);
+              }
             },
-            tabs: const [
-              Tab(icon: Icon(Icons.play_circle, size: 18), text: 'En curso'),
-              Tab(icon: Icon(Icons.pending, size: 18), text: 'Planificados'),
-              Tab(icon: Icon(Icons.check_circle, size: 18), text: 'Finalizados'),
+            tabs: [
+              Tab(icon: const Icon(Icons.play_circle, size: 18), text: 'En curso (${proyectoProvider.contarPorEstado('en_curso')})'),
+              Tab(icon: const Icon(Icons.pending, size: 18), text: 'Planificados (${proyectoProvider.contarPorEstado('planificado')})'),
+              Tab(icon: const Icon(Icons.check_circle, size: 18), text: 'Finalizados (${proyectoProvider.contarPorEstado('finalizado')})'),
             ],
           ),
         ),
+      bottomNavigationBar: puedeVotarProyecto && miSocio != null
+          ? _BarraVotacionProyecto(
+              votacion: _votacionActiva!,
+              miSocio: miSocio,
+              miVoto: miVotoProyecto,
+              votos: _votosProyecto,
+              emitiendo: _emitiendo,
+              onVotar: _emitirVotoProyecto,
+            )
+          : null,
       body: Column(
         children: [
           Expanded(
@@ -481,12 +753,91 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
                     onEstadoChanged: _setEstado,
                     onPublicoChanged: _setPublico,
                   ),
+                  if (_votacionActiva != null &&
+                      (_votacionActiva!.estado == 'aprobada' ||
+                          _votacionActiva!.estado == 'rechazada')) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: _votacionActiva!.estado == 'aprobada'
+                            ? AppTheme.verdeIngreso.withAlpha(20)
+                            : AppTheme.rojoGasto.withAlpha(20),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _votacionActiva!.estado == 'aprobada'
+                              ? AppTheme.verdeIngreso
+                              : AppTheme.rojoGasto,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                _votacionActiva!.estado == 'aprobada'
+                                    ? Icons.check_circle
+                                    : Icons.cancel,
+                                color: _votacionActiva!.estado == 'aprobada'
+                                    ? AppTheme.verdeIngreso
+                                    : AppTheme.rojoGasto,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _votacionActiva!.estado == 'aprobada'
+                                      ? 'Proyecto aprobado por votación'
+                                      : 'Proyecto rechazado por votación',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: _votacionActiva!.estado == 'aprobada'
+                                        ? AppTheme.verdeIngreso
+                                        : AppTheme.rojoGasto,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          _FilaResultado(
+                              'A favor', votosAFavor, AppTheme.verdeIngreso),
+                          _FilaResultado(
+                              'En contra', votosEnContra, AppTheme.rojoGasto),
+                          _FilaResultado('Abstenciones', abstenciones,
+                              AppTheme.amarilloAlerta),
+                          const Divider(height: 16),
+                          _FilaResultado('Total votos', totalVotosActivos,
+                              AppTheme.textoPrincipal),
+                          if (_votacionActiva!.fechaCierre != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Cerrada el ${DateFormat('dd/MM/yyyy HH:mm').format(_votacionActiva!.fechaCierre!)}',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.textoSecundario),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   _PresupuestoCard(
                     proyecto: p,
                     puedeEditar: puedeEditar,
                     presupuestoCtrl: _presupuestoCtrl,
                   ),
+                  if (p.estado == 'planificado' && puedeEditar) ...[
+                    const SizedBox(height: 12),
+                    _VotacionCard(
+                      votacion: _votacionActiva,
+                      votos: _votosProyecto,
+                      onHabilitar: () => _habilitarVotacion(p),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   _FechasCard(
                     proyecto: p,
@@ -575,6 +926,347 @@ class _BarraGuardar extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w600)),
         ),
       ),
+    );
+  }
+}
+
+// ── _VotacionCard ────────────────────────────────────────────────────────────
+
+class _VotacionCard extends StatelessWidget {
+  const _VotacionCard({
+    required this.votacion,
+    required this.votos,
+    required this.onHabilitar,
+  });
+
+  final Votacion? votacion;
+  final List<Voto> votos;
+  final VoidCallback onHabilitar;
+
+  @override
+  Widget build(BuildContext context) {
+    final activa = votacion?.estado == 'en_curso';
+    final votosActivos = votos.where((v) => v.tipoSocio == 'activo').toList();
+    final aFavor = votosActivos.where((v) => v.valor == 'a_favor').length;
+    final enContra = votosActivos.where((v) => v.valor == 'en_contra').length;
+    final abstenciones = votosActivos.where((v) => v.valor == 'abstencion').length;
+    final total = votosActivos.length;
+    final quorum = votacion?.quorumRequerido ?? 0;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.how_to_vote_outlined,
+                    size: 18, color: AppTheme.azulMedio),
+                const SizedBox(width: 8),
+                const Text('Votación del proyecto',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (activa) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.amarilloAlerta.withAlpha(20),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.amarilloAlerta.withAlpha(80)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.pending,
+                            size: 14, color: AppTheme.amarilloAlerta),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Votación en curso desde ${_fmtFecha(votacion!.fechaInicio)}',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: AppTheme.amarilloAlerta,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _ChipVoto(color: AppTheme.verdeIngreso, label: '👍 $aFavor'),
+                        const SizedBox(width: 6),
+                        _ChipVoto(color: AppTheme.rojoGasto, label: '👎 $enContra'),
+                        const SizedBox(width: 6),
+                        _ChipVoto(
+                            color: AppTheme.textoSecundario, label: '✋ $abstenciones'),
+                        const Spacer(),
+                        Text(
+                          '$total / $quorum quórum',
+                          style: const TextStyle(
+                              fontSize: 11, color: AppTheme.textoSecundario),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              const Text(
+                'Este proyecto aún no tiene una votación activa.',
+                style: TextStyle(fontSize: 13, color: AppTheme.textoSecundario),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: onHabilitar,
+                icon: const Icon(Icons.how_to_vote_outlined, size: 16),
+                label: const Text('Habilitar votación'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── _BarraVotacionProyecto ────────────────────────────────────────────────────
+
+class _BarraVotacionProyecto extends StatelessWidget {
+  const _BarraVotacionProyecto({
+    required this.votacion,
+    required this.miSocio,
+    required this.miVoto,
+    required this.votos,
+    required this.emitiendo,
+    required this.onVotar,
+  });
+
+  final Votacion votacion;
+  final Socio miSocio;
+  final Voto? miVoto;
+  final List<Voto> votos;
+  final bool emitiendo;
+  final Future<void> Function(String valor, Socio socio) onVotar;
+
+  @override
+  Widget build(BuildContext context) {
+    final votosActivos = votos.where((v) => v.tipoSocio == 'activo').toList();
+    final aFavor = votosActivos.where((v) => v.valor == 'a_favor').length;
+    final enContra = votosActivos.where((v) => v.valor == 'en_contra').length;
+    final abstenciones = votosActivos.where((v) => v.valor == 'abstencion').length;
+    final total = votosActivos.length;
+    final quorumAlcanzado = total >= votacion.quorumRequerido;
+
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: AppTheme.celesteBorde)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.how_to_vote_outlined,
+                    size: 14, color: AppTheme.azulMedio),
+                const SizedBox(width: 6),
+                Text(
+                  'Votación activa — $total/${votacion.quorumRequerido} para quórum',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppTheme.textoSecundario),
+                ),
+              ],
+            ),
+            if (quorumAlcanzado) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  _ChipVoto(color: AppTheme.verdeIngreso, label: '👍 $aFavor'),
+                  const SizedBox(width: 6),
+                  _ChipVoto(color: AppTheme.rojoGasto, label: '👎 $enContra'),
+                  const SizedBox(width: 6),
+                  _ChipVoto(
+                      color: AppTheme.textoSecundario, label: '✋ $abstenciones'),
+                ],
+              ),
+            ],
+            const SizedBox(height: 10),
+            if (miVoto == null) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: _BotonVoto(
+                      icon: Icons.thumb_up_outlined,
+                      label: 'A favor',
+                      color: AppTheme.verdeIngreso,
+                      emitiendo: emitiendo,
+                      onTap: () => _confirmarVoto(context, 'a_favor', 'A favor'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _BotonVoto(
+                      icon: Icons.thumb_down_outlined,
+                      label: 'En contra',
+                      color: AppTheme.rojoGasto,
+                      emitiendo: emitiendo,
+                      onTap: () => _confirmarVoto(context, 'en_contra', 'En contra'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _BotonVoto(
+                      icon: Icons.pan_tool_outlined,
+                      label: 'Abstención',
+                      color: AppTheme.amarilloAlerta,
+                      emitiendo: emitiendo,
+                      onTap: () => _confirmarVoto(context, 'abstencion', 'Abstención'),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.celesteFondo,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(_iconForVoto(miVoto!.valor),
+                        size: 16, color: _colorForVoto(miVoto!.valor)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Tu voto: ${_labelForVoto(miVoto!.valor)}',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: _colorForVoto(miVoto!.valor)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmarVoto(
+      BuildContext context, String valor, String label) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar voto'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Tu voto: $label',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            const Text(
+              '⚠️ Tu voto es definitivo y no podrá modificarse.',
+              style: TextStyle(
+                  color: AppTheme.rojoGasto,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await onVotar(valor, miSocio);
+  }
+
+  IconData _iconForVoto(String valor) => switch (valor) {
+        'a_favor' => Icons.thumb_up,
+        'en_contra' => Icons.thumb_down,
+        _ => Icons.pan_tool,
+      };
+
+  Color _colorForVoto(String valor) => switch (valor) {
+        'a_favor' => AppTheme.verdeIngreso,
+        'en_contra' => AppTheme.rojoGasto,
+        _ => AppTheme.amarilloAlerta,
+      };
+
+  String _labelForVoto(String valor) => switch (valor) {
+        'a_favor' => 'A favor',
+        'en_contra' => 'En contra',
+        _ => 'Abstención',
+      };
+}
+
+class _BotonVoto extends StatelessWidget {
+  const _BotonVoto({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.emitiendo,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final bool emitiendo;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: color),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(8))),
+      ),
+      onPressed: emitiendo ? null : onTap,
+      icon: Icon(icon, size: 15),
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+    );
+  }
+}
+
+class _ChipVoto extends StatelessWidget {
+  const _ChipVoto({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withAlpha(30),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              color: color, fontSize: 11, fontWeight: FontWeight.w600)),
     );
   }
 }

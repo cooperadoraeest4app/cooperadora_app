@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +15,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 import '../../../../shared/widgets/campana_notificaciones_widget.dart';
+import '../../../../shared/widgets/logo_cooperadora_widget.dart';
 import '../../../cuenta_bancaria/presentation/screens/cuenta_bancaria_screen.dart';
 import '../../../gastos/domain/models/gasto.dart';
 import '../../../ingresos/domain/models/ingreso.dart';
@@ -239,15 +241,7 @@ class _HeaderCooperadora extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
       child: Column(
         children: [
-          Container(
-            width: 68,
-            height: 68,
-            decoration: const BoxDecoration(
-              color: Colors.white12,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.school, size: 38, color: AppTheme.blanco),
-          ),
+          const LogoCooperadoraWidget(size: 80, borderRadius: 16),
           const SizedBox(height: 12),
           Text(
             nombre,
@@ -269,10 +263,76 @@ class _HeaderCooperadora extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ],
+          const SizedBox(height: 8),
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('configuracion')
+                .doc('config')
+                .snapshots(),
+            builder: (context, snap) {
+              final data =
+                  snap.data?.data() as Map<String, dynamic>? ?? {};
+              final telefono =
+                  data['telefonoContacto'] as String?;
+              final email = data['emailContacto'] as String?;
+
+              if (telefono == null && email == null) {
+                return const SizedBox.shrink();
+              }
+
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (telefono != null)
+                    IconButton(
+                      tooltip: 'Contactar por WhatsApp',
+                      icon: Image.asset(
+                          'assets/icons/icons8-whatsapp-96.png',
+                          width: 28,
+                          height: 28),
+                      onPressed: () async {
+                        final numero = telefono.replaceAll(
+                            RegExp(r'[\s\-\(\)\+]'), '');
+                        final numeroCompleto = numero.startsWith('54')
+                            ? numero
+                            : '54$numero';
+                        final url = Uri.parse(
+                            'https://wa.me/$numeroCompleto?text=Hola%20Coope!');
+                        if (await canLaunchUrl(url)) {
+                          await launchUrl(url,
+                              mode: LaunchMode.externalApplication);
+                        }
+                      },
+                    ),
+                  if (email != null)
+                    IconButton(
+                      tooltip: 'Enviar email',
+                      icon: Image.asset(
+                          'assets/icons/icons8-mail-96.png',
+                          width: 28,
+                          height: 28),
+                      onPressed: () async {
+                        final url = Uri(
+                          scheme: 'mailto',
+                          path: email,
+                          queryParameters: {
+                            'subject': 'Hola Coope!'
+                          },
+                        );
+                        if (await canLaunchUrl(url)) {
+                          await launchUrl(url);
+                        }
+                      },
+                    ),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
   }
+
 }
 
 // ── Saldo ─────────────────────────────────────────────────────────────────────
@@ -434,137 +494,102 @@ class _SeccionProyectos extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<ProyectoProvider>();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              const Text(
-                'Proyectos',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textoPrincipal,
-                ),
-              ),
-              const Spacer(),
-              TextButton(
-                style: TextButton.styleFrom(
-                  foregroundColor: AppTheme.azulMedio,
-                  backgroundColor:
-                      AppTheme.celesteAccento.withValues(alpha: 0.25),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(8)),
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                const Text(
+                  'Proyectos',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textoPrincipal,
                   ),
                 ),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const ProyectosScreen(),
+                const Spacer(),
+                Builder(
+                  builder: (ctx) => TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.azulMedio,
+                      backgroundColor:
+                          AppTheme.celesteAccento.withValues(alpha: 0.25),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(8)),
+                      ),
+                    ),
+                    onPressed: () => Navigator.push(
+                      ctx,
+                      MaterialPageRoute(
+                        builder: (_) => ProyectosScreen(
+                          initialTab: DefaultTabController.of(ctx).index,
+                        ),
+                      ),
+                    ),
+                    child: const Text('Ver todos'),
                   ),
                 ),
-                child: const Text('Ver todos'),
-              ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          TabBar(
+            labelColor: AppTheme.azulMedio,
+            unselectedLabelColor: AppTheme.textoSecundario,
+            indicatorColor: AppTheme.azulMedio,
+            dividerColor: Colors.transparent,
+            tabs: [
+              Tab(text: 'En curso (${provider.enCurso.length})'),
+              Tab(text: 'Planificados (${provider.planificados.length})'),
+              Tab(text: 'Finalizados (${provider.finalizados.length})'),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
-        _SubseccionProyectos(
-          titulo: 'En curso',
-          tabIndex: 0,
-          proyectos: provider.enCurso.take(3).toList(),
-        ),
-        const SizedBox(height: 20),
-        _SubseccionProyectos(
-          titulo: 'Planificados',
-          tabIndex: 1,
-          proyectos: provider.planificados.take(3).toList(),
-        ),
-        const SizedBox(height: 20),
-        _SubseccionProyectos(
-          titulo: 'Finalizados',
-          tabIndex: 2,
-          proyectos: provider.finalizados.take(2).toList(),
-        ),
-      ],
+          SizedBox(
+            height: 300,
+            child: TabBarView(
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _ListaProyectosHome(
+                    proyectos: provider.enCurso.take(5).toList()),
+                _ListaProyectosHome(
+                    proyectos: provider.planificados.take(5).toList()),
+                _ListaProyectosHome(
+                    proyectos: provider.finalizados.take(5).toList()),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _SubseccionProyectos extends StatelessWidget {
-  const _SubseccionProyectos({
-    required this.titulo,
-    required this.tabIndex,
-    required this.proyectos,
-  });
+class _ListaProyectosHome extends StatelessWidget {
+  const _ListaProyectosHome({required this.proyectos});
 
-  final String titulo;
-  final int tabIndex;
   final List<Proyecto> proyectos;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Text(
-                titulo,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textoPrincipal,
-                ),
-              ),
-              const Spacer(),
-              TextButton(
-                style: TextButton.styleFrom(
-                  foregroundColor: AppTheme.azulMedio,
-                  backgroundColor:
-                      AppTheme.celesteAccento.withValues(alpha: 0.25),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(8)),
-                  ),
-                ),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ProyectosScreen(initialTab: tabIndex),
-                  ),
-                ),
-                child: const Text('Ver todos'),
-              ),
-            ],
-          ),
+    if (proyectos.isEmpty) {
+      return const Center(
+        child: Text(
+          'Sin proyectos',
+          style: TextStyle(color: AppTheme.textoSecundario),
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 148,
-          child: proyectos.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Sin proyectos',
-                    style: TextStyle(color: AppTheme.textoSecundario),
-                  ),
-                )
-              : ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: proyectos.length,
-                  itemBuilder: (ctx, i) =>
-                      _ProyectoCard(proyecto: proyectos[i]),
-                ),
-        ),
-      ],
+      );
+    }
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      itemCount: proyectos.length,
+      itemBuilder: (_, i) => _ProyectoCard(proyecto: proyectos[i]),
     );
   }
 }
@@ -595,7 +620,15 @@ class _ProyectoCard extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
+              builder: (_) => ProyectoDetalleScreen(
+                proyecto: proyecto,
+                onTabSelected: (index) => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProyectosScreen(initialTab: index),
+                  ),
+                ),
+              ),
             ),
           ),
           child: Padding(

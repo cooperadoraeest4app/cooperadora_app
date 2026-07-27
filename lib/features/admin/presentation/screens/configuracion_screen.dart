@@ -1,3 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +9,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../providers/configuracion_provider.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import '../../../../shared/widgets/logo_cooperadora_widget.dart';
 
 class ConfiguracionScreen extends StatefulWidget {
   const ConfiguracionScreen({super.key});
@@ -16,6 +20,7 @@ class ConfiguracionScreen extends StatefulWidget {
 
 class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
   final _formKey = GlobalKey<FormState>();
+  bool _subiendoLogo = false;
 
   final _nombreCoopController = TextEditingController();
   final _nombreEscuelaController = TextEditingController();
@@ -48,6 +53,116 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     _telefonoController.dispose();
     _anioController.dispose();
     super.dispose();
+  }
+
+  Future<void> _subirLogo() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final file = result.files.first;
+    if (file.size > 2 * 1024 * 1024) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('El archivo no puede superar 2MB'),
+            backgroundColor: AppTheme.rojoGasto,
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _subiendoLogo = true);
+    try {
+      final ref = FirebaseStorage.instance
+          .ref('configuracion/logo/logo_cooperadora.${file.extension}');
+      await ref.putData(file.bytes!);
+      final url = await ref.getDownloadURL();
+
+      await FirebaseFirestore.instance
+          .collection('configuracion')
+          .doc('config')
+          .update({'logoUrl': url});
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logo actualizado correctamente'),
+            backgroundColor: AppTheme.verdeIngreso,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al subir el logo: $e'),
+            backgroundColor: AppTheme.rojoGasto,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _subiendoLogo = false);
+    }
+  }
+
+  Future<void> _eliminarLogo() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Eliminar logo'),
+        content: const Text('¿Confirmás que querés eliminar el logo?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.rojoGasto,
+                foregroundColor: Colors.white),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    try {
+      final list = await FirebaseStorage.instance
+          .ref('configuracion/logo')
+          .listAll();
+      await Future.wait(list.items.map((item) => item.delete()));
+
+      await FirebaseFirestore.instance
+          .collection('configuracion')
+          .doc('config')
+          .update({'logoUrl': FieldValue.delete()});
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logo eliminado'),
+            backgroundColor: AppTheme.verdeIngreso,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al eliminar: $e'),
+            backgroundColor: AppTheme.rojoGasto,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _guardar() async {
@@ -169,6 +284,82 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
     );
   }
 
+  Widget _buildLogoSection() {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('configuracion')
+          .doc('config')
+          .snapshots(),
+      builder: (context, snap) {
+        final data =
+            snap.data?.data() as Map<String, dynamic>? ?? {};
+        final logoUrl = data['logoUrl'] as String?;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Logo de la Cooperadora',
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const LogoCooperadoraWidget(size: 80, borderRadius: 8),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ElevatedButton.icon(
+                      icon: _subiendoLogo
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white))
+                          : const Icon(Icons.upload, size: 16),
+                      label: Text(logoUrl != null
+                          ? 'Cambiar logo'
+                          : 'Subir logo'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.azulMedio,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed:
+                          _subiendoLogo ? null : _subirLogo,
+                    ),
+                    if (logoUrl != null) ...[
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        icon: const Icon(Icons.delete,
+                            size: 16,
+                            color: AppTheme.rojoGasto),
+                        label: const Text('Eliminar',
+                            style: TextStyle(
+                                color: AppTheme.rojoGasto)),
+                        onPressed: _eliminarLogo,
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    const Text(
+                      'PNG o JPG, máx. 2MB',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.textoSecundario),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildCardDatos() {
     return Card(
       child: Padding(
@@ -176,6 +367,10 @@ class _ConfiguracionScreenState extends State<ConfiguracionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _buildLogoSection(),
+            const SizedBox(height: 20),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _nombreCoopController,
               decoration: const InputDecoration(

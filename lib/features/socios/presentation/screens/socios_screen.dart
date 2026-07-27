@@ -19,7 +19,6 @@ import '../../domain/models/subtipo_socio.dart';
 import '../../domain/services/cuota_calculo_service.dart';
 import '../providers/socio_provider.dart';
 import 'socio_detalle_screen.dart';
-import 'tarifas_screen.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -215,35 +214,6 @@ class _SociosScreenState extends State<SociosScreen> {
       ),
       body: Column(
         children: [
-          if (auth.esAdmin) ...[
-            const Divider(height: 1),
-            InkWell(
-              onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const TarifasScreen())),
-              child: Container(
-                color: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 10),
-                child: Row(
-                  children: [
-                    const Icon(Icons.price_change,
-                        color: AppTheme.verdeTeal, size: 20),
-                    const SizedBox(width: 12),
-                    const Text('Tarifas de cuota',
-                        style: TextStyle(
-                            color: AppTheme.textoPrincipal,
-                            fontWeight: FontWeight.w500)),
-                    const Spacer(),
-                    const Icon(Icons.chevron_right,
-                        color: AppTheme.textoSecundario),
-                  ],
-                ),
-              ),
-            ),
-            const Divider(height: 1),
-          ],
           // Tarifas vigentes
           const _SeccionTarifas(),
           // Header chips
@@ -1699,97 +1669,166 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
 
     if (!mounted) return;
 
+    String filtroHistorial = 'todos';
+
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        minChildSize: 0.4,
-        expand: false,
-        builder: (_, scrollController) => Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppTheme.celesteBorde,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const Padding(
-              padding:
-                  EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                'Historial de tarifas',
-                style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ),
-            Expanded(
-              child: ListView.separated(
-                controller: scrollController,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: historialSnap.docs.length,
-                separatorBuilder: (_, _) =>
-                    const Divider(height: 1),
-                itemBuilder: (_, i) {
-                  final data = historialSnap.docs[i].data();
-                  final vigenciaDesde =
-                      (data['vigenciaDesde'] as Timestamp).toDate();
+      builder: (_) => StatefulBuilder(
+        builder: (_, setStateModal) {
+          final historialFiltrado = filtroHistorial == 'todos'
+              ? historialSnap.docs
+              : historialSnap.docs.where((doc) {
                   final tid =
-                      data['tipoCuotaId'] as String? ?? '';
-                  final tipoNombre =
-                      tiposMap[tid] ?? 'Sin tipo';
-                  final esVigente =
-                      vigentePorTipo[tid] == historialSnap.docs[i].id;
+                      doc.data()['tipoCuotaId'] as String? ?? '';
+                  final nombre = (tiposMap[tid] ?? '').toLowerCase();
+                  return nombre.contains(filtroHistorial);
+                }).toList();
 
-                  return ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(vertical: 4),
-                    title: Text(
-                      '$tipoNombre — ${_formatMonto(data['monto'])}',
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500),
-                    ),
-                    subtitle: Text(
-                      'Desde ${DateFormat('dd/MM/yyyy').format(vigenciaDesde)}',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: esVigente
-                            ? AppTheme.verdeIngreso
-                                .withValues(alpha: 0.1)
-                            : const Color(0xFFF5F5F5),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: esVigente
-                              ? AppTheme.verdeIngreso
-                              : const Color(0xFF9CA3AF),
+          return DraggableScrollableSheet(
+            initialChildSize: 0.6,
+            maxChildSize: 0.9,
+            minChildSize: 0.4,
+            expand: false,
+            builder: (_, scrollController) => Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.celesteBorde,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Padding(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'Historial de tarifas',
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                // Filtros
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Row(
+                    children: [
+                      for (final entry in const [
+                        ('Todos', 'todos'),
+                        ('Mensual', 'mensual'),
+                        ('Anual', 'anual'),
+                      ])
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: GestureDetector(
+                            onTap: () => setStateModal(
+                                () => filtroHistorial = entry.$2),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: filtroHistorial == entry.$2
+                                    ? AppTheme.azulOscuro
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: filtroHistorial == entry.$2
+                                      ? AppTheme.azulOscuro
+                                      : AppTheme.celesteBorde,
+                                ),
+                              ),
+                              child: Text(
+                                entry.$1,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: filtroHistorial == entry.$2
+                                      ? Colors.white
+                                      : AppTheme.textoSecundario,
+                                  fontWeight: filtroHistorial == entry.$2
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        esVigente ? 'Vigente' : 'Anterior',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: esVigente
-                              ? AppTheme.verdeIngreso
-                              : const Color(0xFF9CA3AF),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: historialFiltrado.isEmpty
+                      ? const Center(
+                          child: Text('Sin resultados',
+                              style: TextStyle(
+                                  color: AppTheme.textoSecundario)))
+                      : ListView.separated(
+                          controller: scrollController,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16),
+                          itemCount: historialFiltrado.length,
+                          separatorBuilder: (_, i) =>
+                              const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final data = historialFiltrado[i].data();
+                            final vigenciaDesde =
+                                (data['vigenciaDesde'] as Timestamp)
+                                    .toDate();
+                            final tid =
+                                data['tipoCuotaId'] as String? ?? '';
+                            final tipoNombre =
+                                tiposMap[tid] ?? 'Sin tipo';
+                            final esVigente =
+                                vigentePorTipo[tid] ==
+                                    historialFiltrado[i].id;
+
+                            return ListTile(
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 4),
+                              title: Text(
+                                '$tipoNombre — ${_formatMonto(data['monto'])}',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                              subtitle: Text(
+                                'Desde ${DateFormat('dd/MM/yyyy').format(vigenciaDesde)}',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              trailing: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: esVigente
+                                      ? AppTheme.verdeIngreso
+                                          .withValues(alpha: 0.1)
+                                      : const Color(0xFFF5F5F5),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: esVigente
+                                        ? AppTheme.verdeIngreso
+                                        : const Color(0xFF9CA3AF),
+                                  ),
+                                ),
+                                child: Text(
+                                  esVigente ? 'Vigente' : 'Anterior',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: esVigente
+                                        ? AppTheme.verdeIngreso
+                                        : const Color(0xFF9CA3AF),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      ),
-                    ),
-                  );
-                },
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
