@@ -17,6 +17,7 @@ import '../../features/ingresos/presentation/screens/agregar_movimiento_screen.d
 import '../../features/ingresos/presentation/screens/movimientos_screen.dart';
 import '../../features/inventario/presentation/screens/inventario_screen.dart';
 import '../../features/proyectos/presentation/screens/proyectos_screen.dart';
+import '../../features/socios/presentation/screens/credencial_socio_screen.dart';
 import '../../features/socios/presentation/screens/declarar_pago_cuota_screen.dart';
 import '../../features/socios/presentation/screens/socios_screen.dart';
 import 'logo_cooperadora_widget.dart';
@@ -203,6 +204,19 @@ class AppDrawer extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                         builder: (_) => const DeclararPagoCuotaScreen()),
+                  );
+                },
+              ),
+            if (auth.socioId != null)
+              ListTile(
+                leading: const Icon(Icons.badge, color: AppTheme.azulMedio),
+                title: const Text('Mi credencial'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const CredencialSocioScreen()),
                   );
                 },
               ),

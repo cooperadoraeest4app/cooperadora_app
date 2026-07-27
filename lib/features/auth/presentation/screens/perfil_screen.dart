@@ -11,6 +11,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../../../admin/presentation/providers/cargo_provider.dart';
 import '../../../socios/data/repositories/socio_repository.dart';
+import '../../../socios/presentation/screens/credencial_socio_screen.dart';
 import '../../../socios/domain/models/socio.dart';
 import '../../../socios/domain/services/cuota_calculo_service.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
@@ -764,6 +765,20 @@ class _PerfilScreenState extends State<PerfilScreen> {
                                   socio.observaciones!.isNotEmpty)
                                 _filaDato(
                                     'Observaciones', socio.observaciones!),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  icon: const Icon(Icons.badge, size: 16),
+                                  label: const Text('Ver credencial'),
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const CredencialSocioScreen()),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         );
