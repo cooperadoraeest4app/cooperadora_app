@@ -1234,3 +1234,47 @@ Cada notificación navega a la pantalla correspondiente al presionar.
 ### Registro de pago de cuota unificado
 "Registrar pago" desde sección de socios navega a `AgregarMovimientoScreen` con categoría y socio prellenados, monto precargado con tarifa mensual vigente. Permite adjuntar comprobante.
 
+
+---
+
+## 34. Cloud Functions — Emails con Nodemailer + Gmail OAuth2
+
+### Configuración
+- Runtime: Node.js en Firebase Functions v2
+- Región: `southamerica-east1`
+- Autenticación: OAuth2 con Gmail API
+- Credenciales en `functions/.env` (excluido de git)
+
+### Variables de entorno (`functions/.env`)
+```
+GMAIL_CLIENT_ID=...
+GMAIL_CLIENT_SECRET=...
+GMAIL_REFRESH_TOKEN=...
+GMAIL_EMAIL=cooperadoraeest4.app@gmail.com
+```
+
+### Cloud Function implementada: `onPagoCuotaConfirmado`
+- Trigger: `firestore.onDocumentUpdated('pagos_pendientes/{pagoId}')`
+- Dispara cuando `estado` cambia a `confirmado` o `rechazado`
+- Obtiene email del socio desde colección `usuarios` por `socioId`
+- Obtiene nombre del socio desde colección `personas`
+- Obtiene nombre de quien confirmó/rechazó
+- Envía email HTML con diseño de la Cooperadora
+- CC automático a `cooperadoraeest4.app@gmail.com`
+
+### Emails enviados
+- **Confirmación:** asunto "✅ Tu pago de cuota fue confirmado", muestra monto, fecha y quién confirmó
+- **Rechazo:** asunto "❌ Tu pago de cuota fue rechazado", muestra monto, motivo y quién rechazó
+- Ambos incluyen botón "Ir a la app" → cooperadora-app.web.app
+
+### Pendiente emails
+- Habilitación de votación de proyecto → notificar a todos los socios
+- Aprobación de proyecto → notificar a todos los socios
+- Estos se implementarán cuando tengamos push notifications en Android (reemplazan emails masivos)
+
+### Dependencias en `functions/package.json`
+- `firebase-admin`
+- `firebase-functions`
+- `nodemailer`
+- `googleapis`
+

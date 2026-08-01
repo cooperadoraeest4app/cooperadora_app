@@ -62,6 +62,7 @@ class SocioRepository {
           .get();
       if (usuariosSnap.docs.isNotEmpty) {
         await usuariosSnap.docs.first.reference.update({'socioId': ref.id});
+        print('[SocioRepo] socioId actualizado en usuario: ${usuariosSnap.docs.first.id}');
       }
     }
 

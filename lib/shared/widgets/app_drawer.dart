@@ -18,6 +18,7 @@ import '../../features/ingresos/presentation/screens/movimientos_screen.dart';
 import '../../features/inventario/presentation/screens/inventario_screen.dart';
 import '../../features/proyectos/presentation/screens/proyectos_screen.dart';
 import '../../features/socios/presentation/screens/credencial_socio_screen.dart';
+import '../../features/votaciones/presentation/screens/votaciones_screen.dart';
 import '../../features/socios/presentation/screens/declarar_pago_cuota_screen.dart';
 import '../../features/socios/presentation/screens/socios_screen.dart';
 import 'logo_cooperadora_widget.dart';
@@ -126,17 +127,18 @@ class AppDrawer extends StatelessWidget {
             itemMenu(Icons.swap_vert, 'Movimientos',
                 () => const MovimientosScreen()),
           if (secciones['cuentaBancaria'] == true)
-            itemMenu(Icons.account_balance, 'Cuenta Bancaria',
+            itemMenu(Icons.account_balance, 'Cuenta Bancaria / Caja Chica',
                 () => const CuentaBancariaScreen()),
-          if (secciones['inventario'] == true)
-            itemMenu(Icons.inventory_2_outlined, 'Inventario',
-                () => const InventarioScreen()),
+          itemMenu(Icons.inventory_2_outlined, 'Inventario',
+              () => const InventarioScreen()),
 
           // ── Para logueados ───────────────────────────────────────────────────
           if (auth.isLoggedIn) ...[
             const Divider(height: 1),
             itemMenu(Icons.groups, 'Comisión Directiva',
                 () => const ComisionDirectivaScreen()),
+            itemMenu(Icons.how_to_vote, 'Votaciones',
+                () => const VotacionesScreen()),
             itemMenu(Icons.assessment_outlined, 'Informes',
                 () => const InformesScreen()),
 
@@ -148,21 +150,59 @@ class AppDrawer extends StatelessWidget {
                 child: Text(
                   'GESTIÓN',
                   style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 10,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textoSecundario,
                       letterSpacing: 1.2),
                 ),
               ),
-              itemMenu(Icons.people, 'Socios', () => const SociosScreen()),
-              itemMenu(Icons.mail_outline, 'Invitaciones',
-                  () => const InvitacionesScreen()),
-              itemMenu(Icons.add_circle_outline, 'Nuevo ingreso',
-                  () => const AgregarMovimientoScreen(tipoInicial: 'ingreso')),
-              itemMenu(Icons.remove_circle_outline, 'Nuevo gasto',
-                  () => const AgregarMovimientoScreen(tipoInicial: 'gasto')),
-              itemMenu(Icons.savings_outlined, 'Caja Chica',
-                  () => const CuentaBancariaScreen()),
+              ListTile(
+                leading: const Icon(Icons.add_circle,
+                    color: AppTheme.verdeIngreso),
+                title: const Text('Nuevo ingreso'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const AgregarMovimientoScreen(
+                              tipoInicial: 'ingreso')));
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.remove_circle, color: AppTheme.rojoGasto),
+                title: const Text('Nuevo gasto'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const AgregarMovimientoScreen(
+                              tipoInicial: 'gasto')));
+                },
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.badge, color: AppTheme.azulMedio),
+                title: const Text('Socios'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const SociosScreen()));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.mail, color: AppTheme.azulMedio),
+                title: const Text('Invitaciones'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const InvitacionesScreen()));
+                },
+              ),
             ],
 
             // ADMINISTRACIÓN — solo Admin

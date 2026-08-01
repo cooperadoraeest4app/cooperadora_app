@@ -48,14 +48,54 @@ class _CredencialSocioScreenState extends State<CredencialSocioScreen> {
   Future<void> _cargar() async {
     try {
       final auth = context.read<AuthProvider>();
-      final socioId = auth.socioId;
-      if (socioId == null) {
+      final uid = auth.currentUser?.uid;
+      print('[Credencial] authUid: $uid');
+      if (uid == null) {
         setState(() {
-          _error = 'No tenés un socio vinculado a tu cuenta.';
+          _error = 'No hay sesión activa.';
           _loading = false;
         });
         return;
       }
+
+      final usuarioDoc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(uid)
+          .get();
+
+      String? socioId = usuarioDoc.data()?['socioId'] as String?;
+      final personaId = usuarioDoc.data()?['personaId'] as String?;
+      print('[Credencial] socioId: $socioId');
+      print('[Credencial] personaId: $personaId');
+
+      // Fallback: buscar por personaId si no tiene socioId
+      if (socioId == null || socioId.isEmpty) {
+        if (personaId != null && personaId.isNotEmpty) {
+          final socioSnap = await FirebaseFirestore.instance
+              .collection('socios')
+              .where('personaId', isEqualTo: personaId)
+              .limit(1)
+              .get();
+          if (socioSnap.docs.isNotEmpty) {
+            socioId = socioSnap.docs.first.id;
+            await FirebaseFirestore.instance
+                .collection('usuarios')
+                .doc(uid)
+                .update({'socioId': socioId});
+          }
+        }
+      }
+
+      if (socioId == null || socioId.isEmpty) {
+        setState(() {
+          _error =
+              'No se encontró tu registro de socio. Contactá al administrador.';
+          _loading = false;
+        });
+        return;
+      }
+
+      print('[Credencial] socioId resuelto: $socioId');
 
       final socio = await SocioRepository().obtenerPorId(socioId);
       if (socio == null) throw Exception('Socio no encontrado.');
@@ -406,22 +446,28 @@ class _CredencialSocioScreenState extends State<CredencialSocioScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error_outline,
-                          size: 48, color: AppTheme.textoSecundario),
-                      const SizedBox(height: 12),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Text(
+                  child: Container(
+                    margin: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.celesteBorde),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.badge_outlined,
+                            size: 48, color: AppTheme.textoSecundario),
+                        const SizedBox(height: 12),
+                        Text(
                           _error!,
+                          textAlign: TextAlign.center,
                           style: const TextStyle(
                               color: AppTheme.textoSecundario),
-                          textAlign: TextAlign.center,
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 )
               : SingleChildScrollView(

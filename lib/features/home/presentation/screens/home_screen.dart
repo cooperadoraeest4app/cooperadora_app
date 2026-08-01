@@ -27,6 +27,7 @@ import '../../../proyectos/domain/models/proyecto.dart';
 import '../../../proyectos/presentation/providers/proyecto_provider.dart';
 import '../../../proyectos/presentation/screens/proyectos_screen.dart';
 import '../../../proyectos/presentation/screens/proyecto_detalle_screen.dart';
+import '../../../votaciones/presentation/screens/votaciones_screen.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -154,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final provider = context.watch<MovimientosProvider>();
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: null,
         leading: Builder(
@@ -196,19 +198,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const _HeaderCooperadora(),
-                    const SizedBox(height: 16),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _SaldoCard(
-                        totalIngresosMes: totalIngresosMes,
-                        totalGastosMes: totalGastosMes,
-                      ),
+                    const SizedBox(height: 8),
+                    _SaldoCard(
+                      totalIngresosMes: totalIngresosMes,
+                      totalGastosMes: totalGastosMes,
                     ),
-                    const SizedBox(height: 24),
-                    const _SeccionProyectos(),
-                    const SizedBox(height: 24),
+                    const _SeccionProyectosYVotaciones(),
                     _SeccionTabsMovimientosInventario(movimientos: ultimos10),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 20),
                   ],
                 ),
               );
@@ -353,7 +350,13 @@ class _SaldoCard extends StatelessWidget {
     final cuentaProvider = context.watch<CuentaBancariaProvider>();
     final cuenta = cuentaProvider.cuenta;
 
-    return Card(
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.celesteBorde),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
         child: Column(
@@ -485,10 +488,184 @@ class _ChipBalance extends StatelessWidget {
   }
 }
 
-// ── Proyectos ─────────────────────────────────────────────────────────────────
+// ── Proyectos + Votaciones (tabs principales) ─────────────────────────────────
 
-class _SeccionProyectos extends StatelessWidget {
-  const _SeccionProyectos();
+class _SeccionProyectosYVotaciones extends StatefulWidget {
+  const _SeccionProyectosYVotaciones();
+
+  @override
+  State<_SeccionProyectosYVotaciones> createState() =>
+      _SeccionProyectosYVotacionesState();
+}
+
+class _SeccionProyectosYVotacionesState
+    extends State<_SeccionProyectosYVotaciones> {
+  int _tabIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.celesteBorde),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: DefaultTabController(
+        length: 2,
+        child: Column(
+          children: [
+            // Tab bar superior con colores por tab activo
+            TabBar(
+              onTap: (i) => setState(() => _tabIndex = i),
+              indicator: UnderlineTabIndicator(
+                borderSide: BorderSide(
+                  color: _tabIndex == 0
+                      ? AppTheme.azulOscuro
+                      : AppTheme.verdeTeal,
+                  width: 3,
+                ),
+              ),
+              dividerColor: AppTheme.celesteBorde,
+              labelPadding: EdgeInsets.zero,
+              tabs: [
+                Tab(
+                  height: 46,
+                  child: Container(
+                    width: double.infinity,
+                    color: _tabIndex == 0
+                        ? AppTheme.celesteFondo
+                        : const Color(0xFFF2F2F2),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Proyectos',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: _tabIndex == 0
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                        color: _tabIndex == 0
+                            ? AppTheme.azulOscuro
+                            : AppTheme.textoSecundario,
+                      ),
+                    ),
+                  ),
+                ),
+                Tab(
+                  height: 46,
+                  child: Container(
+                    width: double.infinity,
+                    color: _tabIndex == 1
+                        ? const Color(0xFFE8F8F1)
+                        : const Color(0xFFF2F2F2),
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Votaciones activas',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: _tabIndex == 1
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            color: _tabIndex == 1
+                                ? AppTheme.verdeTeal
+                                : AppTheme.textoSecundario,
+                          ),
+                        ),
+                        StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('votaciones')
+                              .where('estado', isEqualTo: 'en_curso')
+                              .snapshots(),
+                          builder: (context, snap) {
+                            final count = snap.data?.docs.length ?? 0;
+                            if (count == 0) return const SizedBox.shrink();
+                            return Container(
+                              margin: const EdgeInsets.only(left: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.rojoGasto,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$count',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // Contenido
+            const SizedBox(
+              height: 280,
+              child: TabBarView(
+                physics: NeverScrollableScrollPhysics(),
+                children: [
+                  _TabProyectos(),
+                  SeccionVotacionesHome(mostrarVerTodas: false),
+                ],
+              ),
+            ),
+            // Footer
+            Container(
+              decoration: const BoxDecoration(
+                border:
+                    Border(top: BorderSide(color: AppTheme.celesteBorde)),
+              ),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
+                      foregroundColor: AppTheme.azulMedio,
+                    ),
+                    onPressed: () {
+                      if (_tabIndex == 0) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const ProyectosScreen()),
+                        );
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const VotacionesScreen()),
+                        );
+                      }
+                    },
+                    child: const Text('Ver todos →',
+                        style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TabProyectos extends StatelessWidget {
+  const _TabProyectos();
 
   @override
   Widget build(BuildContext context) {
@@ -497,48 +674,7 @@ class _SeccionProyectos extends StatelessWidget {
     return DefaultTabController(
       length: 3,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                const Text(
-                  'Proyectos',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textoPrincipal,
-                  ),
-                ),
-                const Spacer(),
-                Builder(
-                  builder: (ctx) => TextButton(
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppTheme.azulMedio,
-                      backgroundColor:
-                          AppTheme.celesteAccento.withValues(alpha: 0.25),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(8)),
-                      ),
-                    ),
-                    onPressed: () => Navigator.push(
-                      ctx,
-                      MaterialPageRoute(
-                        builder: (_) => ProyectosScreen(
-                          initialTab: DefaultTabController.of(ctx).index,
-                        ),
-                      ),
-                    ),
-                    child: const Text('Ver todos'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
           TabBar(
             labelColor: AppTheme.azulMedio,
             unselectedLabelColor: AppTheme.textoSecundario,
@@ -550,8 +686,7 @@ class _SeccionProyectos extends StatelessWidget {
               Tab(text: 'Finalizados (${provider.finalizados.length})'),
             ],
           ),
-          SizedBox(
-            height: 300,
+          Expanded(
             child: TabBarView(
               physics: const NeverScrollableScrollPhysics(),
               children: [
@@ -749,11 +884,15 @@ class _SeccionTabsMovimientosInventarioState
     final inventarioVisible = config.seccionesPublicas['inventario'] ?? true;
     final ultimos5 = inventarioProv.todos.take(5).toList();
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: Column(
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.celesteBorde),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TabBar(
@@ -975,7 +1114,6 @@ class _SeccionTabsMovimientosInventarioState
             ),
           ],
         ),
-      ),
     );
   }
 }
@@ -1005,48 +1143,70 @@ class _MovimientoTile extends StatelessWidget {
         ? item.descripcion!
         : (catMap['nombre'] as String? ?? item.categoriaId);
 
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: iconoColor.withAlpha(38),
-        child: Icon(icono, color: iconoColor, size: 20),
-      ),
-      title: Text(titulo, style: Theme.of(context).textTheme.bodyLarge),
-      subtitle: Text(
-        _formatFecha(item.fecha),
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-      trailing: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            '${item.esIngreso ? '+' : '-'}${_formatMonto(item.monto)}',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
+    return Material(
+      color: Colors.white,
+      child: InkWell(
+        onTap: null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: iconoColor.withAlpha(38),
+                child: Icon(icono, color: iconoColor, size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(titulo,
+                        style: Theme.of(context).textTheme.bodyLarge),
+                    Text(
+                      _formatFecha(item.fecha),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${item.esIngreso ? '+' : '-'}${_formatMonto(item.monto)}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: color,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  if (item.comprobante?.isNotEmpty == true)
+                    GestureDetector(
+                      onTap: () => launchUrl(Uri.parse(item.comprobante!)),
+                      child: const Icon(Icons.receipt,
+                          size: 16, color: AppTheme.azulMedio),
+                    ),
+                  if (item.nroComprobante != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.tag,
+                            size: 14, color: AppTheme.textoSecundario),
+                        const SizedBox(width: 2),
+                        Text(
+                          item.nroComprobante!,
+                          style: const TextStyle(
+                              color: AppTheme.textoSecundario, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ],
           ),
-          if (item.comprobante?.isNotEmpty == true)
-            GestureDetector(
-              onTap: () => launchUrl(Uri.parse(item.comprobante!)),
-              child: const Icon(Icons.receipt,
-                  size: 16, color: AppTheme.azulMedio),
-            ),
-          if (item.nroComprobante != null)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.tag,
-                    size: 14, color: AppTheme.textoSecundario),
-                const SizedBox(width: 2),
-                Text(
-                  item.nroComprobante!,
-                  style: const TextStyle(
-                      color: AppTheme.textoSecundario, fontSize: 11),
-                ),
-              ],
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -1133,34 +1293,55 @@ class _BienTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _colorEstado(bien.estado);
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: color.withAlpha(38),
-        child: Icon(Icons.inventory_2_outlined, color: color, size: 20),
-      ),
-      title: Text(
-        bien.descripcion,
-        style: Theme.of(context).textTheme.bodyLarge,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        bien.codigo,
-        style: const TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 11,
-          color: AppTheme.textoSecundario,
-        ),
-      ),
-      trailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withAlpha(30),
-          borderRadius: const BorderRadius.all(Radius.circular(10)),
-        ),
-        child: Text(
-          _labelEstado(bien.estado),
-          style: TextStyle(
-              color: color, fontSize: 11, fontWeight: FontWeight.w600),
+    return Material(
+      color: Colors.white,
+      child: InkWell(
+        onTap: null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: color.withAlpha(38),
+                child: Icon(Icons.inventory_2_outlined, color: color, size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      bien.descripcion,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      bien.codigo,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: AppTheme.textoSecundario,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.withAlpha(30),
+                  borderRadius: const BorderRadius.all(Radius.circular(10)),
+                ),
+                child: Text(
+                  _labelEstado(bien.estado),
+                  style: TextStyle(
+                      color: color, fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

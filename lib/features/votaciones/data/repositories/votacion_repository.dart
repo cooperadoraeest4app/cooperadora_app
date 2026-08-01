@@ -46,7 +46,11 @@ class VotacionRepository {
   }
 
   Future<String> crear(Votacion votacion) async {
-    final ref = await _col.add(votacion.toMap());
+    final totalMiembrosCD = await _contarMiembrosCD();
+    final ref = await _col.add({
+      ...votacion.toMap(),
+      'totalMiembrosCD': totalMiembrosCD,
+    });
     return ref.id;
   }
 
@@ -162,9 +166,14 @@ class VotacionRepository {
     final multiplicador = ((data['quorumMultiplicadorSocios'] as num?) ?? 3).toInt();
     final piso = ((data['quorumPisoSociosDirecta'] as num?) ?? 15).toInt();
 
-    final totalCD = await _contarMiembrosCD();
-    final miembrosCD = (totalCD * porcentajeCD).ceil();
-    return max(piso, miembrosCD * multiplicador);
+    final miembrosCD = await _contarMiembrosCD();
+    debugPrint('[Quorum] cargos ocupados: $miembrosCD');
+
+    final miembrosRequeridos = (miembrosCD * porcentajeCD).ceil();
+    final quorumCD = miembrosRequeridos * multiplicador;
+    debugPrint('[Quorum] miembrosRequeridos: $miembrosRequeridos quorumCD: $quorumCD piso: $piso');
+
+    return max(piso, quorumCD);
   }
 
   /// Devuelve el porcentaje de mayoría requerida. En modo testing devuelve 50.0.
