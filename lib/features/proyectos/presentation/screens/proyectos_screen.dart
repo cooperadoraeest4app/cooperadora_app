@@ -184,9 +184,9 @@ class _ProyectosScreenState extends State<ProyectosScreen>
       body: TabBarView(
         controller: _tabCtrl,
         children: [
-          _ListaProyectos(estado: 'en_curso', onTabSelected: _tabCtrl.animateTo),
-          _ListaProyectos(estado: 'planificado', onTabSelected: _tabCtrl.animateTo),
-          _ListaProyectos(estado: 'finalizado', onTabSelected: _tabCtrl.animateTo),
+          _ListaProyectos(estado: 'en_curso'),
+          _ListaProyectos(estado: 'planificado'),
+          _ListaProyectos(estado: 'finalizado'),
         ],
       ),
       floatingActionButton: _BotonAgregarProyecto(),
@@ -209,10 +209,9 @@ Widget _BotonAgregarProyecto() {
 // ── _ListaProyectos ───────────────────────────────────────────────────────────
 
 class _ListaProyectos extends StatelessWidget {
-  const _ListaProyectos({required this.estado, required this.onTabSelected});
+  const _ListaProyectos({required this.estado});
 
   final String estado;
-  final void Function(int) onTabSelected;
 
   String _labelEstado(String e) => switch (e) {
         'en_curso' => 'en curso',
@@ -257,7 +256,6 @@ class _ListaProyectos extends StatelessWidget {
       itemBuilder: (_, i) => _ProyectoCard(
         proyecto: proyectos[i],
         puedeGestionar: puedeGestionar,
-        onTabSelected: onTabSelected,
       ),
     );
   }
@@ -269,21 +267,16 @@ class _ProyectoCard extends StatelessWidget {
   const _ProyectoCard({
     required this.proyecto,
     required this.puedeGestionar,
-    required this.onTabSelected,
   });
 
   final Proyecto proyecto;
   final bool puedeGestionar;
-  final void Function(int) onTabSelected;
 
   Future<void> _irADetalle(BuildContext context) async {
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => ProyectoDetalleScreen(
-          proyecto: proyecto,
-          onTabSelected: onTabSelected,
-        ),
+        builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
       ),
     );
   }

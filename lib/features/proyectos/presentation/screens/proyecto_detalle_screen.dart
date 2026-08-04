@@ -26,6 +26,7 @@ import '../../domain/models/presupuesto_proyecto.dart';
 import '../../domain/models/proyecto.dart';
 import '../providers/proyecto_provider.dart';
 import '../../../../shared/widgets/app_drawer.dart';
+import 'proyectos_screen.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -195,11 +196,9 @@ class ProyectoDetalleScreen extends StatefulWidget {
   const ProyectoDetalleScreen({
     super.key,
     required this.proyecto,
-    this.onTabSelected,
   });
 
   final Proyecto proyecto;
-  final void Function(int)? onTabSelected;
 
   @override
   State<ProyectoDetalleScreen> createState() => _ProyectoDetalleScreenState();
@@ -630,17 +629,15 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
         }
       },
       child: Scaffold(
-        drawer: widget.onTabSelected != null ? const AppDrawer() : null,
+        drawer: const AppDrawer(),
         appBar: AppBar(
           backgroundColor: AppTheme.azulOscuro,
-          leading: widget.onTabSelected != null
-              ? Builder(
-                  builder: (context) => IconButton(
-                    icon: const Icon(Icons.menu, color: Colors.white),
-                    onPressed: () => Scaffold.of(context).openDrawer(),
-                  ),
-                )
-              : null,
+          leading: Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          ),
           titleSpacing: 0,
           title: Row(
             mainAxisSize: MainAxisSize.max,
@@ -672,51 +669,53 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
             ],
           ),
           actions: [AccionAuthWidget()],
-          bottom: widget.onTabSelected != null
-              ? TabBar(
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white,
-                  indicatorColor: const Color(0xFF00BCD4),
-                  indicatorWeight: 3,
-                  onTap: (index) async {
-                    if (_hayCambios) {
-                      final accion = await showDialog<String>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Cambios sin guardar'),
-                          content: const Text(
-                              'Tenés cambios sin guardar. ¿Qué querés hacer?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, 'cancelar'),
-                              child: const Text('Seguir editando'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, 'descartar'),
-                              child: const Text('Descartar',
-                                  style: TextStyle(color: AppTheme.rojoGasto)),
-                            ),
-                            ElevatedButton(
-                              onPressed: () => Navigator.pop(ctx, 'guardar'),
-                              child: const Text('Guardar y salir'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (accion == 'cancelar' || accion == null) return;
-                      if (accion == 'guardar') await _guardar(p);
-                    }
-                    if (!context.mounted) return;
-                    Navigator.pop(context);
-                    widget.onTabSelected!(index);
-                  },
-                  tabs: [
-                    Tab(icon: const Icon(Icons.play_circle, size: 18), text: 'En curso (${proyectoProvider.contarPorEstado('en_curso')})'),
-                    Tab(icon: const Icon(Icons.pending, size: 18), text: 'Planificados (${proyectoProvider.contarPorEstado('planificado')})'),
-                    Tab(icon: const Icon(Icons.check_circle, size: 18), text: 'Finalizados (${proyectoProvider.contarPorEstado('finalizado')})'),
-                  ],
-                )
-              : null,
+          bottom: TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white.withOpacity(0.6),
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            onTap: (index) async {
+              if (_hayCambios) {
+                final accion = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Cambios sin guardar'),
+                    content: const Text(
+                        'Tenés cambios sin guardar. ¿Qué querés hacer?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, 'cancelar'),
+                        child: const Text('Seguir editando'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, 'descartar'),
+                        child: const Text('Descartar',
+                            style: TextStyle(color: AppTheme.rojoGasto)),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, 'guardar'),
+                        child: const Text('Guardar y salir'),
+                      ),
+                    ],
+                  ),
+                );
+                if (accion == 'cancelar' || accion == null) return;
+                if (accion == 'guardar') await _guardar(p);
+              }
+              if (!context.mounted) return;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProyectosScreen(initialTab: index),
+                ),
+              );
+            },
+            tabs: const [
+              Tab(text: 'En curso'),
+              Tab(text: 'Planificados'),
+              Tab(text: 'Finalizados'),
+            ],
+          ),
         ),
       bottomNavigationBar: puedeVotarProyecto && miSocio != null
           ? _BarraVotacionProyecto(

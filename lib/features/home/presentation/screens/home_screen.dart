@@ -764,15 +764,7 @@ class _ProyectoCard extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ProyectoDetalleScreen(
-                proyecto: proyecto,
-                onTabSelected: (index) => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ProyectosScreen(initialTab: index),
-                  ),
-                ),
-              ),
+              builder: (_) => ProyectoDetalleScreen(proyecto: proyecto),
             ),
           ),
           child: Padding(
