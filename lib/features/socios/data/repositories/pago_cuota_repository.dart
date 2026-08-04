@@ -69,7 +69,5 @@ class PagoCuotaRepository {
       await batch.commit();
     }
 
-    // ignore: avoid_print
-    print('[Migracion] ${cuotasSnap.docs.length} cuotas migradas a pagos_cuota');
   }
 }

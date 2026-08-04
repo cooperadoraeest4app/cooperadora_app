@@ -403,10 +403,6 @@ class SeccionVotacionesHome extends StatelessWidget {
           .collection('votaciones')
           .snapshots(),
       builder: (context, snap) {
-        snap.data?.docs.forEach((d) {
-          final data = d.data() as Map<String, dynamic>;
-          print('[VotacionesHome] id: ${d.id} estado: "${data['estado']}" tipo: "${data['tipo']}"');
-        });
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(strokeWidth: 2));
         }

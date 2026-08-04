@@ -192,3 +192,135 @@ exports.onPagoCuotaConfirmado = functions.firestore.onDocumentUpdated(
     }
   }
 );
+
+// ─── Cloud Function: votación aprobada → proyecto en_curso / presupuesto items ─
+exports.onVotacionAprobada = functions.firestore.onDocumentUpdated(
+  'votaciones/{votacionId}',
+  async (event) => {
+    const before = event.data.before.data();
+    const after = event.data.after.data();
+
+    if (before.estado === after.estado) return null;
+    if (after.estado !== 'aprobada') return null;
+
+    const tipo = after.tipo;
+    const objetoId = after.objetoId;
+
+    try {
+      if (tipo === 'proyecto') {
+        await admin.firestore()
+          .collection('proyectos')
+          .doc(objetoId)
+          .update({ estado: 'en_curso' });
+        console.log(`[VotacionAprobada] Proyecto ${objetoId} → en_curso`);
+
+        const sociosSnap = await admin.firestore()
+          .collection('socios')
+          .where('activo', '==', true)
+          .get();
+
+        const batch = admin.firestore().batch();
+        for (const socio of sociosSnap.docs) {
+          const notifRef = admin.firestore().collection('notificaciones').doc();
+          batch.set(notifRef, {
+            tipo: 'proyecto_aprobado',
+            titulo: 'Proyecto aprobado',
+            mensaje: 'El proyecto fue aprobado por votación y pasa a estar En Curso.',
+            destinatarioRol: 'socio',
+            destinatarioId: socio.id,
+            referenciaId: objetoId,
+            leida: false,
+            fechaCreacion: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+        await batch.commit();
+        console.log(`[VotacionAprobada] Notificaciones enviadas a ${sociosSnap.docs.length} socios`);
+
+      } else if (tipo === 'presupuesto') {
+        const itemsSnap = await admin.firestore()
+          .collection('items_proyecto')
+          .where('presupuestosIds', 'array-contains', objetoId)
+          .get();
+
+        if (!itemsSnap.empty) {
+          const batchItems = admin.firestore().batch();
+          for (const doc of itemsSnap.docs) {
+            const estadoActual = doc.data().estado;
+            if (estadoActual !== 'comprado') {
+              batchItems.update(doc.ref, {
+                estado: 'presupuestos_aprobados',
+                estadoAnterior: estadoActual,
+                presupuestoAprobadoId: objetoId,
+              });
+            }
+          }
+          await batchItems.commit();
+          console.log(`[VotacionAprobada] ${itemsSnap.docs.length} ítems → presupuestos_aprobados`);
+        }
+      }
+    } catch (error) {
+      console.error('[VotacionAprobada] Error:', error);
+    }
+    return null;
+  }
+);
+
+// ─── Cloud Function: votación rechazada → proyecto cancelado ───────────────
+exports.onVotacionRechazada = functions.firestore.onDocumentUpdated(
+  'votaciones/{votacionId}',
+  async (event) => {
+    const before = event.data.before.data();
+    const after = event.data.after.data();
+
+    if (before.estado === after.estado) return null;
+    if (after.estado !== 'rechazada') return null;
+    if (after.tipo !== 'proyecto') return null;
+
+    const proyectoId = after.objetoId;
+
+    try {
+      await admin.firestore()
+        .collection('proyectos')
+        .doc(proyectoId)
+        .update({ estado: 'cancelado' });
+
+      console.log(`[VotacionRechazada] Proyecto ${proyectoId} → cancelado`);
+    } catch (error) {
+      console.error('[VotacionRechazada] Error:', error);
+    }
+    return null;
+  }
+);
+
+// ─── HTTP: migrar Custom Claims para usuarios existentes ──────────────────
+const { onRequest } = require('firebase-functions/v2/https');
+
+exports.migrarCustomClaims = onRequest(
+  { region: 'southamerica-east1' },
+  async (req, res) => {
+    if (req.query.token !== 'migrar2026cooperadora') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const snap = await admin.firestore().collection('usuarios').get();
+    let actualizados = 0;
+    let errores = 0;
+
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      const uid = data.authUid || doc.id;
+      const rol = data.rol || 'consultante';
+      try {
+        await admin.auth().setCustomUserClaims(uid, { rol });
+        console.log(`[MigrarClaims] ${uid} → rol: ${rol}`);
+        actualizados++;
+      } catch (e) {
+        console.error(`[MigrarClaims] ERROR ${uid}: ${e.message}`);
+        errores++;
+      }
+    }
+
+    res.json({ ok: true, actualizados, errores, total: snap.docs.length });
+  }
+);

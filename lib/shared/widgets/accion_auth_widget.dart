@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
@@ -41,17 +42,32 @@ class AccionAuthWidget extends StatelessWidget {
       offset: const Offset(0, 48),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: CircleAvatar(
-          backgroundColor: AppTheme.celesteAccento,
-          radius: 17,
-          child: Text(
-            inicial,
-            style: const TextStyle(
-              color: AppTheme.azulOscuro,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('usuarios')
+              .doc(auth.currentUser!.uid)
+              .snapshots(),
+          builder: (context, snap) {
+            final fotoUrl = snap.data?.data()?['fotoUrl'] as String?;
+            if (fotoUrl != null && fotoUrl.isNotEmpty) {
+              return CircleAvatar(
+                radius: 17,
+                backgroundImage: NetworkImage(fotoUrl),
+              );
+            }
+            return CircleAvatar(
+              backgroundColor: AppTheme.celesteAccento,
+              radius: 17,
+              child: Text(
+                inicial,
+                style: const TextStyle(
+                  color: AppTheme.azulOscuro,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            );
+          },
         ),
       ),
       itemBuilder: (ctx) => [

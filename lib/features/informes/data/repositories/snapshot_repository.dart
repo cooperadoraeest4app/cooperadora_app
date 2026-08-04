@@ -10,18 +10,14 @@ class SnapshotRepository {
     final desdeTs = Timestamp.fromDate(DateTime(desde.year, desde.month, desde.day));
     final hastaTs = Timestamp.fromDate(DateTime(hasta.year, hasta.month, hasta.day, 23, 59, 59));
 
-    print('[SnapshotRepo] Consultando desde: $desdeTs hasta: $hastaTs');
-
     try {
       final snap = await _col
           .where('fechaDesde', isEqualTo: desdeTs)
           .where('fechaHasta', isEqualTo: hastaTs)
           .orderBy('version', descending: true)
           .get();
-      print('[SnapshotRepo] Resultados: ${snap.docs.length}');
       return snap.docs.map((d) => BalanceSnapshot.fromMap(d.data(), d.id)).toList();
     } catch (e) {
-      print('[SnapshotRepo] ERROR: $e');
       rethrow;
     }
   }

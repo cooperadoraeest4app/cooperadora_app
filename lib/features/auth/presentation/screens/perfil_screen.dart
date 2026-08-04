@@ -93,15 +93,12 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
   Future<CuotaEstado?> _fetchCuotaEstado() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    print('[Perfil] authUid: $uid');
     if (uid == null) return null;
     final userDoc = await FirebaseFirestore.instance
         .collection('usuarios')
         .doc(uid)
         .get();
-    print('[Perfil] userDoc.exists: ${userDoc.exists}, data: ${userDoc.data()}');
     String? socioId = userDoc.data()?['socioId'] as String?;
-    print('[Perfil] socioId del usuario: $socioId');
 
     if (socioId == null) {
       final personaId = userDoc.data()?['personaId'] as String?;
@@ -120,25 +117,24 @@ class _PerfilScreenState extends State<PerfilScreen> {
         }
       }
     }
-    print('[Perfil] socioId resuelto: $socioId');
     if (mounted) setState(() => _socioIdResuelto = socioId);
     if (socioId == null) return null;
     final socioDoc = await FirebaseFirestore.instance
         .collection('socios')
         .doc(socioId)
         .get();
-    print('[Perfil] socioDoc.exists: ${socioDoc.exists}');
     if (!socioDoc.exists) return null;
     final socio = Socio.fromMap(socioDoc.data()!, socioDoc.id);
+
     try {
       final estado = await CuotaCalculoService().calcularEstado(
         socioId: socioId,
         fechaIngreso: socio.fechaIngreso,
+        tipoCuotaId: socio.tipoCuotaId,
       );
-      print('[Perfil] calcularEstado OK: totalPagado=${estado.totalPagado}, estaAlDia=${estado.estaAlDia}');
       return estado;
     } catch (e, st) {
-      print('[Perfil] ERROR en calcularEstado: $e\n$st');
+      debugPrint('[Perfil] ERROR en calcularEstado: $e\n$st');
       return null;
     }
   }
@@ -157,7 +153,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
   void _poblarCampos(Map<String, dynamic> persona) {
     _esFiscal = persona['tipoPersona'] == 'fiscal';
-    _subtipo = persona['subtipo'] as String?;
+    _resolverSubtipo(persona['subtipo'] as String?);
 
     _nombreOrig = persona['nombre'] as String? ?? '';
     _apellidoOrig = persona['apellido'] as String? ?? '';
@@ -180,6 +176,20 @@ class _PerfilScreenState extends State<PerfilScreen> {
     _telefonoCtrl.text = _telefonoOrig;
     _direccionCtrl.text = _direccionOrig;
 
+  }
+
+  Future<void> _resolverSubtipo(String? subtipoId) async {
+    if (subtipoId == null || subtipoId.isEmpty) {
+      _subtipo = null;
+      return;
+    }
+    final doc = await FirebaseFirestore.instance
+        .collection('subtipos_socio')
+        .doc(subtipoId)
+        .get();
+    if (mounted) {
+      setState(() => _subtipo = doc.data()?['nombre'] as String? ?? subtipoId);
+    }
   }
 
   Future<void> _cambiarFoto() async {

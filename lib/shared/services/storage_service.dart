@@ -16,15 +16,10 @@ class StorageService {
     }
 
     final ref = _storage.ref('comprobantes/$path/$nombreArchivo');
-    // ignore: avoid_print
-    print('[StorageService] Subiendo $nombreArchivo (${bytes.length} bytes) → comprobantes/$path/');
-
     final uploadTask = ref.putData(bytes);
     await uploadTask;
 
     final url = await ref.getDownloadURL();
-    // ignore: avoid_print
-    print('[StorageService] Upload completo. URL: $url');
     return url;
   }
 

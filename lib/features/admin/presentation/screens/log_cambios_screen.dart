@@ -49,8 +49,6 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
 
   List<Map<String, dynamic>> _aplicarFiltros(
       QuerySnapshot<Map<String, dynamic>> s) {
-    // ignore: avoid_print
-    print('Log cambios recibidos: ${s.docs.length}');
     var docs = s.docs.map((d) => {...d.data(), 'id': d.id}).toList();
 
     if (_filtroTipo != 'todos') {
@@ -147,8 +145,6 @@ class _LogCambiosScreenState extends State<LogCambiosScreen> {
               stream: _baseStream,
               builder: (context, snap) {
                 if (snap.hasError) {
-                  // ignore: avoid_print
-                  print('Error log_cambios StreamBuilder: ${snap.error}');
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),

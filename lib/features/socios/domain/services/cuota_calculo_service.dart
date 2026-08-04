@@ -39,6 +39,7 @@ class CuotaCalculoService {
   Future<CuotaEstado> calcularEstado({
     required String socioId,
     required DateTime fechaIngreso,
+    String? tipoCuotaId,
   }) async {
     final ahora = DateTime.now();
     final mesActual = DateTime(ahora.year, ahora.month);
@@ -54,8 +55,26 @@ class CuotaCalculoService {
         .map((d) => PagoCuota.fromMap(d.data(), d.id))
         .toList();
 
+    final tiposSnap = await FirebaseFirestore.instance
+        .collection('tipos_cuota')
+        .get();
+    final tipoMensualDocs = tiposSnap.docs
+        .where((d) => (d.data()['nombre'] as String?)
+                ?.toLowerCase()
+                .contains('mensual') ==
+            true)
+        .toList();
+    final tipoMensualId = tipoMensualDocs.isNotEmpty
+        ? tipoMensualDocs.first.id
+        : tiposSnap.docs.first.id;
+
+    final idAUsar = (tipoCuotaId != null && tipoCuotaId.isNotEmpty)
+        ? tipoCuotaId
+        : tipoMensualId;
+
     final tarifasSnap = await FirebaseFirestore.instance
         .collection('tarifas_cuota')
+        .where('tipoCuotaId', isEqualTo: idAUsar)
         .orderBy('vigenciaDesde')
         .get();
 

@@ -333,10 +333,6 @@ class _ModalAgregarHijoState extends State<_ModalAgregarHijo> {
   @override
   Widget build(BuildContext context) {
     final cursos = context.watch<CursoProvider>().activos;
-    print('[Cursos] cantidad: ${cursos.length}');
-    for (final c in cursos) {
-      print('[Cursos] ${c.id} → ${c.nombre}');
-    }
     return Padding(
       padding: EdgeInsets.only(
         left: 16,

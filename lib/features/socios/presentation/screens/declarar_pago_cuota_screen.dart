@@ -40,18 +40,12 @@ class _DeclararPagoCuotaScreenState extends State<DeclararPagoCuotaScreen> {
           .get();
       if (!mounted || tiposSnap.docs.isEmpty) return;
 
-      // ignore: avoid_print
-      print('[DeclararPago] tipos: ${tiposSnap.docs.map((d) => '${d.id}: ${d.data()['nombre']}').toList()}');
-
       final tipoMensual = tiposSnap.docs.firstWhere(
         (d) => (d.data()['nombre'] as String? ?? '')
             .toLowerCase()
             .contains('mensual'),
         orElse: () => tiposSnap.docs.first,
       );
-
-      // ignore: avoid_print
-      print('[DeclararPago] tipo mensual seleccionado: ${tipoMensual.id} — ${tipoMensual.data()['nombre']}');
 
       final tarifaSnap = await FirebaseFirestore.instance
           .collection('tarifas_cuota')
@@ -60,15 +54,9 @@ class _DeclararPagoCuotaScreenState extends State<DeclararPagoCuotaScreen> {
           .limit(1)
           .get();
 
-      // ignore: avoid_print
-      print('[DeclararPago] tarifas encontradas: ${tarifaSnap.docs.length}');
-
       if (!mounted || tarifaSnap.docs.isEmpty) return;
       final monto =
           (tarifaSnap.docs.first.data()['monto'] as num).toDouble();
-
-      // ignore: avoid_print
-      print('[DeclararPago] monto: $monto');
 
       if (_montoCtrl.text.isEmpty) {
         setState(() {

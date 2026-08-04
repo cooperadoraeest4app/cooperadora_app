@@ -57,50 +57,62 @@ class VotacionRepository {
   /// Guarda el voto y recalcula el estado de la votación.
   /// valor esperado: 'a_favor' | 'en_contra' | 'abstencion'
   Future<void> emitirVoto(Voto voto, Votacion votacion) async {
-    await _colVotos.add(voto.toMap());
-
-    final snap = await _colVotos
-        .where('votacionId', isEqualTo: votacion.id)
-        .get();
-    final todos = snap.docs.map((d) => Voto.fromMap(d.data(), d.id)).toList();
-    final activos = todos.where((v) => v.tipoSocio == 'activo').toList();
-
-    final quorumRequerido = await calcularQuorum();
-    final mayoriaRequerida = await calcularMayoriaRequerida();
-
-    debugPrint('[Votacion] quorumRequerido (config): $quorumRequerido');
-    debugPrint('[Votacion] mayoriaRequerida (config): $mayoriaRequerida');
-    debugPrint('[Votacion] votosActivos (tipoSocio==activo): ${activos.length}');
-    debugPrint('[Votacion] todos los votos de esta votacion: ${todos.length}');
-    debugPrint('[Votacion] tiposSocio encontrados: ${todos.map((v) => v.tipoSocio).toList()}');
-
-    if (activos.length < quorumRequerido) {
-      debugPrint('[Votacion] quorum NO alcanzado — se necesitan $quorumRequerido, hay ${activos.length}');
-      return;
+    // Paso 1: guardar el voto
+    try {
+      await _colVotos.add(voto.toMap());
+    } catch (e) {
+      debugPrint('[EmitirVoto] ERROR guardando voto: $e');
+      rethrow;
     }
 
-    final aFavor = activos.where((v) => v.valor == 'a_favor').length;
-    final enContra = activos.where((v) => v.valor == 'en_contra').length;
-    final efectivos = aFavor + enContra;
+    // Paso 2: recalcular estado de la votación
+    try {
+      final snap = await _colVotos
+          .where('votacionId', isEqualTo: votacion.id)
+          .get();
+      final todos =
+          snap.docs.map((d) => Voto.fromMap(d.data(), d.id)).toList();
+      final activos =
+          todos.where((v) => v.tipoSocio == 'activo').toList();
 
-    debugPrint('[Votacion] aFavor: $aFavor  enContra: $enContra  abstenciones: ${activos.length - efectivos}');
+      final quorumRequerido = await calcularQuorum();
+      final mayoriaRequerida = await calcularMayoriaRequerida();
 
-    if (efectivos == 0) {
-      debugPrint('[Votacion] efectivos == 0, no se calcula resultado');
-      return;
-    }
+      debugPrint('[Votacion] quorumRequerido (config): $quorumRequerido');
+      debugPrint('[Votacion] mayoriaRequerida (config): $mayoriaRequerida');
+      debugPrint('[Votacion] votosActivos (tipoSocio==activo): ${activos.length}');
+      debugPrint('[Votacion] todos los votos de esta votacion: ${todos.length}');
+      debugPrint('[Votacion] tiposSocio encontrados: ${todos.map((v) => v.tipoSocio).toList()}');
 
-    final porcentaje = aFavor / efectivos * 100;
-    final estado = porcentaje >= mayoriaRequerida ? 'aprobada' : 'rechazada';
-    debugPrint('[Votacion] porcentajeAFavor: ${porcentaje.toStringAsFixed(1)}%  mayoriaRequerida: $mayoriaRequerida%  estadoCalculado: $estado');
+      if (activos.length < quorumRequerido) {
+        debugPrint('[Votacion] quorum NO alcanzado — se necesitan $quorumRequerido, hay ${activos.length}');
+        return;
+      }
 
-    await _col.doc(votacion.id).update({
-      'estado': estado,
-      'fechaCierre': FieldValue.serverTimestamp(),
-    });
+      final aFavor = activos.where((v) => v.valor == 'a_favor').length;
+      final enContra = activos.where((v) => v.valor == 'en_contra').length;
+      final efectivos = aFavor + enContra;
 
-    if (estado == 'aprobada' && votacion.tipo == 'presupuesto') {
-      await _actualizarItemsAlAprobar(presupuestoId: votacion.objetoId);
+      debugPrint('[Votacion] aFavor: $aFavor  enContra: $enContra  abstenciones: ${activos.length - efectivos}');
+
+      if (efectivos == 0) {
+        debugPrint('[Votacion] efectivos == 0, no se calcula resultado');
+        return;
+      }
+
+      final porcentaje = aFavor / efectivos * 100;
+      final estado =
+          porcentaje >= mayoriaRequerida ? 'aprobada' : 'rechazada';
+      debugPrint('[Votacion] porcentajeAFavor: ${porcentaje.toStringAsFixed(1)}%  mayoriaRequerida: $mayoriaRequerida%  estadoCalculado: $estado');
+
+      await _col.doc(votacion.id).update({
+        'estado': estado,
+        'fechaCierre': FieldValue.serverTimestamp(),
+      });
+      // El proyecto/presupuesto y las notificaciones los maneja la Cloud Function
+    } catch (e) {
+      debugPrint('[EmitirVoto] ERROR recalculando: $e');
+      rethrow;
     }
   }
 
@@ -185,34 +197,6 @@ class VotacionRepository {
     final data = snap.data() ?? {};
     if (data['modoTesting'] as bool? ?? false) return 50.0;
     return ((data['mayoriaRequerida'] as num?) ?? 66.67).toDouble();
-  }
-
-  Future<void> _actualizarItemsAlAprobar({required String presupuestoId}) async {
-    final presSnap = await FirebaseFirestore.instance
-        .collection('presupuestos_proyecto')
-        .doc(presupuestoId)
-        .get();
-    final proyectoId = presSnap.data()?['proyectoId'] as String?;
-    if (proyectoId == null) return;
-
-    final itemsSnap = await FirebaseFirestore.instance
-        .collection('items_proyecto')
-        .where('proyectoId', isEqualTo: proyectoId)
-        .where('presupuestosIds', arrayContains: presupuestoId)
-        .get();
-    if (itemsSnap.docs.isEmpty) return;
-
-    final batch = FirebaseFirestore.instance.batch();
-    for (final doc in itemsSnap.docs) {
-      final estadoActual = doc.data()['estado'] as String? ?? 'pendiente';
-      if (estadoActual == 'comprado') continue;
-      batch.update(doc.reference, {
-        'estado': 'presupuestos_aprobados',
-        'estadoAnterior': estadoActual,
-        'presupuestoAprobadoId': presupuestoId,
-      });
-    }
-    await batch.commit();
   }
 
   Future<int> _contarMiembrosCD() async {

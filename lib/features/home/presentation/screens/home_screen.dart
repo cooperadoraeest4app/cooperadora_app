@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -303,21 +304,29 @@ class _HeaderCooperadora extends StatelessWidget {
                     ),
                   if (email != null)
                     IconButton(
-                      tooltip: 'Enviar email',
+                      tooltip: 'Copiar email de contacto',
                       icon: Image.asset(
                           'assets/icons/icons8-mail-96.png',
                           width: 28,
                           height: 28),
                       onPressed: () async {
-                        final url = Uri(
-                          scheme: 'mailto',
-                          path: email,
-                          queryParameters: {
-                            'subject': 'Hola Coope!'
-                          },
-                        );
-                        if (await canLaunchUrl(url)) {
-                          await launchUrl(url);
+                        await Clipboard.setData(
+                            ClipboardData(text: email));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  const Icon(Icons.check_circle,
+                                      color: Colors.white, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text('Email copiado: $email'),
+                                ],
+                              ),
+                              backgroundColor: AppTheme.verdeTeal,
+                              duration: const Duration(seconds: 3),
+                            ),
+                          );
                         }
                       },
                     ),

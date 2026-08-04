@@ -17,9 +17,10 @@ class AuthProvider extends ChangeNotifier {
 
   AuthProvider() {
     _currentUser = _auth.currentUser;
-    _auth.authStateChanges().listen((user) {
+    _auth.authStateChanges().listen((user) async {
       _currentUser = user;
       if (user != null) {
+        await user.getIdToken(true); // refresca el token para que las reglas de Firestore usen claims actualizados
         notifyListeners();
         _cargarDatosUsuario(user.uid);
       } else {
@@ -210,6 +211,12 @@ class AuthProvider extends ChangeNotifier {
       datosUsuario = {...?datosUsuario, 'personaId': personaId};
     } else {
       await firestore.collection('personas').doc(personaId).update(updates);
+    }
+
+    if (fotoUrl != null) {
+      await firestore.collection('usuarios').doc(uid).update({'fotoUrl': fotoUrl});
+      await _auth.currentUser?.updatePhotoURL(fotoUrl);
+      datosUsuario = {...?datosUsuario, 'fotoUrl': fotoUrl};
     }
 
     datosPersona = {...?datosPersona, ...updates};

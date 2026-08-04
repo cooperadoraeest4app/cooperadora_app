@@ -49,7 +49,6 @@ class _CredencialSocioScreenState extends State<CredencialSocioScreen> {
     try {
       final auth = context.read<AuthProvider>();
       final uid = auth.currentUser?.uid;
-      print('[Credencial] authUid: $uid');
       if (uid == null) {
         setState(() {
           _error = 'No hay sesión activa.';
@@ -65,8 +64,6 @@ class _CredencialSocioScreenState extends State<CredencialSocioScreen> {
 
       String? socioId = usuarioDoc.data()?['socioId'] as String?;
       final personaId = usuarioDoc.data()?['personaId'] as String?;
-      print('[Credencial] socioId: $socioId');
-      print('[Credencial] personaId: $personaId');
 
       // Fallback: buscar por personaId si no tiene socioId
       if (socioId == null || socioId.isEmpty) {
@@ -94,8 +91,6 @@ class _CredencialSocioScreenState extends State<CredencialSocioScreen> {
         });
         return;
       }
-
-      print('[Credencial] socioId resuelto: $socioId');
 
       final socio = await SocioRepository().obtenerPorId(socioId);
       if (socio == null) throw Exception('Socio no encontrado.');

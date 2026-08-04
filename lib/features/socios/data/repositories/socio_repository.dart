@@ -50,8 +50,27 @@ class SocioRepository {
           'Esta persona ya está registrada como socia (N° $nro)');
     }
 
+    String? tipoCuotaId = socio.tipoCuotaId;
+    if (tipoCuotaId == null || tipoCuotaId.isEmpty) {
+      final tiposSnap = await FirebaseFirestore.instance
+          .collection('tipos_cuota')
+          .get();
+      final tipoMensualDocs = tiposSnap.docs
+          .where((d) => (d.data()['nombre'] as String?)
+                  ?.toLowerCase()
+                  .contains('mensual') ==
+              true)
+          .toList();
+      tipoCuotaId = tipoMensualDocs.isNotEmpty
+          ? tipoMensualDocs.first.id
+          : tiposSnap.docs.first.id;
+    }
+
     final numeroSocio = await siguienteNumeroSocio();
-    final conNumero = socio.copyWith(numeroSocio: numeroSocio);
+    final conNumero = socio.copyWith(
+      numeroSocio: numeroSocio,
+      tipoCuotaId: tipoCuotaId,
+    );
     final ref = await _col.add(conNumero.toMap());
 
     if (socio.personaId.isNotEmpty) {
@@ -62,7 +81,6 @@ class SocioRepository {
           .get();
       if (usuariosSnap.docs.isNotEmpty) {
         await usuariosSnap.docs.first.reference.update({'socioId': ref.id});
-        print('[SocioRepo] socioId actualizado en usuario: ${usuariosSnap.docs.first.id}');
       }
     }
 

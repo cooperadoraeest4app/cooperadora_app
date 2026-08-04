@@ -45,14 +45,10 @@ class CuentaBancariaProvider extends ChangeNotifier {
     );
     _movimientosSub = _repo.obtenerMovimientos().listen(
       (list) {
-        // ignore: avoid_print
-        print('Movimientos recibidos: ${list.length}');
         movimientos = list;
         notifyListeners();
       },
       onError: (e) {
-        // ignore: avoid_print
-        print('Error stream movimientos_bancarios: $e');
         error = e.toString();
         notifyListeners();
       },

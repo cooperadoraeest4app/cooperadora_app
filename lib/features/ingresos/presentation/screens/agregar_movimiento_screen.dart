@@ -1057,10 +1057,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
-    // ignore: avoid_print
-    print('File name: ${file.name}');
-    // ignore: avoid_print
-    print('Bytes length: ${file.bytes?.length}');
     if (file.bytes == null || file.bytes!.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1083,10 +1079,6 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
     );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
-    // ignore: avoid_print
-    print('File name: ${file.name}');
-    // ignore: avoid_print
-    print('Bytes length: ${file.bytes?.length}');
     if (file.bytes == null || file.bytes!.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1437,16 +1429,11 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
         );
       }).toList();
 
-      // ignore: avoid_print
-      print('[SelectorSocio] cargados: ${sociosConPersona.length}');
-
       if (mounted) {
         setState(() => _cargandoSocios = false);
         await _mostrarModalSocios(sociosConPersona);
       }
     } catch (e) {
-      // ignore: avoid_print
-      print('[SelectorSocio] ERROR: $e');
       if (mounted) setState(() => _cargandoSocios = false);
     }
   }

@@ -7,6 +7,7 @@ class Socio {
   final int numeroSocio;
   final String personaId;
   final String tipoSocio; // activo / honorario / adherente
+  final String? tipoCuotaId;
   final bool activo;
   final DateTime fechaIngreso;
   final String? observaciones;
@@ -19,6 +20,7 @@ class Socio {
     required this.numeroSocio,
     required this.personaId,
     required this.tipoSocio,
+    this.tipoCuotaId,
     required this.activo,
     required this.fechaIngreso,
     this.observaciones,
@@ -31,6 +33,7 @@ class Socio {
         'numeroSocio': numeroSocio,
         'personaId': personaId,
         'tipoSocio': tipoSocio,
+        if (tipoCuotaId != null) 'tipoCuotaId': tipoCuotaId,
         'activo': activo,
         'fechaIngreso': Timestamp.fromDate(fechaIngreso),
         if (observaciones != null) 'observaciones': observaciones,
@@ -50,6 +53,7 @@ class Socio {
       numeroSocio: (map['numeroSocio'] as num? ?? 0).toInt(),
       personaId: map['personaId'] as String? ?? '',
       tipoSocio: map['tipoSocio'] as String? ?? 'activo',
+      tipoCuotaId: map['tipoCuotaId'] as String?,
       activo: map['activo'] as bool? ?? true,
       fechaIngreso: ts(map['fechaIngreso']),
       observaciones: map['observaciones'] as String?,
@@ -63,6 +67,7 @@ class Socio {
     int? numeroSocio,
     String? personaId,
     String? tipoSocio,
+    Object? tipoCuotaId = _unset,
     bool? activo,
     DateTime? fechaIngreso,
     Object? observaciones = _unset,
@@ -75,6 +80,9 @@ class Socio {
       numeroSocio: numeroSocio ?? this.numeroSocio,
       personaId: personaId ?? this.personaId,
       tipoSocio: tipoSocio ?? this.tipoSocio,
+      tipoCuotaId: tipoCuotaId == _unset
+          ? this.tipoCuotaId
+          : tipoCuotaId as String?,
       activo: activo ?? this.activo,
       fechaIngreso: fechaIngreso ?? this.fechaIngreso,
       observaciones: observaciones == _unset

@@ -83,6 +83,7 @@ class _SociosScreenState extends State<SociosScreen> {
         final estado = await CuotaCalculoService().calcularEstado(
           socioId: socio.id,
           fechaIngreso: socio.fechaIngreso,
+          tipoCuotaId: socio.tipoCuotaId,
         );
         nuevasDeudas[socio.id] = {
           'deudaTotal': estado.deuda,
@@ -1385,6 +1386,7 @@ class _SeccionTarifas extends StatefulWidget {
 
 class _SeccionTarifasState extends State<_SeccionTarifas> {
   Map<String, Map<String, dynamic>> _tarifasVigentes = {};
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _tiposCuota = [];
   bool _cargando = true;
 
   @override
@@ -1399,12 +1401,6 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
       final tiposSnap = await FirebaseFirestore.instance
           .collection('tipos_cuota')
           .get();
-      // ignore: avoid_print
-      print('[Tarifas] tipos_cuota: ${tiposSnap.docs.length}');
-      for (final d in tiposSnap.docs) {
-        // ignore: avoid_print
-        print('[Tarifas] tipo: ${d.id} → ${d.data()}');
-      }
 
       final tarifas = <String, Map<String, dynamic>>{};
       for (final tipo in tiposSnap.docs) {
@@ -1414,8 +1410,6 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
             .orderBy('vigenciaDesde', descending: true)
             .limit(1)
             .get();
-        // ignore: avoid_print
-        print('[Tarifas] tarifas para ${tipo.id}: ${tarifaSnap.docs.length}');
 
         if (tarifaSnap.docs.isNotEmpty) {
           tarifas[tipo.id] = {
@@ -1428,13 +1422,12 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
 
       if (mounted) {
         setState(() {
+          _tiposCuota = tiposSnap.docs;
           _tarifasVigentes = tarifas;
           _cargando = false;
         });
       }
     } catch (e) {
-      // ignore: avoid_print
-      print('[Tarifas] ERROR: $e');
       if (mounted) setState(() => _cargando = false);
     }
   }
@@ -1443,8 +1436,6 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final puedeEditar = auth.esAdmin || auth.esEditor;
-    // ignore: avoid_print
-    print('[Tarifas] build: ${_tarifasVigentes.keys.toList()}');
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1484,10 +1475,10 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
           if (_cargando)
             const LinearProgressIndicator(color: AppTheme.celesteAccento)
           else
-            ..._tarifasVigentes.entries.map((entry) {
-              final tarifa = entry.value;
-              final vigenciaDesde =
-                  (tarifa['vigenciaDesde'] as Timestamp).toDate();
+            ..._tiposCuota.map((tipo) {
+              final tarifaExistente = _tarifasVigentes[tipo.id];
+              final tipoNombre =
+                  tipo.data()['nombre'] as String? ?? tipo.id;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
@@ -1497,38 +1488,56 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            tarifa['tipoNombre'] as String,
+                            tipoNombre,
                             style: const TextStyle(
                                 fontSize: 13,
                                 color: AppTheme.textoSecundario),
                           ),
-                          Text(
-                            'Vigente desde ${DateFormat('dd/MM/yyyy').format(vigenciaDesde)}',
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.textoSecundario),
-                          ),
+                          if (tarifaExistente != null)
+                            Text(
+                              'Vigente desde ${DateFormat('dd/MM/yyyy').format((tarifaExistente['vigenciaDesde'] as Timestamp).toDate())}',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.textoSecundario),
+                            )
+                          else
+                            const Text(
+                              'Sin tarifa configurada',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.red),
+                            ),
                         ],
                       ),
                     ),
                     Text(
-                      _formatMonto(tarifa['monto']),
+                      tarifaExistente != null
+                          ? _formatMonto(tarifaExistente['monto'])
+                          : '—',
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(width: 10),
                     if (puedeEditar)
                       GestureDetector(
-                        onTap: () => _editarTarifa(tarifa),
+                        onTap: () => _editarTarifa({
+                          ...?tarifaExistente,
+                          'tipoCuotaId': tipo.id,
+                          'tipoNombre': tipoNombre,
+                        }),
                         child: Container(
-                          width: 30,
-                          height: 30,
+                          width: 32,
+                          height: 32,
                           decoration: const BoxDecoration(
                             shape: BoxShape.circle,
                             color: AppTheme.celesteFondo,
                           ),
-                          child: const Icon(Icons.edit,
-                              color: AppTheme.azulMedio, size: 14),
+                          child: Icon(
+                            tarifaExistente != null
+                                ? Icons.edit
+                                : Icons.add,
+                            color: AppTheme.azulMedio,
+                            size: 16,
+                          ),
                         ),
                       ),
                   ],
@@ -1541,8 +1550,11 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
   }
 
   Future<void> _editarTarifa(Map<String, dynamic> tarifa) async {
+    final esNueva = tarifa['monto'] == null;
     final controller = TextEditingController(
-        text: (tarifa['monto'] as num).toStringAsFixed(0));
+        text: esNueva
+            ? ''
+            : (tarifa['monto'] as num).toStringAsFixed(0));
     DateTime vigenciaDesde = DateTime.now();
 
     await showModalBottomSheet<void>(
@@ -1562,7 +1574,7 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Actualizar tarifa: ${tarifa['tipoNombre']}',
+                  '${esNueva ? 'Nueva' : 'Actualizar'} tarifa: ${tarifa['tipoNombre']}',
                   style: const TextStyle(
                       fontSize: 15, fontWeight: FontWeight.w600),
                 ),
@@ -1632,7 +1644,7 @@ class _SeccionTarifasState extends State<_SeccionTarifas> {
                         }
                       }
                     },
-                    child: const Text('Guardar nueva tarifa',
+                    child: Text(esNueva ? 'Agregar tarifa' : 'Guardar nueva tarifa',
                         style: TextStyle(color: Colors.white)),
                   ),
                 ),

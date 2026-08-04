@@ -39,16 +39,16 @@ class NombreUsuarioWidget extends StatelessWidget {
       );
     }
 
-    debugPrint('NombreUsuarioWidget buscando: $usuarioId');
-    debugPrint('Usuarios disponibles: '
-        '${usuariosProvider.usuarios.map((u) => "${u['id']} / ${u['authUid']}").toList()}');
+    // debugPrint('NombreUsuarioWidget buscando: $usuarioId');
+    // debugPrint('Usuarios disponibles: '
+    //     '${usuariosProvider.usuarios.map((u) => "${u['id']} / ${u['authUid']}").toList()}');
 
     final usuario = usuariosProvider.usuarios.firstWhere(
       (u) => u['id'] == usuarioId || u['authUid'] == usuarioId,
       orElse: () => {},
     );
 
-    debugPrint('Match encontrado: $usuario');
+    // debugPrint('Match encontrado: $usuario');
 
     final nombre = usuario['nombreCompleto'] as String? ??
         usuario['email'] as String? ??

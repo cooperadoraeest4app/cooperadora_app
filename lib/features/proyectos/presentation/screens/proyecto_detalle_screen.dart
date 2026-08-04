@@ -490,7 +490,7 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
         fecha: DateTime.now(),
       );
       await VotacionRepository().emitirVoto(voto, v);
-      await _recalcularEstadoVotacion(v);
+      await _recalcularEstadoVotacion();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -505,48 +505,43 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
     }
   }
 
-  Future<void> _recalcularEstadoVotacion(Votacion votacion) async {
-    final snap = await FirebaseFirestore.instance
-        .collection('votaciones')
-        .doc(votacion.id)
+  Future<void> _recalcularEstadoVotacion() async {
+    if (_votacionActiva == null) return;
+
+    final config = await FirebaseFirestore.instance
+        .collection('configuracion')
+        .doc('config')
         .get();
-    if (!snap.exists) return;
-    final estado = snap.data()?['estado'] as String? ?? 'en_curso';
-    if (estado == 'en_curso') return;
+    final modoTesting = config.data()?['modoTesting'] as bool? ?? false;
+    final quorum =
+        modoTesting ? 1 : _votacionActiva!.quorumRequerido;
+    final mayoria =
+        modoTesting ? 50.0 : _votacionActiva!.mayoriaRequerida;
 
-    final pid = widget.proyecto.id;
-    final nombre = widget.proyecto.nombre;
+    final votosSnap = await FirebaseFirestore.instance
+        .collection('votos')
+        .where('votacionId', isEqualTo: _votacionActiva!.id)
+        .get();
 
-    if (estado == 'aprobada') {
+    final votos = votosSnap.docs.map((d) => d.data()).toList();
+    final votosActivos = votos
+        .where((v) => v['tipoSocio'] == 'activo')
+        .toList();
+
+    if (votosActivos.length >= quorum) {
+      final aFavor =
+          votosActivos.where((v) => v['valor'] == 'a_favor').length;
+      final porcentaje = aFavor / votosActivos.length * 100;
+      final aprobado = porcentaje >= mayoria;
+
       await FirebaseFirestore.instance
-          .collection('proyectos')
-          .doc(pid)
-          .update({'estado': 'en_curso', 'votacionId': null});
-    } else {
-      await FirebaseFirestore.instance
-          .collection('proyectos')
-          .doc(pid)
-          .update({'estado': 'cancelado', 'votacionId': null});
+          .collection('votaciones')
+          .doc(_votacionActiva!.id)
+          .update({
+        'estado': aprobado ? 'aprobada' : 'rechazada',
+        'fechaCierre': FieldValue.serverTimestamp(),
+      });
     }
-
-    final tipoResultado =
-        estado == 'aprobada' ? 'proyecto_aprobado' : 'proyecto_rechazado';
-    final mensajeResultado = estado == 'aprobada'
-        ? 'El proyecto "$nombre" fue aprobado por votación'
-        : 'El proyecto "$nombre" fue rechazado por votación';
-
-    await FirebaseFirestore.instance.collection('notificaciones').add({
-      'tipo': tipoResultado,
-      'referenciaId': pid,
-      'proyectoId': pid,
-      'votacionId': votacion.id,
-      'titulo': estado == 'aprobada' ? 'Proyecto aprobado' : 'Proyecto rechazado',
-      'mensaje': mensajeResultado,
-      'destinatarioRol': 'editor',
-      'destinatarioUid': null,
-      'leida': false,
-      'creadoEn': FieldValue.serverTimestamp(),
-    });
   }
 
   @override
@@ -635,15 +630,17 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
         }
       },
       child: Scaffold(
-        drawer: const AppDrawer(),
+        drawer: widget.onTabSelected != null ? const AppDrawer() : null,
         appBar: AppBar(
           backgroundColor: AppTheme.azulOscuro,
-          leading: Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.menu, color: Colors.white),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            ),
-          ),
+          leading: widget.onTabSelected != null
+              ? Builder(
+                  builder: (context) => IconButton(
+                    icon: const Icon(Icons.menu, color: Colors.white),
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                  ),
+                )
+              : null,
           titleSpacing: 0,
           title: Row(
             mainAxisSize: MainAxisSize.max,
@@ -675,53 +672,51 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
             ],
           ),
           actions: [AccionAuthWidget()],
-          bottom: TabBar(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white,
-            indicatorColor: const Color(0xFF00BCD4),
-            indicatorWeight: 3,
-            onTap: (index) async {
-              if (_hayCambios) {
-                final accion = await showDialog<String>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Cambios sin guardar'),
-                    content: const Text(
-                        'Tenés cambios sin guardar. ¿Qué querés hacer?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, 'cancelar'),
-                        child: const Text('Seguir editando'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, 'descartar'),
-                        child: const Text('Descartar',
-                            style: TextStyle(color: AppTheme.rojoGasto)),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx, 'guardar'),
-                        child: const Text('Guardar y salir'),
-                      ),
-                    ],
-                  ),
-                );
-                if (accion == 'cancelar' || accion == null) return;
-                if (accion == 'guardar') await _guardar(p);
-              }
-              if (!context.mounted) return;
-              if (widget.onTabSelected != null) {
-                Navigator.pop(context);
-                widget.onTabSelected!(index);
-              } else {
-                Navigator.pop(context, index);
-              }
-            },
-            tabs: [
-              Tab(icon: const Icon(Icons.play_circle, size: 18), text: 'En curso (${proyectoProvider.contarPorEstado('en_curso')})'),
-              Tab(icon: const Icon(Icons.pending, size: 18), text: 'Planificados (${proyectoProvider.contarPorEstado('planificado')})'),
-              Tab(icon: const Icon(Icons.check_circle, size: 18), text: 'Finalizados (${proyectoProvider.contarPorEstado('finalizado')})'),
-            ],
-          ),
+          bottom: widget.onTabSelected != null
+              ? TabBar(
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white,
+                  indicatorColor: const Color(0xFF00BCD4),
+                  indicatorWeight: 3,
+                  onTap: (index) async {
+                    if (_hayCambios) {
+                      final accion = await showDialog<String>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Cambios sin guardar'),
+                          content: const Text(
+                              'Tenés cambios sin guardar. ¿Qué querés hacer?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, 'cancelar'),
+                              child: const Text('Seguir editando'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, 'descartar'),
+                              child: const Text('Descartar',
+                                  style: TextStyle(color: AppTheme.rojoGasto)),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(ctx, 'guardar'),
+                              child: const Text('Guardar y salir'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (accion == 'cancelar' || accion == null) return;
+                      if (accion == 'guardar') await _guardar(p);
+                    }
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    widget.onTabSelected!(index);
+                  },
+                  tabs: [
+                    Tab(icon: const Icon(Icons.play_circle, size: 18), text: 'En curso (${proyectoProvider.contarPorEstado('en_curso')})'),
+                    Tab(icon: const Icon(Icons.pending, size: 18), text: 'Planificados (${proyectoProvider.contarPorEstado('planificado')})'),
+                    Tab(icon: const Icon(Icons.check_circle, size: 18), text: 'Finalizados (${proyectoProvider.contarPorEstado('finalizado')})'),
+                  ],
+                )
+              : null,
         ),
       bottomNavigationBar: puedeVotarProyecto && miSocio != null
           ? _BarraVotacionProyecto(
@@ -2960,52 +2955,57 @@ class _PresupuestosCardState extends State<_PresupuestosCard> {
 
   Future<void> _emitirVotoImpl(
       String presupuestoId, String valor, Socio miSocio) async {
-    // Capturar todo del contexto antes del primer await
-    final votacionProv = context.read<VotacionProvider>();
-    final socios = context.read<SocioProvider>().todos;
-    final proyecto =
-        context.read<ProyectoProvider>().obtenerPorId(widget.proyectoId);
-    final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
+    try {
+      // Capturar todo del contexto antes del primer await
+      final votacionProv = context.read<VotacionProvider>();
+      final socios = context.read<SocioProvider>().todos;
+      final proyecto =
+          context.read<ProyectoProvider>().obtenerPorId(widget.proyectoId);
+      final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
 
-    Votacion? v =
-        await votacionProv.obtenerPorObjetoFuture(presupuestoId, 'presupuesto');
+      Votacion? v =
+          await votacionProv.obtenerPorObjetoFuture(presupuestoId, 'presupuesto');
 
-    if (v == null) {
-      final sociosActivos =
-          socios.where((s) => s.activo && s.tipoSocio == 'activo').length;
-      final quorum = await votacionProv.calcularQuorum();
-      final mayoria = await votacionProv.calcularMayoriaRequerida();
+      if (v == null) {
+        final sociosActivos =
+            socios.where((s) => s.activo && s.tipoSocio == 'activo').length;
+        final quorum = await votacionProv.calcularQuorum();
+        final mayoria = await votacionProv.calcularMayoriaRequerida();
 
-      final nueva = Votacion(
+        final nueva = Votacion(
+          id: '',
+          tipo: 'presupuesto',
+          objetoId: presupuestoId,
+          titulo: 'Votación — ${proyecto?.nombre ?? widget.proyectoId}',
+          estado: 'en_curso',
+          fechaInicio: DateTime.now(),
+          totalSociosActivos: sociosActivos,
+          totalMiembrosCD: 0,
+          quorumRequerido: quorum,
+          mayoriaRequerida: mayoria,
+          usuarioId: uid,
+          fechaCreacion: DateTime.now(),
+        );
+
+        final id = await votacionProv.crear(nueva);
+        v = nueva.copyWith(id: id);
+      }
+
+      final voto = Voto(
         id: '',
-        tipo: 'presupuesto',
+        votacionId: v.id,
         objetoId: presupuestoId,
-        titulo: 'Votación — ${proyecto?.nombre ?? widget.proyectoId}',
-        estado: 'en_curso',
-        fechaInicio: DateTime.now(),
-        totalSociosActivos: sociosActivos,
-        totalMiembrosCD: 0,
-        quorumRequerido: quorum,
-        mayoriaRequerida: mayoria,
-        usuarioId: uid,
-        fechaCreacion: DateTime.now(),
+        socioId: miSocio.id,
+        tipoSocio: miSocio.tipoSocio,
+        valor: valor,
+        fecha: DateTime.now(),
       );
 
-      final id = await votacionProv.crear(nueva);
-      v = nueva.copyWith(id: id);
+      await votacionProv.emitirVoto(voto, v);
+    } catch (e) {
+      debugPrint('[VotoPresupuesto] ERROR: $e');
+      rethrow;
     }
-
-    final voto = Voto(
-      id: '',
-      votacionId: v.id,
-      objetoId: presupuestoId,
-      socioId: miSocio.id,
-      tipoSocio: miSocio.tipoSocio,
-      valor: valor,
-      fecha: DateTime.now(),
-    );
-
-    await votacionProv.emitirVoto(voto, v);
   }
 
   Future<void> _emitirAbstencion(

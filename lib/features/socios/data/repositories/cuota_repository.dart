@@ -201,8 +201,6 @@ class CuotaRepository {
         'estaAlDia': cuotasAdeudadas == 0,
       };
     } catch (e) {
-      // ignore: avoid_print
-      print('[calcularDeudaSocio] ERROR socioId=$socioId: $e');
       return {
         'deudaTotal': 0.0,
         'cuotasAdeudadas': 0,

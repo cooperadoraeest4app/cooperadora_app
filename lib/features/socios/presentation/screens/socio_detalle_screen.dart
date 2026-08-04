@@ -1235,6 +1235,7 @@ class _CuotasCardState extends State<_CuotasCard> {
     _estadoFuture = CuotaCalculoService().calcularEstado(
       socioId: widget.socio.id,
       fechaIngreso: widget.socio.fechaIngreso,
+      tipoCuotaId: widget.socio.tipoCuotaId,
     );
   }
 

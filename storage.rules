@@ -2,28 +2,42 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Comprobantes de ingresos y gastos — Editor/Admin puede escribir, público puede leer
-    match /comprobantes/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-
-    // Fotos de perfil — solo el propio usuario puede escribir
+    // Fotos de perfil — cada usuario solo puede subir la suya
     match /perfiles/{userId}/{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Resúmenes bancarios — autenticados pueden leer, solo autenticados escribir
-    match /resumenes_bancarios/{allPaths=**} {
+    // Comprobantes de movimientos — Editor/Admin
+    match /comprobantes/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.auth.token.rol == 'editor' ||
+        request.auth.token.rol == 'admin'
+      );
+    }
+
+    // Comprobantes de pagos pendientes — cualquier autenticado puede subir el suyo
+    match /comprobantes/pagos_pendientes/{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null;
     }
 
-    // Configuración general (logo, etc.) — autenticados pueden escribir
+    // Resúmenes bancarios — Editor/Admin
+    match /resumenes_bancarios/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.auth.token.rol == 'editor' ||
+        request.auth.token.rol == 'admin'
+      );
+    }
+
+    // Configuración (logo) — solo Admin
     match /configuracion/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if request.auth != null &&
+        request.auth.token.rol == 'admin';
     }
+
   }
 }
