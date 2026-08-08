@@ -1,4 +1,4 @@
-package com.example.cooperadora_app
+package com.eest4.cooperadora
 
 import io.flutter.embedding.android.FlutterActivity
 

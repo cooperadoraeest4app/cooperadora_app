@@ -1278,3 +1278,44 @@ GMAIL_EMAIL=cooperadoraeest4.app@gmail.com
 - `nodemailer`
 - `googleapis`
 
+
+---
+
+## 35. Estado v1.0.0 — Release
+
+### Build Android
+- APK: `coopeest4app.apk`
+- Package name: `com.eest4.cooperadora`
+- Versión: 1.0.0+1
+- Ícono: isologo de la cooperadora (PNG 1024×1024, fondo azulOscuro #1A3A5C)
+- Generado con `flutter_launcher_icons`
+
+### Deploy Web
+- URL: cooperadora-app.web.app
+- Firebase Hosting activo
+
+### Pendiente antes de release definitivo
+- Actualizar `google-services.json` con package name `com.eest4.cooperadora` (Firebase Console → agregar app Android)
+
+### Pendientes v1.1
+- Push notifications nativas Android (Firebase Cloud Messaging)
+- Autenticación biométrica (huella digital)
+- Emails masivos para votaciones y proyectos aprobados
+- Exportación Excel del balance con mejor formato
+- Fix edición ingreso cuota social no guarda socio
+- Fix borrar ingreso cuota social no revierte pago
+
+### Arquitectura Cloud Functions final
+Cuatro funciones en `southamerica-east1`:
+1. `onPagoCuotaConfirmado` — email al confirmar/rechazar pago de cuota
+2. `onVotacionAprobada` — actualiza proyecto a en_curso O ítems a presupuestos_aprobados + notificaciones
+3. `onVotacionRechazada` — actualiza proyecto a cancelado
+4. `migrarCustomClaims` — HTTP function para migrar roles a Custom Claims (ejecutar una vez)
+5. `onUsuarioCreado` — setea Custom Claim al crear usuario
+6. `onUsuarioActualizado` — actualiza Custom Claim cuando cambia el rol
+
+### Seguridad
+- Firebase Storage: reglas basadas en Custom Claims (`request.auth.token.rol`)
+- Firebase Auth: Custom Claims seteados via Cloud Functions
+- Firestore: reglas con funciones helper `esAdmin()`, `esEditor()`, `estaAutenticado()`, `estaActivo()`
+

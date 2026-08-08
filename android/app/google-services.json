@@ -7,12 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:963645798761:android:615eae72a30ba7653e25f8",
+        "mobilesdk_app_id": "1:963645798761:android:48d8e7f1262482473e25f8",
         "android_client_info": {
           "package_name": "com.eest4.cooperadora"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "963645798761-ov0b0ndmr524pr4gpv4jg4tun4p85t14.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAFKUJQmEDRwhV1vUVCeA4PmyWMrdKxSAk"
@@ -20,7 +25,41 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "963645798761-ov0b0ndmr524pr4gpv4jg4tun4p85t14.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:963645798761:android:615eae72a30ba7653e25f8",
+        "android_client_info": {
+          "package_name": "com.example.cooperadora_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "963645798761-ov0b0ndmr524pr4gpv4jg4tun4p85t14.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFKUJQmEDRwhV1vUVCeA4PmyWMrdKxSAk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "963645798761-ov0b0ndmr524pr4gpv4jg4tun4p85t14.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
