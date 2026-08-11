@@ -12,6 +12,7 @@ import '../providers/auth_provider.dart';
 import '../../../admin/presentation/providers/cargo_provider.dart';
 import '../../../socios/data/repositories/socio_repository.dart';
 import '../../../socios/presentation/screens/credencial_socio_screen.dart';
+import '../../../socios/presentation/widgets/recibo_pago_widget.dart';
 import '../../../socios/domain/models/socio.dart';
 import '../../../socios/domain/services/cuota_calculo_service.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
@@ -920,6 +921,10 @@ class _PerfilScreenState extends State<PerfilScreen> {
                                         DateFormat('dd/MM/yyyy')
                                             .format(pago.fechaPago),
                                         style: const TextStyle(fontSize: 11),
+                                      ),
+                                      trailing: ReciboPagoWidget(
+                                        pagoId: pago.id,
+                                        socioId: _socioIdResuelto!,
                                       ),
                                     )),
                                 const SizedBox(height: 10),

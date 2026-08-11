@@ -29,6 +29,7 @@ import '../../domain/models/subtipo_socio.dart';
 import '../../domain/models/tipo_socio.dart';
 import '../../domain/services/cuota_calculo_service.dart';
 import '../providers/socio_provider.dart';
+import '../widgets/recibo_pago_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 import '../../../../shared/widgets/seccion_hijos_widget.dart';
 
@@ -1435,6 +1436,7 @@ class _CuotasCardState extends State<_CuotasCard> {
                     else
                       ...estado.pagos.map((p) => _PagoTile(
                             pago: p,
+                            socioId: widget.socio.id,
                             puedeEliminar: widget.puedeGestionar,
                             onEliminar: () => _eliminarPago(p.id),
                           )),
@@ -1468,10 +1470,12 @@ class _CuotasCardState extends State<_CuotasCard> {
 class _PagoTile extends StatelessWidget {
   const _PagoTile({
     required this.pago,
+    required this.socioId,
     required this.puedeEliminar,
     required this.onEliminar,
   });
   final PagoCuota pago;
+  final String socioId;
   final bool puedeEliminar;
   final VoidCallback onEliminar;
 
@@ -1526,6 +1530,7 @@ class _PagoTile extends StatelessWidget {
               ],
             ),
           ),
+          ReciboPagoWidget(pagoId: pago.id, socioId: socioId),
           if (puedeEliminar)
             IconButton(
               icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.rojoGasto),

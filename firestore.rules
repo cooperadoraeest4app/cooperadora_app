@@ -215,6 +215,13 @@ service cloud.firestore {
       allow update: if esEditor() && estaActivo();
     }
 
+    match /recibos/{doc} {
+      allow read: if estaAutenticado();
+      allow create: if estaAutenticado();
+      allow update: if esAdmin() && estaActivo();
+      allow delete: if esAdmin() && estaActivo();
+    }
+
     match /notificaciones/{doc} {
       allow read: if estaAutenticado();
       allow create: if estaAutenticado();
