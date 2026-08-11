@@ -1319,3 +1319,54 @@ Cuatro funciones en `southamerica-east1`:
 - Firebase Auth: Custom Claims seteados via Cloud Functions
 - Firestore: reglas con funciones helper `esAdmin()`, `esEditor()`, `estaAutenticado()`, `estaActivo()`
 
+
+---
+
+## 36. Actualizaciones post v1.0.0
+
+### Navegación unificada de Proyectos
+- `ProyectoDetalleScreen` tiene las 3 tabs (En curso / Planificados / Finalizados) en el AppBar
+- Al cambiar de tab desde el detalle usa `Navigator.pushReplacement` a `ProyectosScreen(tabInicial: index)`
+- `ProyectosScreen` acepta parámetro `tabInicial` (default 0)
+- Navegación consistente desde Home, Notificaciones y VotacionesScreen
+
+### Fix package name Android v1.0.1
+- Package name: `com.eest4.cooperadora`
+- `MainActivity.kt` movida a `kotlin/com/eest4/cooperadora/`
+- `google-services.json` actualizado con nueva app registrada en Firebase Console
+- APK: `coopeest4app.apk`
+
+### Seguridad — Custom Claims
+- Cloud Functions `onUsuarioCreado` y `onUsuarioActualizado` setean `{rol: ...}` en Firebase Auth
+- `migrarCustomClaims` — función HTTP para migrar usuarios existentes
+- Storage rules usan `request.auth.token.rol` para verificar Editor/Admin
+- Flutter fuerza refresh del token con `getIdToken(true)` al iniciar sesión
+
+### Mejoras Mi Perfil
+- Foto de perfil visible en el avatar del AppBar (leída desde `usuarios/{uid}.fotoUrl`)
+- Subtipo de socio muestra nombre legible (lookup en `subtipos_socio`)
+- Historial de cuotas con cálculo correcto filtrando por tipo mensual
+- Fallback de `socioId`: si no está en el documento de usuario, busca por `personaId`
+
+### Arquitectura votaciones — Cloud Functions
+- Flutter solo escribe en `votos` y actualiza estado de `votaciones`
+- Cloud Functions manejan todas las consecuencias:
+  - Proyecto aprobado → `en_curso` + notificaciones a socios
+  - Proyecto rechazado → `cancelado`
+  - Presupuesto aprobado → ítems a `presupuestos_aprobados`
+- Eliminado código duplicado de recálculo en Flutter
+
+### Limpieza producción
+- `kMostrarOpcionesTestingDestructivas = false`
+- `modoTesting = false` en Firestore
+- Prints de diagnóstico eliminados
+
+### Pendiente v1.1 — Recibos de pago
+- Entidad `recibos` con numeración correlativa anual (requisito legal AFIP/cooperadoras)
+- Número reinicia cada 1° de mayo (ejercicio económico)
+- PDF de recibo con: logo, fecha, "CUOTA SOCIAL", nombre socio, hijos (sin curso), medio de pago, monto, registrado por, tesorero
+- QR identificador del recibo
+- Formato 16×11cm
+- Generado desde Mi Perfil y desde pantalla de Socios (Admin/Editor)
+- Descarga del comprobante original adjunto al pago
+
