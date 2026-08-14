@@ -11,6 +11,7 @@ class PagoCuota {
   final String usuarioId;
   final DateTime fechaCreacion;
   final String? migradoDeCuotaId;
+  final String? comprobanteUrl;
 
   const PagoCuota({
     required this.id,
@@ -23,6 +24,7 @@ class PagoCuota {
     required this.usuarioId,
     required this.fechaCreacion,
     this.migradoDeCuotaId,
+    this.comprobanteUrl,
   });
 
   Map<String, dynamic> toMap() => {
@@ -35,6 +37,7 @@ class PagoCuota {
         'usuarioId': usuarioId,
         'fechaCreacion': Timestamp.fromDate(fechaCreacion),
         if (migradoDeCuotaId != null) 'migradoDeCuotaId': migradoDeCuotaId,
+        if (comprobanteUrl != null) 'comprobanteUrl': comprobanteUrl,
       };
 
   factory PagoCuota.fromMap(Map<String, dynamic> map, String id) {
@@ -50,6 +53,7 @@ class PagoCuota {
       usuarioId: map['usuarioId'] as String? ?? '',
       fechaCreacion: ts(map['fechaCreacion']),
       migradoDeCuotaId: map['migradoDeCuotaId'] as String?,
+      comprobanteUrl: map['comprobanteUrl'] as String?,
     );
   }
 }

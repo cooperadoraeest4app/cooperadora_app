@@ -562,6 +562,7 @@ class _AgregarMovimientoScreenState extends State<AgregarMovimientoScreen> {
             'metodoPagoId': metodoPagoId,
             'fechaPago': Timestamp.fromDate(_fecha),
             'ingresoId': ingresoId,
+            if (comprobanteResultante != null) 'comprobanteUrl': comprobanteResultante,
             'usuarioId': uid,
             'fechaCreacion': FieldValue.serverTimestamp(),
           });

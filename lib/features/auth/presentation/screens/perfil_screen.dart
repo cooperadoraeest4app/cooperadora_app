@@ -18,6 +18,7 @@ import '../../../socios/domain/services/cuota_calculo_service.dart';
 import '../../../../shared/widgets/accion_auth_widget.dart';
 import '../../../../shared/widgets/app_drawer.dart';
 import '../../../../shared/widgets/seccion_hijos_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PerfilScreen extends StatefulWidget {
   const PerfilScreen({super.key});
@@ -50,7 +51,9 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
   DateTime? _fechaNacimiento;
   bool _esFiscal = false;
-  String? _subtipo;
+  String? _subtipoId;
+  String? _tipoSocio;
+  List<QueryDocumentSnapshot> _subtipos = [];
   bool _subiendo = false;
   bool _guardando = false;
   bool _initialized = false;
@@ -126,6 +129,8 @@ class _PerfilScreenState extends State<PerfilScreen> {
         .get();
     if (!socioDoc.exists) return null;
     final socio = Socio.fromMap(socioDoc.data()!, socioDoc.id);
+    if (mounted) setState(() => _tipoSocio = socio.tipoSocio);
+    _cargarSubtipos(socio.tipoSocio);
 
     try {
       final estado = await CuotaCalculoService().calcularEstado(
@@ -154,7 +159,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
   void _poblarCampos(Map<String, dynamic> persona) {
     _esFiscal = persona['tipoPersona'] == 'fiscal';
-    _resolverSubtipo(persona['subtipo'] as String?);
+    _subtipoId = persona['subtipo'] as String?;
 
     _nombreOrig = persona['nombre'] as String? ?? '';
     _apellidoOrig = persona['apellido'] as String? ?? '';
@@ -179,17 +184,21 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
   }
 
-  Future<void> _resolverSubtipo(String? subtipoId) async {
-    if (subtipoId == null || subtipoId.isEmpty) {
-      _subtipo = null;
-      return;
-    }
-    final doc = await FirebaseFirestore.instance
+  Future<void> _cargarSubtipos(String tipoSocio) async {
+    print('[Perfil] tipoSocio: $tipoSocio');
+    final snap = await FirebaseFirestore.instance
         .collection('subtipos_socio')
-        .doc(subtipoId)
+        .where('aplicaA', arrayContains: tipoSocio)
+        .orderBy('nombre')
         .get();
+    print('[Perfil] subtipos cargados: ${snap.docs.length}');
+    print('[Perfil] subtipoId actual: $_subtipoId');
     if (mounted) {
-      setState(() => _subtipo = doc.data()?['nombre'] as String? ?? subtipoId);
+      setState(() {
+        _subtipos = snap.docs;
+        final subtipoEnLista = _subtipos.any((doc) => doc.id == _subtipoId);
+        if (!subtipoEnLista) _subtipoId = null;
+      });
     }
   }
 
@@ -617,9 +626,37 @@ class _PerfilScreenState extends State<PerfilScreen> {
                         ),
                         const SizedBox(height: 12),
                         _CampoSoloLectura(label: 'Email', valor: email),
-                        if (_subtipo != null && _subtipo!.isNotEmpty) ...[
+                        if (_subtipos.isNotEmpty) ...[
                           const SizedBox(height: 12),
-                          _CampoSoloLectura(label: 'Tipo', valor: _subtipo!),
+                          DropdownButtonFormField<String>(
+                            key: ValueKey(_subtipoId),
+                            initialValue: _subtipoId,
+                            hint: const Text('Seleccioná tu tipo'),
+                            decoration: InputDecoration(
+                              labelText: 'Tipo',
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 14),
+                            ),
+                            items: _subtipos
+                                .map((doc) => DropdownMenuItem<String>(
+                                      value: doc.id,
+                                      child: Text(
+                                          (doc.data() as Map<String, dynamic>)[
+                                              'nombre'] as String),
+                                    ))
+                                .toList(),
+                            onChanged: (nuevoId) async {
+                              if (nuevoId == null || nuevoId == _subtipoId) {
+                                return;
+                              }
+                              setState(() => _subtipoId = nuevoId);
+                              await context
+                                  .read<AuthProvider>()
+                                  .actualizarPerfil(subtipo: nuevoId);
+                            },
+                          ),
                         ],
                         const SizedBox(height: 12),
                         Builder(
@@ -922,9 +959,47 @@ class _PerfilScreenState extends State<PerfilScreen> {
                                             .format(pago.fechaPago),
                                         style: const TextStyle(fontSize: 11),
                                       ),
-                                      trailing: ReciboPagoWidget(
-                                        pagoId: pago.id,
-                                        socioId: _socioIdResuelto!,
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          ReciboPagoWidget(
+                                            pagoId: pago.id,
+                                            socioId: _socioIdResuelto!,
+                                          ),
+                                          if (pago.comprobanteUrl != null ||
+                                              pago.ingresoId != null)
+                                            IconButton(
+                                              icon: const Icon(Icons.attach_file,
+                                                  color: AppTheme.azulMedio,
+                                                  size: 18),
+                                              tooltip: 'Ver comprobante',
+                                              padding: EdgeInsets.zero,
+                                              constraints:
+                                                  const BoxConstraints(),
+                                              onPressed: () async {
+                                                String? urlStr =
+                                                    pago.comprobanteUrl;
+                                                if (urlStr == null &&
+                                                    pago.ingresoId != null) {
+                                                  final doc =
+                                                      await FirebaseFirestore
+                                                          .instance
+                                                          .collection('ingresos')
+                                                          .doc(pago.ingresoId)
+                                                          .get();
+                                                  urlStr = doc.data()?[
+                                                      'comprobante'] as String?;
+                                                }
+                                                if (urlStr == null) return;
+                                                final url = Uri.parse(urlStr);
+                                                if (await canLaunchUrl(url)) {
+                                                  await launchUrl(url,
+                                                      mode: LaunchMode
+                                                          .externalApplication);
+                                                }
+                                              },
+                                            ),
+                                        ],
                                       ),
                                     )),
                                 const SizedBox(height: 10),

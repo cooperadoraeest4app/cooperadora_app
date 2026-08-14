@@ -218,6 +218,9 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
 
   bool _hayCambios = false;
   bool _guardando = false;
+  static final Set<String> _proyectosPopupMostrado = {};
+  List<Votacion> _votacionesPresupuestos = [];
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _votacionesPresupuestosSub;
 
   Future<void> Function(String)? _scrollToPresupuesto;
 
@@ -249,12 +252,23 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
         if (mounted) setState(() => _votosProyecto = []);
       }
     });
+    _votacionesPresupuestosSub = FirebaseFirestore.instance
+        .collection('votaciones')
+        .where('tipo', isEqualTo: 'presupuesto')
+        .where('proyectoId', isEqualTo: widget.proyecto.id)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      setState(() => _votacionesPresupuestos =
+          snap.docs.map((d) => Votacion.fromMap(d.data(), d.id)).toList());
+    });
   }
 
   @override
   void dispose() {
     _votacionSub?.cancel();
     _votosSub?.cancel();
+    _votacionesPresupuestosSub?.cancel();
     _nombreCtrl.dispose();
     _descripcionCtrl.dispose();
     _presupuestoCtrl.dispose();
@@ -543,6 +557,67 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
     }
   }
 
+  void _mostrarPopupVotacionSiCorresponde(Voto? miVotoProyecto) {
+    if (_proyectosPopupMostrado.contains(widget.proyecto.id)) return;
+
+    final hayVotacionProyecto = _votacionActiva?.estado == 'en_curso';
+    final hayVotacionPresupuestos =
+        _votacionesPresupuestos.any((v) => v.estado == 'en_curso');
+
+    if (!hayVotacionProyecto && !hayVotacionPresupuestos) return;
+
+    _proyectosPopupMostrado.add(widget.proyecto.id);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (hayVotacionProyecto && miVotoProyecto == null) {
+        _mostrarPopupVotarProyecto();
+      } else if (hayVotacionPresupuestos) {
+        _mostrarPopupVotarPresupuestos();
+      }
+    });
+  }
+
+  void _mostrarPopupVotarProyecto() {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        icon: const Icon(Icons.how_to_vote, size: 32, color: AppTheme.azulMedio),
+        title: const Text('Votación activa'),
+        content: const Text(
+          'Hay una votación activa para este proyecto. '
+          'Podés emitir tu voto a favor, en contra o abstenerte.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _mostrarPopupVotarPresupuestos() {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        icon: const Icon(Icons.receipt_long, size: 32, color: AppTheme.verdeTeal),
+        title: const Text('Votá los presupuestos'),
+        content: const Text(
+          'Ya votaste el proyecto. Ahora podés votar los presupuestos '
+          'que tengan votación activa.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final proyectoProvider = context.watch<ProyectoProvider>();
@@ -574,6 +649,10 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
             .cast<Voto?>()
             .firstOrNull
         : null;
+
+    if (miSocio?.tipoSocio == 'activo') {
+      _mostrarPopupVotacionSiCorresponde(miVotoProyecto);
+    }
 
     final votosActivosProyecto =
         _votosProyecto.where((v) => v.tipoSocio == 'activo').toList();
@@ -2127,6 +2206,153 @@ class _ItemsCardState extends State<_ItemsCard> {
     }
   }
 
+  void _mostrarDetalleItem(ItemProyecto item, bool puedeGestionar) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (_, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppTheme.celesteBorde,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.descripcion,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  _ChipEstado(estado: item.estado),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (item.cantidad != null)
+                _FilaDetalleItem(
+                  'Cantidad',
+                  '${item.cantidad} ${item.unidad ?? ''}'.trim(),
+                ),
+              if (item.montoEstimado > 0)
+                _FilaDetalleItem('Monto estimado', _fmt(item.montoEstimado)),
+              if (item.presupuestosIds.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Presupuesto${item.presupuestosIds.length > 1 ? 's' : ''}:',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppTheme.textoSecundario),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  children: item.presupuestosIds.map((pid) {
+                    final idx = _presupuestos.indexWhere((p) => p.id == pid);
+                    if (idx == -1) return const SizedBox.shrink();
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onScrollToPresupuesto?.call(pid);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppTheme.celesteFondo,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppTheme.celesteBorde),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.description,
+                                size: 10, color: AppTheme.azulOscuro),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${idx + 1}',
+                              style: const TextStyle(
+                                  fontSize: 10, color: AppTheme.azulOscuro),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  NombreUsuarioWidget(
+                    usuarioId: item.usuarioId,
+                    prefijo: 'Creó: ',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textoSecundario),
+                  ),
+                  Text(
+                    ' · ${DateFormat('dd/MM/yyyy').format(item.fechaCreacion)}',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textoSecundario),
+                  ),
+                ],
+              ),
+              if (item.ultimaModificacionPor != null) ...[
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    NombreUsuarioWidget(
+                      usuarioId: item.ultimaModificacionPor!,
+                      prefijo: 'Modificó: ',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppTheme.textoSecundario),
+                    ),
+                    if (item.ultimaModificacionFecha != null)
+                      Text(
+                        ' · ${DateFormat('dd/MM/yyyy').format(item.ultimaModificacionFecha!)}',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppTheme.textoSecundario),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              if (puedeGestionar)
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('Editar ítem'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.azulMedio,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 44),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _abrirModal(item);
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -2176,12 +2402,11 @@ class _ItemsCardState extends State<_ItemsCard> {
                   children: items
                       .map((item) => _ItemTile(
                             item: item,
-                            presupuestos: _presupuestos,
                             puedeGestionar: puedeGestionar,
                             onEdit: () => _abrirModal(item),
                             onDelete: () => _eliminarItem(item.id),
-                            onScrollToPresupuesto:
-                                widget.onScrollToPresupuesto,
+                            onShowDetail: () =>
+                                _mostrarDetalleItem(item, puedeGestionar),
                           ))
                       .toList(),
                 );
@@ -2236,209 +2461,105 @@ class _ChipEstado extends StatelessWidget {
 class _ItemTile extends StatelessWidget {
   const _ItemTile({
     required this.item,
-    required this.presupuestos,
     required this.puedeGestionar,
     required this.onEdit,
     required this.onDelete,
-    this.onScrollToPresupuesto,
+    required this.onShowDetail,
   });
 
   final ItemProyecto item;
-  final List<PresupuestoProyecto> presupuestos;
   final bool puedeGestionar;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  final Future<void> Function(String)? onScrollToPresupuesto;
+  final VoidCallback onShowDetail;
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Fila principal (tabla sin bordes) ──
-        const SizedBox(height: 4),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              flex: 2,
-              child: SizedBox(
-                height: 24,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    item.descripcion,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: SizedBox(
-                height: 24,
-                child: Center(
-                  child: Text(
-                    item.cantidad != null
-                        ? '${item.cantidad} ${item.unidad ?? ''}'.trim()
-                        : '',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppTheme.textoSecundario),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: SizedBox(
-                height: 24,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    item.montoEstimado > 0 ? _fmt(item.montoEstimado) : '',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppTheme.textoSecundario),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: SizedBox(
-                height: 24,
-                child: Center(child: _ChipEstado(estado: item.estado)),
-              ),
-            ),
-            if (puedeGestionar)
-              SizedBox(
-                height: 24,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit_outlined, size: 16),
-                      onPressed: onEdit,
-                      color: AppTheme.azulMedio,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                          maxWidth: 24, maxHeight: 24),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 16),
-                      onPressed: onDelete,
-                      color: AppTheme.rojoGasto,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                          maxWidth: 24, maxHeight: 24),
-                    ),
-                  ],
-                ),
-              )
-            else
-              const SizedBox.shrink(),
-          ],
-        ),
-        if (item.presupuestosIds.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  item.presupuestosIds.length == 1
-                      ? 'Presupuesto:'
-                      : 'Presupuestos:',
-                  style: const TextStyle(
-                      fontSize: 11, color: AppTheme.textoSecundario),
-                ),
-                const SizedBox(width: 6),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: item.presupuestosIds.map((pid) {
-                    final idx = presupuestos.indexWhere((p) => p.id == pid);
-                    if (idx == -1) return const SizedBox.shrink();
-                    return GestureDetector(
-                      onTap: onScrollToPresupuesto != null
-                          ? () => onScrollToPresupuesto!(pid)
-                          : null,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.celesteFondo,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppTheme.azulMedio),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.description,
-                                size: 11, color: AppTheme.azulMedio),
-                            const SizedBox(width: 3),
-                            Text(
-                              '${idx + 1}',
-                              style: const TextStyle(
-                                  fontSize: 11, color: AppTheme.azulMedio),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
-        // ── Línea de auditoría ──
-        if (auth.isLoggedIn) ...[
-          const SizedBox(height: 2),
-          Row(
+        ListTile(
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          title: Row(
             children: [
-              NombreUsuarioWidget(
-                usuarioId: item.usuarioId,
-                prefijo: 'Creó: ',
-                style: const TextStyle(
-                    fontSize: 11, color: AppTheme.textoSecundario),
-              ),
-              Text(
-                ' · ${DateFormat('dd/MM/yyyy').format(item.fechaCreacion)}',
-                style: const TextStyle(
-                    fontSize: 11, color: AppTheme.textoSecundario),
-              ),
-              if (item.ultimaModificacionPor != null) ...[
-                const Text(
-                  '  |  ',
-                  style: TextStyle(
-                      fontSize: 11, color: AppTheme.textoSecundario),
-                ),
-                NombreUsuarioWidget(
-                  usuarioId: item.ultimaModificacionPor!,
-                  prefijo: 'Modificó: ',
+              Expanded(
+                child: Text(
+                  item.descripcion,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 11, color: AppTheme.textoSecundario),
+                      fontSize: 14, fontWeight: FontWeight.w500),
                 ),
-                if (item.ultimaModificacionFecha != null)
-                  Text(
-                    ' · ${DateFormat('dd/MM/yyyy').format(item.ultimaModificacionFecha!)}',
-                    style: const TextStyle(
-                        fontSize: 11, color: AppTheme.textoSecundario),
+              ),
+              const SizedBox(width: 8),
+              if (item.montoEstimado > 0)
+                Text(
+                  _fmt(item.montoEstimado),
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+              const SizedBox(width: 8),
+              _ChipEstado(estado: item.estado),
+              const SizedBox(width: 4),
+              if (puedeGestionar) ...[
+                InkWell(
+                  onTap: onEdit,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.edit,
+                        size: 16, color: AppTheme.azulMedio),
                   ),
+                ),
+                InkWell(
+                  onTap: onDelete,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.delete,
+                        size: 16, color: AppTheme.rojoGasto),
+                  ),
+                ),
               ],
             ],
           ),
-          const SizedBox(height: 8),
-        ] else
-          const SizedBox(height: 4),
+          onTap: onShowDetail,
+        ),
         const Divider(color: AppTheme.celesteBorde, height: 1),
       ],
+    );
+  }
+}
+
+// ── _FilaDetalleItem ──────────────────────────────────────────────────────────
+
+class _FilaDetalleItem extends StatelessWidget {
+  const _FilaDetalleItem(this.label, this.valor);
+  final String label;
+  final String valor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                  fontSize: 13, color: AppTheme.textoSecundario),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              valor,
+              style: const TextStyle(
+                  fontSize: 13, color: AppTheme.textoPrincipal),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2496,6 +2617,30 @@ class _ModalItemState extends State<_ModalItem> {
 
   Future<void> _guardar() async {
     if (!_form.currentState!.validate()) return;
+    if (widget.item != null) {
+      final confirmar = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Confirmar cambios'),
+          content: const Text(
+              '¿Confirmás que querés guardar los cambios en este ítem?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.verdeTeal,
+                  foregroundColor: Colors.white),
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
+      );
+      if (confirmar != true || !mounted) return;
+    }
     setState(() => _saving = true);
     final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
     try {
@@ -3007,13 +3152,6 @@ class _PresupuestosCardState extends State<_PresupuestosCard> {
     }
   }
 
-  Future<void> _emitirAbstencion(
-      List<PresupuestoProyecto> votables, Socio socio) async {
-    for (final p in votables) {
-      await _emitirVotoImpl(p.id, 'abstencion', socio);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -3105,6 +3243,9 @@ class _PresupuestosCardState extends State<_PresupuestosCard> {
                     );
                   }
                   for (final p in presupuestosGrupo) {
+                    final votacionActivaPres =
+                        _todasVotaciones[p.id]?.estado == 'en_curso';
+                    final puedeVotarEste = puedeVotar && votacionActivaPres;
                     tiles.add(_PresupuestoTile(
                       key: _keyParaPresupuesto(p.id),
                       presupuesto: p,
@@ -3119,26 +3260,15 @@ class _PresupuestosCardState extends State<_PresupuestosCard> {
                       onEdit: () => _abrirModal(p),
                       onDelete: () => _eliminar(p),
                       miSocio: miSocio,
-                      puedeVotar: puedeVotar,
-                      onVotar: onVotar,
+                      puedeVotar: puedeVotarEste,
+                      onVotar: puedeVotarEste ? onVotar : (pid, val) async {},
                       estadoPresupuesto: _estadoPresupuesto(p.id),
                       aprobadoEnGrupo:
                           _presupuestoAprobadoEnGrupo(p, items, _items),
                     ));
                   }
                 }
-final votables = items.where((pres) {
-                  final e = _estadoPresupuesto(pres.id);
-                  return e != 'aprobado' && e != 'comprado';
-                }).toList();
-                return Column(children: [
-                  ...tiles,
-                  if (puedeVotar && votables.isNotEmpty)
-                    _ItemAbstencion(
-                      onVotar: () =>
-                          _emitirAbstencion(votables, miSocio),
-                    ),
-                ]);
+                return Column(children: tiles);
               },
             ),
           ],
@@ -3289,7 +3419,7 @@ class _PresupuestoTileState extends State<_PresupuestoTile> {
     final puedeVotarEste = widget.puedeVotar && !votacionCerrada;
     final estaDescartado = widget.aprobadoEnGrupo != null && !votacionCerrada;
 
-    Widget iconoHeader() {
+    Widget? iconoHeader() {
       if (votacionCerrada) {
         return Container(
           width: 28,
@@ -3325,6 +3455,8 @@ class _PresupuestoTileState extends State<_PresupuestoTile> {
           child: Icon(Icons.remove, color: Colors.grey.shade400, size: 14),
         );
       }
+      // Sin votación activa y sin voto emitido → no mostrar ícono
+      if (!widget.puedeVotar && miVoto == null) return null;
       return GestureDetector(
         onTap: widget.puedeVotar && !widget.expandido ? widget.onToggle : null,
         child: Container(
@@ -3376,8 +3508,10 @@ class _PresupuestoTileState extends State<_PresupuestoTile> {
                     horizontal: 10, vertical: 10),
                 child: Row(
                   children: [
-                    iconoHeader(),
-                    const SizedBox(width: 8),
+                    if (iconoHeader() case final icono?) ...[
+                      icono,
+                      const SizedBox(width: 8),
+                    ],
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3829,83 +3963,6 @@ class _PresupuestoTileState extends State<_PresupuestoTile> {
                   TextStyle(color: AppTheme.textoSecundario, fontSize: 13),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _ItemAbstencion extends StatelessWidget {
-  const _ItemAbstencion({required this.onVotar});
-  final VoidCallback onVotar;
-
-  Future<void> _confirmarAbstencion(BuildContext context) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('¿Abstenerse de todos?'),
-        content: const Text(
-            'Se registrará tu abstención en todos los presupuestos pendientes.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Confirmar')),
-        ],
-      ),
-    );
-    if (confirm == true) onVotar();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _confirmarAbstencion(context),
-      child: Container(
-        margin: const EdgeInsets.only(top: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF9F9F9),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFF9CA3AF), width: 1.5),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.transparent,
-                  border:
-                      Border.all(color: const Color(0xFF9CA3AF), width: 1.5),
-                ),
-                child: const Icon(Icons.pan_tool,
-                    size: 14, color: Color(0xFF6B7A99)),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'Me abstengo de votar todos',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.textoSecundario),
-                  ),
-                  Text(
-                    'Cuenta para el quórum',
-                    style: TextStyle(
-                        fontSize: 11, color: Color(0xFF9CA3AF)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

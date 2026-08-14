@@ -31,6 +31,7 @@ class _ConfirmarPagoCuotaScreenState
       final monto = (data['monto'] as num).toDouble();
       final fechaPago = (data['fechaPago'] as Timestamp).toDate();
       final observaciones = data['observaciones'] as String?;
+      final comprobanteUrl = data['comprobanteUrl'] as String?;
       final usuarioUid = data['usuarioUid'] as String? ?? '';
       final editorUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
@@ -55,6 +56,7 @@ class _ConfirmarPagoCuotaScreenState
         'metodoPagoId': 'transferencia',
         'fechaPago': Timestamp.fromDate(fechaPago),
         'observaciones': observaciones,
+        if (comprobanteUrl != null) 'comprobanteUrl': comprobanteUrl,
         'usuarioId': usuarioUid,
         'fechaCreacion': FieldValue.serverTimestamp(),
         'pagoPendienteId': widget.pagoPendienteId,

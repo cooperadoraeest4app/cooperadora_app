@@ -167,6 +167,7 @@ class AuthProvider extends ChangeNotifier {
     String? telefono,
     String? direccion,
     String? fotoUrl,
+    String? subtipo,
   }) async {
     final uid = currentUser?.uid;
     if (uid == null) return;
@@ -186,6 +187,7 @@ class AuthProvider extends ChangeNotifier {
     if (telefono != null) updates['telefono'] = telefono;
     if (direccion != null) updates['direccion'] = direccion;
     if (fotoUrl != null) updates['fotoUrl'] = fotoUrl;
+    if (subtipo != null) updates['subtipo'] = subtipo;
 
     if (updates.isEmpty) return;
 

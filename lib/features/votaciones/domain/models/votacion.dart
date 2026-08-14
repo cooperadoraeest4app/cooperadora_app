@@ -17,6 +17,7 @@ class Votacion {
   final DateTime fechaCreacion;
   final DateTime? fechaCierre;
   final String? presupuestoAprobadoId;
+  final String? proyectoId;
 
   const Votacion({
     required this.id,
@@ -35,6 +36,7 @@ class Votacion {
     required this.fechaCreacion,
     this.fechaCierre,
     this.presupuestoAprobadoId,
+    this.proyectoId,
   });
 
   Map<String, dynamic> toMap() => {
@@ -53,6 +55,7 @@ class Votacion {
         'fechaCreacion': Timestamp.fromDate(fechaCreacion),
         if (fechaCierre != null) 'fechaCierre': Timestamp.fromDate(fechaCierre!),
         if (presupuestoAprobadoId != null) 'presupuestoAprobadoId': presupuestoAprobadoId,
+        if (proyectoId != null) 'proyectoId': proyectoId,
       };
 
   factory Votacion.fromMap(Map<String, dynamic> map, String id) {
@@ -76,6 +79,7 @@ class Votacion {
       fechaCreacion: ts(map['fechaCreacion']),
       fechaCierre: tsN(map['fechaCierre']),
       presupuestoAprobadoId: map['presupuestoAprobadoId'] as String?,
+      proyectoId: map['proyectoId'] as String?,
     );
   }
 
@@ -84,6 +88,7 @@ class Votacion {
     String? estado,
     DateTime? fechaCierre,
     String? presupuestoAprobadoId,
+    String? proyectoId,
   }) =>
       Votacion(
         id: id ?? this.id,
@@ -102,5 +107,6 @@ class Votacion {
         fechaCreacion: fechaCreacion,
         fechaCierre: fechaCierre ?? this.fechaCierre,
         presupuestoAprobadoId: presupuestoAprobadoId ?? this.presupuestoAprobadoId,
+        proyectoId: proyectoId ?? this.proyectoId,
       );
 }

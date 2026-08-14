@@ -208,27 +208,76 @@ exports.onVotacionAprobada = functions.firestore.onDocumentUpdated(
 
     try {
       if (tipo === 'proyecto') {
+        const proyectoId = objetoId;
+
         await admin.firestore()
           .collection('proyectos')
-          .doc(objetoId)
+          .doc(proyectoId)
           .update({ estado: 'en_curso' });
-        console.log(`[VotacionAprobada] Proyecto ${objetoId} → en_curso`);
+        console.log(`[VotacionAprobada] Proyecto ${proyectoId} → en_curso`);
 
+        // Obtener presupuestos del proyecto y crear votaciones para cada uno
+        const presupuestosSnap = await admin.firestore()
+          .collection('presupuestos_proyecto')
+          .where('proyectoId', '==', proyectoId)
+          .get();
+
+        const configSnap = await admin.firestore()
+          .collection('configuracion').doc('config').get();
+        const cfg = configSnap.data() ?? {};
+        const modoTesting = cfg.modoTesting ?? false;
+        const quorum = modoTesting ? 1 : Math.max(
+          cfg.quorumPisoSociosDirecta ?? 15,
+          Math.ceil((cfg.quorumPorcentajeCD ?? 0.3) *
+            (cfg.totalMiembrosCD ?? 0) *
+            (cfg.quorumMultiplicadorSocios ?? 3))
+        );
+        const mayoria = modoTesting ? 50 : (cfg.mayoriaRequerida ?? 66.67);
+
+        if (!presupuestosSnap.empty) {
+          const batchPres = admin.firestore().batch();
+          for (const pres of presupuestosSnap.docs) {
+            const votacionRef = admin.firestore().collection('votaciones').doc();
+            batchPres.set(votacionRef, {
+              tipo: 'presupuesto',
+              objetoId: pres.id,
+              proyectoId: proyectoId,
+              titulo: `Votación — ${pres.data().descripcion ?? 'Presupuesto'}`,
+              estado: 'en_curso',
+              fechaInicio: admin.firestore.FieldValue.serverTimestamp(),
+              fechaLimite: null,
+              totalSociosActivos: 0,
+              totalMiembrosCD: 0,
+              quorumRequerido: quorum,
+              mayoriaRequerida: mayoria,
+              usuarioId: 'sistema',
+              fechaCreacion: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+          await batchPres.commit();
+          console.log(`[VotacionAprobada] ${presupuestosSnap.docs.length} votaciones de presupuestos creadas`);
+        }
+
+        // Notificar a todos los socios activos
         const sociosSnap = await admin.firestore()
           .collection('socios')
           .where('activo', '==', true)
           .get();
+
+        const mensajeNotif = presupuestosSnap.empty
+          ? 'El proyecto fue aprobado y pasa a estar En Curso.'
+          : 'El proyecto fue aprobado. Ahora podés votar los presupuestos disponibles.';
 
         const batch = admin.firestore().batch();
         for (const socio of sociosSnap.docs) {
           const notifRef = admin.firestore().collection('notificaciones').doc();
           batch.set(notifRef, {
             tipo: 'proyecto_aprobado',
-            titulo: 'Proyecto aprobado',
-            mensaje: 'El proyecto fue aprobado por votación y pasa a estar En Curso.',
+            titulo: 'Proyecto aprobado ✅',
+            mensaje: mensajeNotif,
             destinatarioRol: 'socio',
             destinatarioId: socio.id,
-            referenciaId: objetoId,
+            referenciaId: proyectoId,
             leida: false,
             fechaCreacion: admin.firestore.FieldValue.serverTimestamp(),
           });
