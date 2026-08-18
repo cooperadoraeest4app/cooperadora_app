@@ -1370,3 +1370,47 @@ Cuatro funciones en `southamerica-east1`:
 - Generado desde Mi Perfil y desde pantalla de Socios (Admin/Editor)
 - Descarga del comprobante original adjunto al pago
 
+
+---
+
+## 37. Actualizaciones — Fase de pruebas formales
+
+### Modal de resultados de votación
+- Widget `ResultadoVotacionWidget` accesible desde pastilla de estado en proyectos y presupuestos
+- Jerarquía: Estado → Totales generales (recuadros grandes) → Barra progreso → Desglose
+- Desglose: Socios Activos (vinculante) + Consultantes (no vinculante)
+- Campo `tipoSocio` en votos distingue vinculante/no vinculante
+
+### Ítems de proyecto — rediseño
+- Lista compacta: nombre + precio + chip estado + íconos lápiz/tacho juntos
+- Al presionar ítem → modal con toda la info
+- Modal incluye chips de presupuestos vinculados (presionar scrollea al presupuesto)
+- Editor/Admin puede editar desde el modal con popup de confirmación
+- Mismo comportamiento en todas las plataformas (no hay versión mobile/desktop diferente)
+
+### Votaciones — mejoras
+- Presupuestos solo votables cuando hay votación activa para ese presupuesto
+- Al aprobar proyecto → Cloud Function crea automáticamente votaciones de presupuestos
+- Popup informativo al entrar al proyecto (una vez por sesión via Set estático)
+- Popup 1: votar proyecto → Popup 2: votar presupuestos → sin popup si ya votó todo
+- Eliminado "Me abstengo de votar todos" de la sección presupuestos
+- Íconos de votación solo visibles cuando hay votación activa
+
+### Login — mejoras
+- "código de invitación" en negrita en el botón de registro
+- Tipografía aumentada 2pt
+
+### Mi Perfil — mejoras
+- Subtipo socio editable con dropdown filtrado por tipo de socio (campo `aplicaA`)
+- Ícono de comprobante adjunto en historial de pagos (si tiene archivo)
+
+### Pendientes v1.1
+- Votos de comunidad: usuarios sin socioId (alumnos/consultantes) usando `userId`,
+  `tipVotante: 'comunidad'` — no vinculante, sección separada en modal de resultados
+- Actualizar google-services.json con package name com.eest4.cooperadora
+- Push notifications nativas Android (Firebase Cloud Messaging)
+- Autenticación biométrica (huella digital)
+- Fix edición ingreso cuota social no guarda socio
+- Fix borrar ingreso cuota social no revierte pago
+- Exportación Excel del balance con mejor formato
+

@@ -19,6 +19,7 @@ import '../../../votaciones/data/repositories/votacion_repository.dart';
 import '../../../votaciones/domain/models/votacion.dart';
 import '../../../votaciones/domain/models/voto.dart';
 import '../../../votaciones/presentation/providers/votacion_provider.dart';
+import '../../../votaciones/presentation/widgets/resultado_votacion_widget.dart';
 import '../../../ingresos/presentation/screens/movimientos_screen.dart';
 import '../../data/repositories/proyecto_repository.dart';
 import '../../domain/models/item_proyecto.dart';
@@ -58,6 +59,33 @@ IconData _iconForTipo(String nombre) {
   if (n.contains('viaje')) return Icons.directions_bus_outlined;
   if (n.contains('equipamiento')) return Icons.warehouse_outlined;
   return Icons.category_outlined;
+}
+
+void _mostrarResultadosVotacion(
+  BuildContext context,
+  Votacion votacion,
+  String titulo,
+  String tipo,
+) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (_) => DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      maxChildSize: 0.95,
+      minChildSize: 0.5,
+      expand: false,
+      builder: (_, scrollController) => ResultadoVotacionWidget(
+        votacionId: votacion.id,
+        titulo: titulo,
+        tipo: tipo,
+        scrollController: scrollController,
+      ),
+    ),
+  );
 }
 
 int _tabIndexForEstado(String estado) => switch (estado) {
@@ -382,25 +410,6 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
     return null;
   }
 
-  Widget _FilaResultado(String label, int cantidad, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Text('$label:',
-              style: const TextStyle(
-                  fontSize: 13, color: AppTheme.textoSecundario)),
-          const Spacer(),
-          Text('$cantidad',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: color)),
-        ],
-      ),
-    );
-  }
-
   Future<void> _habilitarVotacion(Proyecto p) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -641,7 +650,10 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
     context.watch<SocioProvider>();
     context.watch<UsuariosProvider>();
     final miSocio = _resolverMiSocio(context, auth);
-    final puedeVotarProyecto = miSocio?.tipoSocio == 'activo' &&
+    final miTipoSocio = miSocio?.tipoSocio;
+    final puedeVotarProyecto = (miTipoSocio == 'activo' ||
+            miTipoSocio == 'adherente' ||
+            miTipoSocio == 'consultante') &&
         _votacionActiva?.estado == 'en_curso';
     final miVotoProyecto = miSocio != null
         ? _votosProyecto
@@ -650,19 +662,17 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
             .firstOrNull
         : null;
 
-    if (miSocio?.tipoSocio == 'activo') {
+    print('[Voto] puedeVotarProyecto: $puedeVotarProyecto');
+    print('[Voto] miSocioId: ${miSocio?.id}');
+    print('[Voto] miTipoSocio: $miTipoSocio');
+    print('[Voto] votacionActiva estado: ${_votacionActiva?.estado}');
+
+    if (miSocio != null &&
+        (miTipoSocio == 'activo' ||
+            miTipoSocio == 'adherente' ||
+            miTipoSocio == 'consultante')) {
       _mostrarPopupVotacionSiCorresponde(miVotoProyecto);
     }
-
-    final votosActivosProyecto =
-        _votosProyecto.where((v) => v.tipoSocio == 'activo').toList();
-    final votosAFavor =
-        votosActivosProyecto.where((v) => v.valor == 'a_favor').length;
-    final votosEnContra =
-        votosActivosProyecto.where((v) => v.valor == 'en_contra').length;
-    final abstenciones =
-        votosActivosProyecto.where((v) => v.valor == 'abstencion').length;
-    final totalVotosActivos = votosActivosProyecto.length;
 
     final estadoLabel = switch (p.estado) {
       'en_curso' => 'En curso',
@@ -825,76 +835,28 @@ class _ProyectoDetalleScreenState extends State<ProyectoDetalleScreen> {
                     onTipoChanged: _setTipo,
                     onEstadoChanged: _setEstado,
                     onPublicoChanged: _setPublico,
+                    votacionAprobada: _votacionActiva?.estado == 'aprobada',
+                    onVerResultados: _votacionActiva?.estado == 'aprobada'
+                        ? () => _mostrarResultadosVotacion(
+                              context,
+                              _votacionActiva!,
+                              p.nombre,
+                              'proyecto',
+                            )
+                        : null,
                   ),
                   if (_votacionActiva != null &&
-                      (_votacionActiva!.estado == 'aprobada' ||
-                          _votacionActiva!.estado == 'rechazada')) ...[
+                      _votacionActiva!.estado != 'aprobada') ...[
                     const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: _votacionActiva!.estado == 'aprobada'
-                            ? AppTheme.verdeIngreso.withAlpha(20)
-                            : AppTheme.rojoGasto.withAlpha(20),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: _votacionActiva!.estado == 'aprobada'
-                              ? AppTheme.verdeIngreso
-                              : AppTheme.rojoGasto,
-                        ),
+                    GestureDetector(
+                      onTap: () => _mostrarResultadosVotacion(
+                        context,
+                        _votacionActiva!,
+                        p.nombre,
+                        'proyecto',
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                _votacionActiva!.estado == 'aprobada'
-                                    ? Icons.check_circle
-                                    : Icons.cancel,
-                                color: _votacionActiva!.estado == 'aprobada'
-                                    ? AppTheme.verdeIngreso
-                                    : AppTheme.rojoGasto,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _votacionActiva!.estado == 'aprobada'
-                                      ? 'Proyecto aprobado por votación'
-                                      : 'Proyecto rechazado por votación',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: _votacionActiva!.estado == 'aprobada'
-                                        ? AppTheme.verdeIngreso
-                                        : AppTheme.rojoGasto,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          _FilaResultado(
-                              'A favor', votosAFavor, AppTheme.verdeIngreso),
-                          _FilaResultado(
-                              'En contra', votosEnContra, AppTheme.rojoGasto),
-                          _FilaResultado('Abstenciones', abstenciones,
-                              AppTheme.amarilloAlerta),
-                          const Divider(height: 16),
-                          _FilaResultado('Total votos', totalVotosActivos,
-                              AppTheme.textoPrincipal),
-                          if (_votacionActiva!.fechaCierre != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              'Cerrada el ${DateFormat('dd/MM/yyyy HH:mm').format(_votacionActiva!.fechaCierre!)}',
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppTheme.textoSecundario),
-                            ),
-                          ],
-                        ],
-                      ),
+                      child: _ChipEstadoVotacion(
+                          estado: _votacionActiva!.estado),
                     ),
                   ],
                   const SizedBox(height: 12),
@@ -1409,6 +1371,8 @@ class _InfoCard extends StatelessWidget {
     required this.onTipoChanged,
     required this.onEstadoChanged,
     required this.onPublicoChanged,
+    this.votacionAprobada = false,
+    this.onVerResultados,
   });
 
   final Proyecto proyecto;
@@ -1421,6 +1385,8 @@ class _InfoCard extends StatelessWidget {
   final void Function(String) onTipoChanged;
   final void Function(String) onEstadoChanged;
   final void Function(bool) onPublicoChanged;
+  final bool votacionAprobada;
+  final VoidCallback? onVerResultados;
 
   @override
   Widget build(BuildContext context) {
@@ -1428,7 +1394,12 @@ class _InfoCard extends StatelessWidget {
     final tipos = prov.tipos;
 
     if (!puedeEditar) {
-      return _InfoCardReadOnly(proyecto: proyecto, prov: prov);
+      return _InfoCardReadOnly(
+        proyecto: proyecto,
+        prov: prov,
+        votacionAprobada: votacionAprobada,
+        onVerResultados: onVerResultados,
+      );
     }
 
     // Guard: tipoProyectoId must exist in loaded tipos
@@ -1441,6 +1412,13 @@ class _InfoCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (votacionAprobada) ...[
+              GestureDetector(
+                onTap: onVerResultados,
+                child: const _ChipEstadoVotacion(estado: 'aprobada'),
+              ),
+              const SizedBox(height: 12),
+            ],
             TextFormField(
               controller: nombreCtrl,
               decoration: const InputDecoration(labelText: 'Nombre'),
@@ -1566,10 +1544,17 @@ class _InfoCard extends StatelessWidget {
 // ── _InfoCardReadOnly ─────────────────────────────────────────────────────────
 
 class _InfoCardReadOnly extends StatelessWidget {
-  const _InfoCardReadOnly({required this.proyecto, required this.prov});
+  const _InfoCardReadOnly({
+    required this.proyecto,
+    required this.prov,
+    this.votacionAprobada = false,
+    this.onVerResultados,
+  });
 
   final Proyecto proyecto;
   final ProyectoProvider prov;
+  final bool votacionAprobada;
+  final VoidCallback? onVerResultados;
 
   @override
   Widget build(BuildContext context) {
@@ -1609,6 +1594,13 @@ class _InfoCardReadOnly extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (votacionAprobada) ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: onVerResultados,
+                    child: const _ChipEstadoVotacion(estado: 'aprobada'),
+                  ),
+                ],
                 if (!proyecto.publico) ...[
                   const SizedBox(width: 8),
                   const Icon(Icons.lock_outline,
@@ -2823,6 +2815,45 @@ class _ModalItemState extends State<_ModalItem> {
   }
 }
 
+// ── _ChipEstadoVotacion ───────────────────────────────────────────────────────
+
+class _ChipEstadoVotacion extends StatelessWidget {
+  const _ChipEstadoVotacion({required this.estado});
+  final String estado;
+
+  @override
+  Widget build(BuildContext context) {
+    final ({Color color, String label}) config = switch (estado) {
+      'aprobada' => (color: AppTheme.amarilloAlerta, label: 'Aprobado'),
+      'rechazada' => (color: AppTheme.rojoGasto, label: 'Rechazado'),
+      _ => (color: AppTheme.azulMedio, label: 'En votación'),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: config.color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: config.color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            config.label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: config.color,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(Icons.open_in_new, size: 11, color: config.color),
+        ],
+      ),
+    );
+  }
+}
+
 // ── _ChipEstadoPresupuesto ────────────────────────────────────────────────────
 
 class _ChipEstadoPresupuesto extends StatelessWidget {
@@ -3265,6 +3296,7 @@ class _PresupuestosCardState extends State<_PresupuestosCard> {
                       estadoPresupuesto: _estadoPresupuesto(p.id),
                       aprobadoEnGrupo:
                           _presupuestoAprobadoEnGrupo(p, items, _items),
+                      votacion: _todasVotaciones[p.id],
                     ));
                   }
                 }
@@ -3296,6 +3328,7 @@ class _PresupuestoTile extends StatefulWidget {
     required this.onVotar,
     this.estadoPresupuesto,
     this.aprobadoEnGrupo,
+    this.votacion,
   });
 
   final PresupuestoProyecto presupuesto;
@@ -3311,6 +3344,7 @@ class _PresupuestoTile extends StatefulWidget {
   final Future<void> Function(String presupuestoId, String valor) onVotar;
   final String? estadoPresupuesto;
   final String? aprobadoEnGrupo;
+  final Votacion? votacion;
 
   @override
   State<_PresupuestoTile> createState() => _PresupuestoTileState();
@@ -3319,6 +3353,17 @@ class _PresupuestoTile extends StatefulWidget {
 class _PresupuestoTileState extends State<_PresupuestoTile> {
   int _reloadKey = 0;
   bool _emitiendo = false;
+
+  void _mostrarResultados() {
+    final v = widget.votacion;
+    if (v == null) return;
+    _mostrarResultadosVotacion(
+      context,
+      v,
+      'Presupuesto ${widget.numero}',
+      'presupuesto',
+    );
+  }
 
   Future<Voto?> _fetchMiVoto() {
     if (!widget.puedeVotar || widget.miSocio == null) {
@@ -3529,8 +3574,13 @@ class _PresupuestoTileState extends State<_PresupuestoTile> {
                               ),
                               if (widget.estadoPresupuesto != null) ...[
                                 const SizedBox(width: 6),
-                                _ChipEstadoPresupuesto(
-                                    estado: widget.estadoPresupuesto!),
+                                GestureDetector(
+                                  onTap: widget.votacion != null
+                                      ? _mostrarResultados
+                                      : null,
+                                  child: _ChipEstadoPresupuesto(
+                                      estado: widget.estadoPresupuesto!),
+                                ),
                               ],
                             ],
                           ),
