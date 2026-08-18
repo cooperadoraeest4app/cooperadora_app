@@ -242,21 +242,25 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       child: const Text.rich(
                         TextSpan(
+                          style: TextStyle(
+                              fontSize: 16, color: AppTheme.azulMedio),
                           children: [
+                            TextSpan(text: '¿Tenés un '),
                             TextSpan(
-                              text: '¿Tenés un código de invitación? ',
-                              style:
-                                  TextStyle(color: AppTheme.textoSecundario),
+                              text: 'código de invitación',
+                              style: TextStyle(fontWeight: FontWeight.bold),
                             ),
+                            TextSpan(text: '? '),
                             TextSpan(
                               text: 'Registrate',
                               style: TextStyle(
                                 color: AppTheme.verdeTeal,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ],
                         ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ],
